@@ -12,12 +12,15 @@ and are unit-tested there.
 
 Rules implemented (decision log numbers in brackets):
 
-- **Data (A158):** every data point is handed to easydiffraction; a point in the
-  fit window (core :func:`~powderline.schema_core.fit_limits_on_data`, A149/A154)
-  with a positive weight gets sigma = 1/sqrt(w), every other point
-  sigma = :data:`SIGMA_WEIGHTLESS` (1e8), so reflection tails that cross the
-  window are calculated but only the window is fitted. The data go in as a CIF
-  loop at full precision, positional notation (EB-72, EB-89; A182).
+- **Data (A158):** easydiffraction is handed exactly the window's weighted
+  points (core :func:`~powderline.schema_core.fit_limits_on_data`, A149/A154;
+  ``w > 0``), with sigma = 1/sqrt(w) — the same points core scores (A131), so
+  the Chebyshev basis spans the window and lmfit's N is core's N. Handing the
+  full pattern with weightless points would understate every ESD by
+  sqrt((N_window - P)/(N_all - P)) and span the basis over the data (A158
+  evidence; the tail loss from reflections beyond the window is <= 3e-4 sigma).
+  The data go in as a CIF loop at full precision, positional notation (EB-72,
+  EB-89; A182).
 - **Names:** a phase's datablock is its name lowercased (A112 guarantees
   uniqueness ignoring case; EB-45).
 - **Space groups:** easydiffraction's short spaced symbol + ``coord_system_code``
@@ -70,8 +73,6 @@ from powderline.schema_core import (
 )
 from powderline.symmetry import SiteAnalysis, Ties, cell_tie_groups, coupling_groups, orbit
 
-#: sigma handed for a data point outside the fit window or with zero weight (A158).
-SIGMA_WEIGHTLESS = 1e8
 #: Name of the single experiment datablock (``data_powderline`` in the CIF).
 EXPERIMENT_NAME = "powderline"
 #: File the handed data loop is written to (a record of exactly what easydiffraction read).
@@ -137,27 +138,25 @@ def datablock_name(phase_name: str) -> str:
     return phase_name.lower()
 
 
-def window_sigma(tth, weights, lo: float, hi: float) -> tuple[np.ndarray, np.ndarray]:
-    """``(mask, sigma)`` for every data point (A158).
-
-    ``mask`` is True where ``lo <= tth <= hi`` and ``w > 0``; there
-    ``sigma = 1/sqrt(w)``, elsewhere :data:`SIGMA_WEIGHTLESS`.
-    """
+def window_mask(tth, weights, lo: float, hi: float) -> np.ndarray:
+    """True where ``lo <= tth <= hi`` and ``w > 0``: the points core scores (A131) and the only points handed to easydiffraction (A158)."""
     tth = np.asarray(tth, dtype=float)
     w = np.asarray(weights, dtype=float)
-    mask = (tth >= lo) & (tth <= hi) & (w > 0)
-    sigma = np.full(tth.shape, SIGMA_WEIGHTLESS, dtype=float)
-    sigma[mask] = 1.0 / np.sqrt(w[mask])
-    return mask, sigma
+    return (tth >= lo) & (tth <= hi) & (w > 0)
 
 
 def prepare_data(payload) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """``(tth, intensity, sigma, mask)`` of the full pattern, weighted per :func:`window_sigma`."""
+    """``(tth, intensity, sigma, mask)``: the window's weighted points only (A158, crop), ``sigma = 1/sqrt(w)``.
+
+    ``mask`` indexes the handed points in the full pattern (for core ``fitstats``
+    and the fit-profile report).
+    """
     lo, hi = fit_limits_on_data(payload.fit_range, payload.xrd_data)
     tth = np.asarray(payload.xrd_data.tth, dtype=float)
     itth = np.asarray(payload.xrd_data.Itth, dtype=float)
-    mask, sigma = window_sigma(tth, payload.xrd_data.Itth_weights, lo, hi)
-    return tth, itth, sigma, mask
+    w = np.asarray(payload.xrd_data.Itth_weights, dtype=float)
+    mask = window_mask(tth, w, lo, hi)
+    return tth[mask], itth[mask], 1.0 / np.sqrt(w[mask]), mask
 
 
 def cif_number(v: float) -> str:

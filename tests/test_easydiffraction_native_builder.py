@@ -108,27 +108,27 @@ def test_datablock_name_is_phase_name_lowercased():
     assert nb.datablock_name("Al2O3_corundum") == "al2o3_corundum"
 
 
-def test_window_sigma_weights_window_only():
+def test_window_mask_is_window_and_positive_weight():
     tth = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     w = np.array([4.0, 0.0, 4.0, 16.0, 4.0])
-    mask, sigma = nb.window_sigma(tth, w, 2.0, 4.0)
-    assert mask.tolist() == [False, False, True, True, False]
-    assert sigma[2] == pytest.approx(0.5) and sigma[3] == pytest.approx(0.25)
-    assert sigma[0] == sigma[1] == sigma[4] == nb.SIGMA_WEIGHTLESS
-    assert len(sigma) == 5  # every point is handed (A158)
+    mask = nb.window_mask(tth, w, 2.0, 4.0)
+    assert mask.tolist() == [False, False, True, True, False]  # zero-weight point inside the window is out
 
 
-def test_prepare_data_hands_every_point_and_masks_core_window():
+def test_prepare_data_crops_to_the_points_core_scores():
     model = _validated()
-    tth, itth, sigma, mask = nb.prepare_data(model.payload)
     payload = model.payload
-    assert len(tth) == len(payload.xrd_data.tth) == len(sigma) == len(mask)
+    tth, itth, sigma, mask = nb.prepare_data(payload)
     lo, hi = fit_limits_on_data(payload.fit_range, payload.xrd_data)
-    expected = (tth >= lo) & (tth <= hi) & (np.asarray(payload.xrd_data.Itth_weights) > 0)
+    all_tth = np.asarray(payload.xrd_data.tth)
+    expected = (all_tth >= lo) & (all_tth <= hi) & (np.asarray(payload.xrd_data.Itth_weights) > 0)
     assert mask.tolist() == expected.tolist()
-    assert mask[20] is np.False_  # zero-weight point inside the window is weightless
-    assert sigma[~mask].min() == nb.SIGMA_WEIGHTLESS
-    assert sigma[mask] == pytest.approx(10.0)
+    assert len(mask) == len(all_tth)                      # mask indexes the full pattern
+    assert len(tth) == len(itth) == len(sigma) == mask.sum()  # only the window's weighted points are handed (A158)
+    assert mask[20] is np.False_
+    assert tth.tolist() == all_tth[mask].tolist()
+    assert sigma == pytest.approx(10.0)
+    assert not hasattr(nb, "SIGMA_WEIGHTLESS")
 
 
 @pytest.mark.parametrize("value", [12.345678901234567, 5e-05, 1e-7, 0.1 + 0.2, 123456789012345.67, 1.0, 0.0])
@@ -140,11 +140,11 @@ def test_cif_number_round_trips_full_precision_without_exponent(value):
 
 def test_data_cif_has_experiment_type_and_full_precision_loop():
     tth = np.array([2.0 + 1.234567890123e-7, 2.5])
-    cif = nb.data_cif(tth, np.array([10.0, 5e-5]), np.array([1.0, nb.SIGMA_WEIGHTLESS]))
+    cif = nb.data_cif(tth, np.array([10.0, 5e-5]), np.array([1.0, 0.5]))
     lines = cif.splitlines()
     assert lines[0] == "data_powderline"
     assert "_experiment_type.beam_mode \"constant wavelength\"" in lines
-    assert lines[-2:] == [f"{float(tth[0])!r} 10 1", "2.5 0.00005 100000000"]
+    assert lines[-2:] == [f"{float(tth[0])!r} 10 1", "2.5 0.00005 0.5"]
     assert float(lines[-2].split()[0]) == tth[0]
 
 
