@@ -94,6 +94,103 @@ def check_version(core_schema_version: str, engine_schema_version: str) -> None:
     )
 
 
+# --- instrument models (A160, native units A4) -----------------------------
+
+class Radiation(CoreModel):
+    """Radiation parameters (A160).
+
+    Only CW xray in 1.0.0. Kα2 slot reserved but not yet supported.
+    """
+    type: Literal["xray"] = Field(default="xray", frozen=True)
+    wavelength: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_ANGSTROM))
+
+    # Kα2 reserved for future (A160) - not supported in 1.0.0
+    ka2_wavelength: Optional[CoreFloat] = Field(default=None, json_schema_extra=_unit(UNIT_ANGSTROM))
+    ka2_ratio: Optional[CoreFloat] = Field(default=None, json_schema_extra=_unit(UNIT_ARBITRARY))
+
+    @field_validator("wavelength", mode="after")
+    def _wavelength_positive(cls, param: BoundedRefinableParameter) -> BoundedRefinableParameter:
+        """Wavelength must be > 0 (A126, A155 Q6)."""
+        if param.value <= 0:
+            raise ValueError(f"wavelength must be > 0, got {param.value}")
+        return param
+
+
+class Corrections(CoreModel):
+    """Instrument corrections (zero shift, polarization, etc.)."""
+    zero: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_DEG_2THETA))
+    polarization: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_ARBITRARY))
+
+    # Optional corrections
+    polarization_monochromator_angle: Optional[BoundedRefinableParameter] = Field(
+        default=None,
+        json_schema_extra=_unit(UNIT_DEGREE)
+    )
+    displacement: Optional[BoundedRefinableParameter] = Field(
+        default=None,
+        json_schema_extra=_unit(UNIT_ANGSTROM)
+    )
+    transparency: Optional[BoundedRefinableParameter] = Field(
+        default=None,
+        json_schema_extra=_unit(UNIT_ARBITRARY)
+    )
+    cylinder_absorption_radius_mm: Optional[CoreFloat] = Field(
+        default=None,
+        json_schema_extra=_unit("millimeter")
+    )
+
+
+class Broadening(CoreModel):
+    """Peak broadening parameters (Caglioti + Lorentzian, native units A4).
+
+    Caglioti U, V, W: FWHM² in degrees² 2θ (not centidegrees²)
+    Lorentzian X, Y: FWHM in degrees 2θ (not centidegrees)
+    """
+    # Caglioti terms (Gaussian, FWHM² = U tan²θ + V tanθ + W)
+    u: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_DEG2_FWHM))
+    v: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_DEG2_FWHM))
+    w: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_DEG2_FWHM))
+
+    # Lorentzian terms (FWHM = X/cosθ + Y tanθ)
+    x: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_DEG_FWHM))
+    y: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_DEG_FWHM))
+
+
+class Instrument(CoreModel):
+    """Instrument parameters (single source A160, native units A4)."""
+    description: Optional[str] = Field(default=None)
+    radiation: Radiation
+    corrections: Corrections
+    broadening: Broadening
+
+    @model_validator(mode="after")
+    def _check_negative_widths(self) -> "Instrument":
+        """Check for negative peak widths at representative points (A171, A178).
+
+        Full grid check over window happens in builder (commit 3.5).
+        Schema-level check: at θ=45° (representative angle).
+        """
+        import math
+        theta_deg = 45.0
+        theta_rad = math.radians(theta_deg)
+        tan_theta = math.tan(theta_rad)
+
+        # Gaussian FWHM² = U tan²θ + V tanθ + W
+        fwhm2_gauss = (
+            self.broadening.u.value * tan_theta**2 +
+            self.broadening.v.value * tan_theta +
+            self.broadening.w.value
+        )
+
+        if fwhm2_gauss < 0:
+            raise ValueError(
+                f"Peak width FWHM² < 0 at θ=45°: U tan²θ + V tanθ + W = {fwhm2_gauss:.2e}. "
+                "Check Caglioti parameters (U, V, W)."
+            )
+
+        return self
+
+
 # --- recipe model ----------------------------------------------------------
 
 class EasydiffractionRecipe(CoreRecipe):
