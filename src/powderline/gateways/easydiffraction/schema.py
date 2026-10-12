@@ -209,12 +209,6 @@ class EasydiffractionPhase(Phase[BoundedRefinableParameter]):
     )
 
     # Background (Chebyshev coefficients)
-    background: Optional[ChebyshevBackground] = Field(
-        default=None,
-        validate_default=True,
-        json_schema_extra=absent_not_null_schema(),
-        description="Chebyshev background coefficients"
-    )
 
     # Engine validators (A109, A122: 'after' only, engine-specific names)
 
@@ -310,6 +304,18 @@ class RefinementControls(CoreModel):
 
 # --- payload (complete recipe payload) -------------------------------------
 
+def _no_background() -> ChebyshevBackground:
+    """Background left out = none: one fixed Chebyshev term 0.0 (D1, A119)."""
+    return ChebyshevBackground(num_coefficients=1, coefficients=[0.0], refine_flag=False)
+
+
+def _never_null(v: Any, info) -> Any:
+    """A block that may be left out is never ``null`` (the A96 convention)."""
+    if v is None:
+        raise ValueError(f"{info.field_name} must not be null; leave it out instead")
+    return v
+
+
 class EasydiffractionPayload(CoreModel):
     """Complete payload for easydiffraction.rietveld recipe."""
     xrd_data: XRDData
@@ -320,6 +326,13 @@ class EasydiffractionPayload(CoreModel):
     )
     instrument: Instrument
     refinement_controls: RefinementControls
+    background: ChebyshevBackground = Field(
+        default_factory=_no_background,
+        description="The experiment's Chebyshev background (easydiffraction has one per experiment, A189); "
+                    "left out = none (one fixed 0.0 term, D1)",
+    )
+
+    _not_null = field_validator("background", mode="before")(_never_null)
 
     @model_validator(mode="after")
     def _check_names_unique(self) -> "EasydiffractionPayload":

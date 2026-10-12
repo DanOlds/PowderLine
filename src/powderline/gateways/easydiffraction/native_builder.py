@@ -28,8 +28,9 @@ Rules implemented (decision log numbers in brackets):
 - **Atom order (A169 b):** anisotropic atoms are handed first (easydiffraction
   0.21.1 CrysPy refines a Uij wrongly when an isotropic atom precedes it,
   EB-86); reports stay keyed by label.
-- **Background (A183):** the schema states a Chebyshev background per phase;
-  easydiffraction has one per experiment, so at most one phase may state one.
+- **Background (A189, D1):** the payload states the experiment's Chebyshev
+  background (easydiffraction has one per experiment); left out = one fixed
+  0.0 term, which is handed as such.
 - **Site check (EB-47; A176, A164, A174):** after the build, every atom's
   easydiffraction Wyckoff multiplicity must equal core's, and the held position
   must be the stated one modulo a lattice translation (accepted with the
@@ -186,22 +187,6 @@ def data_cif(tth, itth, sigma, name: str = EXPERIMENT_NAME) -> str:
 def atom_order(phase: EasydiffractionPhase) -> list[tuple[str, Any]]:
     """``(label, atom)`` pairs in the order handed to easydiffraction: anisotropic atoms first (A169 b, EB-86)."""
     return sorted(phase.atoms.items(), key=lambda item: item[1].Uaniso is None)
-
-
-def background_phase(payload) -> Optional[str]:
-    """The name of the one phase stating a background (the experiment's), or ``None`` (A183).
-
-    Raises :class:`EasyDiffractionTranslationError` when more than one phase states one:
-    easydiffraction has a single background per experiment.
-    """
-    stated = [name for name, phase in payload.phases.items() if phase.background is not None]
-    if len(stated) > 1:
-        raise EasyDiffractionTranslationError(
-            "easydiffraction has one background per experiment, but phases "
-            f"{', '.join(repr(n) for n in stated)} each state one: state it in one phase only "
-            "(payload.phases.<name>.background)"
-        )
-    return stated[0] if stated else None
 
 
 # --- site check (EB-47, A164, A174, A176) -----------------------------------
@@ -484,10 +469,9 @@ def experiment_plan(payload) -> list[FreeParam]:
         if phase.scale.refine_flag:
             plan.append(_param(f"payload.phases.{name}.scale", f"{ed_base}.linked_structures.{datablock_name(name)}.scale",
                                phase.scale, UNIT_ARBITRARY, "scale"))
-    bg_phase = background_phase(payload)
-    if bg_phase is not None and payload.phases[bg_phase].background.refine_flag:
-        for k, coef in enumerate(payload.phases[bg_phase].background.coefficients):
-            plan.append(FreeParam(f"payload.phases.{bg_phase}.background.coefficients.{k}",
+    if payload.background.refine_flag:
+        for k, coef in enumerate(payload.background.coefficients):
+            plan.append(FreeParam(f"payload.background.coefficients.{k}",
                                   f"{ed_base}.background.{k}.coef", coef, None, None, UNIT_ARBITRARY, "background"))
     for (block, name), (ed_path, unit) in _INSTRUMENT_ATTRS.items():
         p = getattr(getattr(payload.instrument, block), name)
@@ -626,11 +610,9 @@ def _build_experiment(ExperimentFactory, payload, cif: str, names: dict):
     for name, phase in payload.phases.items():
         expt.linked_structures.create(structure_id=names[name], scale=phase.scale.value)
 
-    bg_phase = background_phase(payload)
-    if bg_phase is not None:
-        _set(expt.background, "type", "chebyshev")
-        for k, coef in enumerate(payload.phases[bg_phase].background.coefficients):
-            expt.background.create(id=str(k), order=k, coef=coef)
+    _set(expt.background, "type", "chebyshev")
+    for k, coef in enumerate(payload.background.coefficients):
+        expt.background.create(id=str(k), order=k, coef=coef)
     return expt
 
 

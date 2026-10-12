@@ -11,6 +11,7 @@ import importlib.util
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 
 from powderline.gateways.easydiffraction import native_builder as nb
 from powderline.gateways.easydiffraction.errors import EasyDiffractionTranslationError
@@ -49,7 +50,6 @@ def _lab6_phase(scale_flag=False):
                    "ADP": "Uiso", "Uiso": P(0.006)},
         },
         "scale": P(1.0, scale_flag, 0.0, None),
-        "background": {"num_coefficients": 2, "coefficients": [100.0, 0.0], "refine_flag": False},
     }
 
 
@@ -72,6 +72,7 @@ def _recipe(**phases):
                 "broadening": {"u": P(0.01), "v": P(-0.001), "w": P(0.002), "x": P(0.01), "y": P(0.0)},
             },
             "refinement_controls": {"calculator": "cryspy", "peak_type": "pseudo-voigt"},
+            "background": {"num_coefficients": 2, "coefficients": [100.0, 0.0], "refine_flag": False},
         },
     }
 
@@ -148,15 +149,17 @@ def test_data_cif_has_experiment_type_and_full_precision_loop():
     assert float(lines[-2].split()[0]) == tth[0]
 
 
-def test_background_phase_single_or_none_or_error():
-    model = _validated()
-    assert nb.background_phase(model.payload) == "LaB6"
-    two = _recipe()
-    two["payload"]["phases"]["Second"] = copy.deepcopy(two["payload"]["phases"]["LaB6"])
-    with pytest.raises(EasyDiffractionTranslationError, match="one background per experiment"):
-        nb.background_phase(_validated(two).payload)
-    two["payload"]["phases"]["Second"].pop("background")
-    assert nb.background_phase(_validated(two).payload) == "LaB6"
+def test_background_is_the_experiments_and_defaults_to_one_fixed_zero_term():
+    payload = _validated().payload
+    assert payload.background.coefficients == [100.0, 0.0]
+    bare = _recipe()
+    bare["payload"].pop("background")
+    default = _validated(bare).payload.background  # D1: left out = none = one fixed 0.0 term
+    assert (default.num_coefficients, default.coefficients, default.refine_flag) == (1, [0.0], False)
+    assert all(p.kind != "background" for p in nb.experiment_plan(_validated(bare).payload))  # fixed term: nothing freed
+    bare["payload"]["background"] = None
+    with pytest.raises(ValidationError, match="must not be null"):
+        _validated(bare)
 
 
 def test_atom_order_hands_anisotropic_atoms_first():
@@ -456,7 +459,7 @@ def test_occupancy_and_uiso_flags_and_bounds():
 def test_experiment_plan_scale_background_instrument_bounds():
     recipe = _recipe()
     recipe["payload"]["phases"]["LaB6"]["scale"] = P(1.0, True, 0.0, None)
-    recipe["payload"]["phases"]["LaB6"]["background"]["refine_flag"] = True
+    recipe["payload"]["background"]["refine_flag"] = True
     inst = recipe["payload"]["instrument"]
     inst["corrections"]["zero"] = P(0.0, True, -0.1, 0.1)
     inst["broadening"]["w"] = P(0.002, True, 0.0, 0.1)
