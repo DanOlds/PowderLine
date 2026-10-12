@@ -28,6 +28,11 @@ Rules implemented (decision log numbers in brackets):
   ``easydiffraction_reflections_not_available``, no side calculation.
 - **A phase contributing nothing (A157 B7):** informative
   ``easydiffraction_phase_contributes_nothing``, never an error.
+- **At a limit (A147 Q-L4, A157 B4, A181):** a refined value within
+  ``max(3 ESD, 1e-6 |start|, 1e-15)`` of a stated bound, or of the physical
+  limit easydiffraction applies on an unbounded side (EB-71), gets
+  ``easydiffraction_parameter_at_limit`` from PowderLine's own check
+  (easydiffraction's own boundary messages are only logged).
 - **Native artifacts (A11):** the handed data loop (builder) and the
   easydiffraction project files are kept beside the reports.
 
@@ -602,9 +607,75 @@ def build_result(model, outcome: RunOutcome, output_dir, *, validated_warnings=N
     }
 
 
+# --- at-limit warnings (A147 Q-L4, A157 B4, A181; EB-71) ---------------------
+
+#: Limits easydiffraction applies to an unbounded side when a fit starts (EB-71), as the schema documents them:
+#: cell lengths [0, 30] A, angles [0, 180] deg, occupancy [0, 1], Uiso and U11/U22/U33 [0, 10] A^2,
+#: scale and wavelength >= 0; everything else (coordinates, off-diagonal Uij, background, other instrument) unbounded.
+PHYSICAL_LIMITS = {"cell_length": (0.0, 30.0), "cell_angle": (0.0, 180.0), "occupancy": (0.0, 1.0),
+                   "adp_diagonal": (0.0, 10.0), "scale": (0.0, None), "wavelength": (0.0, None)}
+#: Below this, a limit is reached "exactly" (A181: only matters for a start at exactly 0 with no ESD).
+LIMIT_TOL_FLOOR = 1e-15
+
+
+def physical_limits(entry: dict) -> tuple:
+    """``(lo, hi)`` easydiffraction imposes on ``entry``'s parameter where the recipe states no bound; ``None`` = open."""
+    last = entry["path"].split(".")[-1]
+    kind = entry["kind"]
+    if kind == "cell":
+        return PHYSICAL_LIMITS["cell_angle" if last in ("alpha", "beta", "gamma") else "cell_length"]
+    if kind == "occupancy":
+        return PHYSICAL_LIMITS["occupancy"]
+    if kind == "adp" and last in ("Uiso", "U11", "U22", "U33"):
+        return PHYSICAL_LIMITS["adp_diagonal"]
+    if kind == "scale":
+        return PHYSICAL_LIMITS["scale"]
+    if kind == "instrument" and last == "wavelength":
+        return PHYSICAL_LIMITS["wavelength"]
+    return (None, None)
+
+
+def limit_tolerance(start: float, esd: Optional[float]) -> float:
+    """A181: ``max(3 * esd, 1e-6 * |start|, 1e-15)``; ``esd`` counts as 0 when the engine gave none."""
+    return max(3.0 * (esd or 0.0), 1e-6 * abs(float(start)), LIMIT_TOL_FLOOR)
+
+
+def _limit_hits(entries) -> list:
+    """``easydiffraction_parameter_at_limit`` for every entry whose final value is within tolerance of a limit (pure).
+
+    Each entry: ``path``, ``kind``, ``value`` (the start), ``min``/``max`` (the
+    stated bounds, ``None`` = the engine's physical limit on that side),
+    ``final``, ``esd`` (``None`` when undetermined).
+    """
+    found = []
+    for entry in entries:
+        final, esd = entry["final"], entry.get("esd")
+        if final is None or not math.isfinite(final):
+            continue
+        tol = limit_tolerance(entry["value"], esd)
+        physical = physical_limits(entry)
+        for side, stated, phys in (("min", entry.get("min"), physical[0]), ("max", entry.get("max"), physical[1])):
+            lim = stated if stated is not None else phys
+            if lim is None or abs(final - lim) > tol:
+                continue
+            whose = "the recipe's stated bound" if stated is not None else "easydiffraction's physical limit (EB-71)"
+            esd_text = f"ESD {esd:.3g}" if esd is not None else "no ESD"
+            found.append(StructuredWarning(
+                code="easydiffraction_parameter_at_limit",
+                message=(f"{descriptive_name(entry)} ended at its {side} limit {lim:g} ({whose}): value {final:.6g}, "
+                         f"{esd_text}, within the tolerance {tol:.3g} (3 ESD, or 1e-6 of the start, A181); the "
+                         "refinement may have been stopped by the limit"),
+                field_path=entry["path"]))
+    return found
+
+
 def limit_hits(manifest: dict, values: dict) -> list:
-    """Placeholder until the at-limit check lands (A147 Q-L4, A157 B4, A181): no warnings."""
-    return []
+    """:func:`_limit_hits` over the manifest's freed parameters with their refined values (in the recipe's writing)."""
+    entries = []
+    for key, entry in manifest.items():
+        final, esd = values.get(key, (None, None))
+        entries.append({**{k: entry[k] for k in ("path", "kind", "value", "min", "max")}, "final": final, "esd": esd})
+    return _limit_hits(entries)
 
 
 def run_refinement(recipe: EasydiffractionRecipe, output_dir, *, verbose: bool = False) -> dict:

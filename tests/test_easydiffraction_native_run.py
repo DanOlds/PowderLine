@@ -464,3 +464,71 @@ def test_run_refinement_end_to_end(tmp_path):
     assert result["success"] and isinstance(result["rwp"], float)
     assert result["engine_details"]["parameters_varied"] == 4
     assert (tmp_path / "refined_parameters.csv").exists()
+
+
+# ---------------------------------------------------------------------------
+# 4.3 at-limit warnings (A147 Q-L4, A157 B4, A181; review N4)
+# ---------------------------------------------------------------------------
+
+
+def _hit(path, kind, start, final, esd=None, lo=None, hi=None):
+    return {"path": path, "kind": kind, "value": start, "min": lo, "max": hi, "final": final, "esd": esd}
+
+
+def test_limit_tolerance_is_a181():
+    assert nr.limit_tolerance(4.1568, 1e-3) == pytest.approx(3e-3)       # 3 ESD
+    assert nr.limit_tolerance(4.1568, None) == pytest.approx(4.1568e-6)  # no ESD: 1e-6 of the start
+    assert nr.limit_tolerance(0.0, None) == 1e-15                        # a start at exactly zero, no ESD
+
+
+def test_phantom_phase_scale_at_the_zero_floor_is_flagged():
+    """The review's case: a phase absent from the data refined to 1.6e-9 +- 1.6e-9 against the physical 0 (EB-71)."""
+    hits = nr._limit_hits([_hit("payload.phases.Si.scale", "scale", 1e-7, 1.5963e-9, esd=1.5529e-9)])
+    assert [w["code"] for w in hits] == ["easydiffraction_parameter_at_limit"]
+    w = hits[0]
+    assert w["field_path"] == "payload.phases.Si.scale"
+    assert "min limit 0" in w["message"] and "physical limit" in w["message"] and "A181" in w["message"]
+
+
+def test_a_value_ten_sigma_from_its_bound_is_not_flagged():
+    hits = nr._limit_hits([_hit("payload.phases.LaB6.unit_cell.a", "cell", 4.1568, 4.0 + 10 * 1e-3, esd=1e-3, lo=4.0, hi=4.3)])
+    assert hits == []
+
+
+def test_a_stated_bound_hit_is_flagged_with_the_bounds_value():
+    hits = nr._limit_hits([_hit("payload.phases.LaB6.unit_cell.a", "cell", 4.1568, 4.3 - 1e-4, esd=1e-4, lo=4.0, hi=4.3)])
+    assert len(hits) == 1
+    assert "cell_a ended at its max limit 4.3 (the recipe's stated bound)" in hits[0]["message"]
+    # no ESD (lmfit could not estimate error-bars): the start-relative tolerance applies, an exact hit is flagged
+    hits = nr._limit_hits([_hit("payload.phases.LaB6.atoms.B1.x", "coordinate", 0.1997, 0.25, esd=None, lo=0.15, hi=0.25)])
+    assert len(hits) == 1 and "x ended at its max limit 0.25" in hits[0]["message"] and "no ESD" in hits[0]["message"]
+
+
+def test_unbounded_sides_are_never_flagged_and_physical_limits_follow_the_schema():
+    at_zero = [
+        _hit("payload.phases.P.atoms.A.x", "coordinate", 0.1, 0.0, esd=1e-3),                  # coordinates: unbounded
+        _hit("payload.background.coefficients.1", "background", 0.5, 0.0, esd=1e-3),           # background: unbounded
+        _hit("payload.phases.P.atoms.A.Uaniso.U12", "adp", 0.001, 0.0, esd=1e-4),              # off-diagonal Uij: unbounded
+        _hit("payload.instrument.corrections.zero", "instrument", 0.01, 0.0, esd=1e-3),        # zero shift: unbounded
+    ]
+    assert nr._limit_hits(at_zero) == []
+    physical = [
+        _hit("payload.phases.P.atoms.A.Uaniso.U11", "adp", 0.001, 0.0, esd=1e-4),              # U11 >= 0
+        _hit("payload.phases.P.atoms.A.Uiso", "adp", 0.005, 10.0, esd=1e-3),                   # Uiso <= 10
+        _hit("payload.phases.P.atoms.A.occupancy", "occupancy", 0.9, 1.0, esd=1e-3),           # occupancy <= 1
+        _hit("payload.phases.P.unit_cell.c", "cell", 29.0, 30.0, esd=1e-3),                    # cell length <= 30
+        _hit("payload.phases.P.unit_cell.beta", "cell", 170.0, 180.0, esd=1e-3),               # angle <= 180
+        _hit("payload.instrument.radiation.wavelength", "instrument", 1.5, 0.0, esd=1e-3),     # wavelength >= 0
+    ]
+    assert [w["field_path"] for w in nr._limit_hits(physical)] == [e["path"] for e in physical]
+    assert nr._limit_hits([_hit("payload.phases.P.scale", "scale", 1.0, math.nan, esd=None)]) == []  # read strictly upstream
+
+
+def test_limit_hits_reach_the_result(tmp_path):
+    model = _validated(_refined_recipe())
+    key = "experiments.powderline.linked_structures.lab6.scale"
+    manifest = _manifest(model, finals={key: 2e-9}, esds={key: 1e-9})  # stated min 0.0 (the fixture's scale bound)
+    result = nr.build_result(model, _outcome(model, manifest), tmp_path)
+    hits = [w for w in result["warnings"] if w["code"] == "easydiffraction_parameter_at_limit"]
+    assert len(hits) == 1 and hits[0]["field_path"] == "payload.phases.LaB6.scale"
+    assert "scale ended at its min limit 0 (the recipe's stated bound)" in hits[0]["message"]
