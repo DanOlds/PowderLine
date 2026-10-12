@@ -41,6 +41,14 @@ def _lab6_phase(scale_flag=False):
     }
 
 
+def _widths(u=0.01, v=-0.001, w=0.002, x=0.01, y=0.0, **flags):
+    """The five width parameters of a pseudo-Voigt (easydiffraction's names); ``flags`` override whole entries."""
+    base = {"broad_gauss_u": P(u), "broad_gauss_v": P(v), "broad_gauss_w": P(w),
+            "broad_lorentz_x": P(x), "broad_lorentz_y": P(y)}
+    base.update(flags)
+    return base
+
+
 def _recipe(**phases):
     """A small native recipe: 551 points 5..60 deg, window [10, 55], LaB6 unless phases are given."""
     tth = np.linspace(5.0, 60.0, 551)
@@ -55,12 +63,15 @@ def _recipe(**phases):
             "fit_range": [10.0, 55.0],
             "phases": phases or {"LaB6": _lab6_phase()},
             "instrument": {
-                "radiation": {"wavelength": P(1.5406)},
-                "corrections": {"zero": P(0.0), "polarization": P(0.5)},
-                "broadening": {"u": P(0.01), "v": P(-0.001), "w": P(0.002), "x": P(0.01), "y": P(0.0)},
+                "radiation": {"setup_wavelength": P(1.5406)},
+                "polarization": {"setup_polarization_coefficient": 0.5, "setup_monochromator_twotheta": 0.0},
+                "corrections": {"calib_twotheta_offset": P(0.0)},
+                "broadening": {"peak_type": "cwl-pseudo-voigt", "parameters": _widths()},
             },
-            "refinement_controls": {"calculator": "cryspy", "peak_type": "pseudo-voigt"},
-            "background": {"num_coefficients": 2, "coefficients": [100.0, 0.0], "refine_flag": False},
+            "refinement_controls": {"calculator": "cryspy", "minimizer": "lmfit (leastsq)", "max_iterations": 100,
+                                    "chi_square_change_tolerance": 1e-8, "parameter_change_tolerance": 1e-8,
+                                    "gradient_tolerance": 0.0},
+            "background": {"chebyshev": {"num_coefficients": 2, "coefficients": [100.0, 0.0], "refine_flag": False}},
         },
     }
 
@@ -139,10 +150,10 @@ def test_data_cif_has_experiment_type_and_full_precision_loop():
 
 def test_background_is_the_experiments_and_defaults_to_one_fixed_zero_term():
     payload = _validated().payload
-    assert payload.background.coefficients == [100.0, 0.0]
+    assert payload.background.chebyshev.coefficients == [100.0, 0.0]
     bare = _recipe()
     bare["payload"].pop("background")
-    default = _validated(bare).payload.background  # D1: left out = none = one fixed 0.0 term
+    default = _validated(bare).payload.background.chebyshev  # D1: left out = none = one fixed 0.0 term
     assert (default.num_coefficients, default.coefficients, default.refine_flag) == (1, [0.0], False)
     assert all(p.kind != "background" for p in nb.experiment_plan(_validated(bare).payload))  # fixed term: nothing freed
     bare["payload"]["background"] = None
@@ -447,23 +458,49 @@ def test_occupancy_and_uiso_flags_and_bounds():
 def test_experiment_plan_scale_background_instrument_bounds():
     recipe = _recipe()
     recipe["payload"]["phases"]["LaB6"]["scale"] = P(1.0, True, 0.0, None)
-    recipe["payload"]["background"]["refine_flag"] = True
+    recipe["payload"]["background"]["chebyshev"]["refine_flag"] = True
     inst = recipe["payload"]["instrument"]
-    inst["corrections"]["zero"] = P(0.0, True, -0.1, 0.1)
-    inst["broadening"]["w"] = P(0.002, True, 0.0, 0.1)
-    inst["corrections"]["displacement"] = P(0.001, True, None, None)
+    inst["corrections"]["calib_twotheta_offset"] = P(0.0, True, -0.1, 0.1)
+    inst["broadening"]["parameters"]["broad_gauss_w"] = P(0.002, True, 0.0, 0.1)
+    inst["corrections"]["calib_sample_displacement"] = P(0.001, True, None, None)
+    inst["absorption"] = {"type": "cylinder-hewat", "mu_r": P(0.3, True, 0.0, None)}
     plan = _plan_by_path(nb.experiment_plan(_validated(recipe).payload))
     assert set(plan) == {"experiments.powderline.linked_structures.lab6.scale",
                          "experiments.powderline.background.0.coef", "experiments.powderline.background.1.coef",
                          "experiments.powderline.instrument.calib_twotheta_offset",
                          "experiments.powderline.peak.broad_gauss_w",
-                         "experiments.powderline.instrument.calib_sample_displacement"}
+                         "experiments.powderline.instrument.calib_sample_displacement",
+                         "experiments.powderline.absorption.mu_r"}
     zero = plan["experiments.powderline.instrument.calib_twotheta_offset"]
-    assert (zero.path, zero.min, zero.max, zero.unit) == ("payload.instrument.corrections.zero", -0.1, 0.1,
-                                                          "degree 2theta")
-    assert plan["experiments.powderline.peak.broad_gauss_w"].unit == "degree^2 2theta (FWHM^2)"
-    assert plan["experiments.powderline.background.1.coef"].value == 0.0
+    assert (zero.path, zero.min, zero.max, zero.unit) == ("payload.instrument.corrections.calib_twotheta_offset",
+                                                          -0.1, 0.1, "degree 2theta")
+    w = plan["experiments.powderline.peak.broad_gauss_w"]
+    assert (w.path, w.unit) == ("payload.instrument.broadening.parameters.broad_gauss_w", "degree^2 2theta (FWHM^2)")
+    bkg = plan["experiments.powderline.background.1.coef"]
+    assert (bkg.path, bkg.value) == ("payload.background.chebyshev.coefficients.1", 0.0)
     assert plan["experiments.powderline.linked_structures.lab6.scale"].path == "payload.phases.LaB6.scale"
+    assert plan["experiments.powderline.absorption.mu_r"].path == "payload.instrument.absorption.mu_r"
+
+
+def test_instrument_parameters_follow_the_peak_type_and_stated_slots():
+    """A160/A195: the recipe key is the easydiffraction attribute; a left-out slot is not in the list."""
+    paths = {ed: path for path, ed, _, _ in nb.instrument_parameters(_validated().payload.instrument)}
+    assert paths == {f"peak.{k}": f"payload.instrument.broadening.parameters.{k}" for k in nb.WIDTH_KEYS.values()} | {
+        "instrument.setup_wavelength": "payload.instrument.radiation.setup_wavelength",
+        "instrument.calib_twotheta_offset": "payload.instrument.corrections.calib_twotheta_offset"}
+    recipe = _recipe()
+    broad = recipe["payload"]["instrument"]["broadening"]
+    broad["peak_type"] = "cwl-pseudo-voigt-berar-baldinozzi-asymmetry"
+    broad["parameters"].update({"asym_beba_a0": P(0.01), "asym_beba_b0": P(0.002), "asym_beba_a1": P(-0.005),
+                                "asym_beba_b1": P(0.001)})
+    recipe["payload"]["instrument"]["corrections"]["calib_sample_transparency"] = P(-0.0005)
+    found = [ed for _, ed, _, _ in nb.instrument_parameters(_validated(recipe).payload.instrument)]
+    assert found == ["peak.broad_gauss_u", "peak.broad_gauss_v", "peak.broad_gauss_w", "peak.broad_lorentz_x",
+                     "peak.broad_lorentz_y", "peak.asym_beba_a0", "peak.asym_beba_b0", "peak.asym_beba_a1",
+                     "peak.asym_beba_b1", "instrument.setup_wavelength", "instrument.calib_twotheta_offset",
+                     "instrument.calib_sample_transparency"]
+    units = {ed: unit for _, ed, _, unit in nb.instrument_parameters(_validated(recipe).payload.instrument)}
+    assert units["peak.asym_beba_a0"] == "arbitrary" and units["peak.broad_lorentz_x"] == "degree 2theta (FWHM)"
 
 
 def test_nothing_flagged_gives_empty_plans():
@@ -517,7 +554,7 @@ def test_apply_refinement_flags_sets_free_and_bounds_and_moves_translated_bounds
 def test_apply_experiment_flags_with_none_bounds_leaves_engine_defaults():
     recipe = _recipe()
     recipe["payload"]["phases"]["LaB6"]["scale"] = P(1.0, True, 0.0, None)
-    recipe["payload"]["instrument"]["radiation"]["wavelength"] = P(1.5406, True, None, None)
+    recipe["payload"]["instrument"]["radiation"]["setup_wavelength"] = P(1.5406, True, None, None)
     expt = _Obj(linked_structures=_Obj(lab6=_Obj(scale=_FakeParam(1.0))),
                 instrument=_Obj(setup_wavelength=_FakeParam(1.5406)))
     manifest = nb.apply_experiment_flags(_validated(recipe).payload, expt)
@@ -542,7 +579,7 @@ def test_build_project_frees_one_parameter_per_tie_group(tmp_path):
         phase["unit_cell"][k] = P(4.1568, True, 4.0, 4.3)
     phase["atoms"]["B1"]["x"] = P(0.1997, True, 0.15, 0.25)
     phase["scale"] = P(1.0, True, 0.0, None)
-    recipe["payload"]["instrument"]["broadening"]["w"] = P(0.002, True, 0.0, 0.1)
+    recipe["payload"]["instrument"]["broadening"]["parameters"]["broad_gauss_w"] = P(0.002, True, 0.0, 0.1)
     result = nb.build_project(_validated(recipe), tmp_path)
     assert set(result.manifest) == {"structures.lab6.cell.length_a", "structures.lab6.atom_sites.B1.fract_x",
                                     "experiments.powderline.linked_structures.lab6.scale",
@@ -568,9 +605,10 @@ def _crossing_w(v: float, tth_cross: float) -> float:
 
 def _negative_below(recipe, tth_cross: float, zero: float = 0.0) -> EasydiffractionRecipe:
     """A recipe whose Gaussian FWHM^2 is negative only below ``tth_cross`` (positive at theta = 45, so it validates)."""
-    broad = recipe["payload"]["instrument"]["broadening"]
-    broad["u"], broad["v"], broad["w"] = P(0.0), P(0.001), P(_crossing_w(0.001, tth_cross))
-    recipe["payload"]["instrument"]["corrections"]["zero"] = P(zero)
+    broad = recipe["payload"]["instrument"]["broadening"]["parameters"]
+    broad["broad_gauss_u"], broad["broad_gauss_v"], broad["broad_gauss_w"] = \
+        P(0.0), P(0.001), P(_crossing_w(0.001, tth_cross))
+    recipe["payload"]["instrument"]["corrections"]["calib_twotheta_offset"] = P(zero)
     return _validated(recipe)
 
 
@@ -581,7 +619,7 @@ def test_width_check_points_span_the_window_plus_margin_and_stated_corrections()
     assert np.allclose(np.diff(grid), nb.WIDTH_GRID_STEP)
     recipe = _recipe()
     recipe["payload"]["instrument"]["corrections"].update(
-        {"zero": P(-0.25), "displacement": P(0.1), "transparency": P(0.05)})
+        {"calib_twotheta_offset": P(-0.25), "calib_sample_displacement": P(0.1), "calib_sample_transparency": P(0.05)})
     assert nb.width_margin(_validated(recipe).payload) == pytest.approx(1.0 + 0.25 + 0.1 + 0.05)
     assert nb.width_check_points(_validated(recipe).payload)[0] == pytest.approx(10.0 - 1.4)
 
@@ -606,6 +644,7 @@ def test_s5_negative_width_just_outside_the_window_is_an_error():
     message = str(exc.value)
     assert message.startswith("payload.instrument.broadening: ")
     assert "Gaussian FWHM^2" in message and "[9, 9.89" in message and "EB-87" in message
+    assert "calib_twotheta_offset" in message and "fit_range" in message
     assert isinstance(exc.value, ValueError) and isinstance(exc.value, EasyDiffractionTranslationError)
 
 
@@ -627,3 +666,29 @@ def test_build_project_checks_widths_before_importing_the_engine(monkeypatch, tm
     monkeypatch.setattr(nb, "_import_easydiffraction", no_engine)
     with pytest.raises(nb.NegativeWidthError):
         nb.build_project(_negative_below(_recipe(), tth_cross=9.9), tmp_path)
+    with pytest.raises(nb.NegativeWidthError):
+        nb.build_project(_negative_below(_recipe(), tth_cross=9.9))  # workdir may be left out (A195)
+
+
+def test_stated_widths_read_the_peak_parameters():
+    assert nb.stated_widths(_validated().payload) == {"u": 0.01, "v": -0.001, "w": 0.002, "x": 0.01, "y": 0.0}
+    recipe = _recipe()
+    broad = recipe["payload"]["instrument"]["broadening"]
+    broad["peak_type"] = "cwl-pseudo-voigt-berar-baldinozzi-asymmetry"
+    broad["parameters"].update({"asym_beba_a0": P(0.01), "asym_beba_b0": P(0.002), "asym_beba_a1": P(-0.005),
+                                "asym_beba_b1": P(0.001), "broad_lorentz_y": P(0.003)})
+    assert nb.stated_widths(_validated(recipe).payload)["y"] == 0.003
+
+
+def test_default_workdir_is_a_fresh_temporary_directory(monkeypatch, tmp_path):
+    """``build_project(model)`` with one argument (the devkit's ``make_goldens.py``) writes the data loop to a temp dir (A195)."""
+    import inspect
+    import tempfile
+
+    assert inspect.signature(nb.build_project).parameters["workdir"].default is None
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    made = nb.resolve_workdir()
+    assert made.is_dir() and made.parent == tmp_path and made.name.startswith(nb.WORKDIR_PREFIX)
+    assert nb.resolve_workdir() != made  # fresh each time
+    given = nb.resolve_workdir(tmp_path / "given" / "nested")
+    assert given == tmp_path / "given" / "nested" and given.is_dir()

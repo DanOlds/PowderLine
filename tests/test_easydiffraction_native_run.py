@@ -133,15 +133,18 @@ def test_reflection_rows_non_finite_is_the_divergence_error():
 # ---------------------------------------------------------------------------
 
 
-def _controls(**kw):
-    return RefinementControls(calculator=kw.pop("calculator", "cryspy"), peak_type=kw.pop("peak_type", "pseudo-voigt"),
-                              **kw)
-
-
+_FIXED = dict(chi_square_change_tolerance=1e-8, parameter_change_tolerance=1e-8, gradient_tolerance=0.0)
 _STATED = dict(chi_square_change_tolerance=0.001, parameter_change_tolerance=0.001, gradient_tolerance=1e-6)
 
 
-def test_configure_minimizer_hands_max_iterations_and_only_exposed_stated_tolerances():
+def _controls(**kw):
+    """Required controls (A162, A195): the engine's fixed tolerances (EB-81) unless overridden."""
+    base = dict(calculator="cryspy", minimizer="lmfit (leastsq)", max_iterations=100, **_FIXED)
+    base.update(kw)
+    return RefinementControls(**base)
+
+
+def test_configure_minimizer_hands_max_iterations_and_only_exposed_tolerances():
     minimizer = SimpleNamespace(type="other", max_iterations=1000, ftol=1e-8)  # no xtol / gtol
     handed = nr.configure_minimizer(SimpleNamespace(minimizer=minimizer), _controls(max_iterations=7, **_STATED))
     assert minimizer.type == nr.MINIMIZER and minimizer.max_iterations == 7
@@ -150,13 +153,14 @@ def test_configure_minimizer_hands_max_iterations_and_only_exposed_stated_tolera
                       "gradient_tolerance": False}
 
 
-def test_configure_minimizer_leaves_unstated_tolerances_to_the_engine():
-    """A193: a tolerance left out is not handed, even where the minimizer exposes it, and is not reported."""
+def test_configure_minimizer_hands_every_tolerance_the_minimizer_exposes():
+    """A195: the tolerances are required, so each is handed where exposed (A190); the fixed values never warn."""
     minimizer = SimpleNamespace(type="other", max_iterations=1000, ftol=1e-8, xtol=1e-8, gtol=0.0)
     handed = nr.configure_minimizer(SimpleNamespace(minimizer=minimizer), _controls(gradient_tolerance=1e-3))
     assert (minimizer.ftol, minimizer.xtol, minimizer.gtol) == (1e-8, 1e-8, 1e-3)
-    assert handed == {"gradient_tolerance": True}
-    assert nr.stopping_criteria_warning(_controls(), {}) is None  # nothing stated: never a warning
+    assert handed == {k: True for k in nr.TOLERANCES}
+    none_handed = {k: False for k in nr.TOLERANCES}
+    assert nr.stopping_criteria_warning(_controls(), none_handed) is None  # the engine's own values: no warning
 
 
 def test_configure_minimizer_refuses_an_unknown_attribute_map():
@@ -177,7 +181,7 @@ def test_stopping_criteria_warning_only_when_stated_values_differ_from_the_fixed
     assert w2 is not None and "gradient_tolerance" in w2["message"] and "chi_square_change_tolerance" not in w2["message"]
     assert nr.stopping_criteria_warning(_controls(**_STATED), {k: True for k in nr.TOLERANCES}) is None
     # a stated tolerance that was not handed is reported even when the others were left out
-    w3 = nr.stopping_criteria_warning(_controls(gradient_tolerance=1e-3), {"gradient_tolerance": False})
+    w3 = nr.stopping_criteria_warning(_controls(gradient_tolerance=1e-3), none_handed)
     assert w3 is not None and "gradient_tolerance" in w3["message"] and "parameter_change" not in w3["message"]
 
 
@@ -281,7 +285,7 @@ def _refined_recipe():
         phase["unit_cell"][k] = P(4.1568, True, 4.0, 4.3)
     phase["atoms"]["B1"]["x"] = P(0.1997, True, 0.15, 0.25)
     phase["scale"] = P(1.0, True, 0.0, None)
-    recipe["payload"]["instrument"]["broadening"]["w"] = P(0.002, True, 0.0, 0.1)
+    recipe["payload"]["instrument"]["broadening"]["parameters"]["broad_gauss_w"] = P(0.002, True, 0.0, 0.1)
     return recipe
 
 
@@ -378,7 +382,8 @@ def test_statistics_are_core_fitstats_over_the_handed_points_with_lmfit_p(tmp_pa
     assert d["n_points"] == int(outcome.build.window_mask.sum()) == fs.n_points
     assert d["parameters_requested"] == parameters_requested(model) == 4
     assert d["parameters_varied"] == 4 and d["rwp"] == 7.5 and d["engine"] == "easydiffraction"
-    assert d["calculator"] == "cryspy" and d["peak_type"] == "pseudo-voigt" and d["engine_version"] == "0.21.1"
+    assert d["calculator"] == "cryspy" and d["peak_type"] == "cwl-pseudo-voigt" and d["engine_version"] == "0.21.1"
+    assert d["minimizer"] == "lmfit (leastsq)"
     assert d["converged"] is True and d["message"] == "Fit succeeded."
     assert [w["code"] for w in result["warnings"]] == []
 
@@ -417,7 +422,7 @@ def test_refined_rows_carry_values_in_the_recipes_writing_and_empty_undetermined
     a = rp.loc["structures.lab6.cell.length_a"]
     assert a["value"] == 4.157 and a["esd"] == 2e-5 and a["descriptive_name"] == "cell_a" and a["category"] == "unit_cell"
     w = rp.loc["experiments.powderline.peak.broad_gauss_w"]
-    assert w["category"] == "instrument_broadening" and w["phase_name"] == "" and w["descriptive_name"] == "w"
+    assert w["category"] == "instrument_broadening" and w["phase_name"] == "" and w["descriptive_name"] == "broad_gauss_w"
     assert rp.loc["experiments.powderline.linked_structures.lab6.scale", "category"] == "scale"
     import csv
     with (tmp_path / "refined_parameters.csv").open(encoding="utf-8", newline="") as fh:
@@ -522,9 +527,10 @@ def test_a_stated_bound_hit_is_flagged_with_the_bounds_value():
 def test_unbounded_sides_are_never_flagged_and_physical_limits_follow_the_schema():
     at_zero = [
         _hit("payload.phases.P.atoms.A.x", "coordinate", 0.1, 0.0, esd=1e-3),                  # coordinates: unbounded
-        _hit("payload.background.coefficients.1", "background", 0.5, 0.0, esd=1e-3),           # background: unbounded
+        _hit("payload.background.chebyshev.coefficients.1", "background", 0.5, 0.0, esd=1e-3), # background: unbounded
         _hit("payload.phases.P.atoms.A.Uaniso.U12", "adp", 0.001, 0.0, esd=1e-4),              # off-diagonal Uij: unbounded
-        _hit("payload.instrument.corrections.zero", "instrument", 0.01, 0.0, esd=1e-3),        # zero shift: unbounded
+        _hit("payload.instrument.corrections.calib_twotheta_offset", "instrument", 0.01, 0.0, esd=1e-3),  # unbounded
+        _hit("payload.instrument.absorption.mu_r", "instrument", 0.3, 0.0, esd=1e-3),          # no EB-71 limit known
     ]
     assert nr._limit_hits(at_zero) == []
     physical = [
@@ -533,7 +539,7 @@ def test_unbounded_sides_are_never_flagged_and_physical_limits_follow_the_schema
         _hit("payload.phases.P.atoms.A.occupancy", "occupancy", 0.9, 1.0, esd=1e-3),           # occupancy <= 1
         _hit("payload.phases.P.unit_cell.c", "cell", 29.0, 30.0, esd=1e-3),                    # cell length <= 30
         _hit("payload.phases.P.unit_cell.beta", "cell", 170.0, 180.0, esd=1e-3),               # angle <= 180
-        _hit("payload.instrument.radiation.wavelength", "instrument", 1.5, 0.0, esd=1e-3),     # wavelength >= 0
+        _hit("payload.instrument.radiation.setup_wavelength", "instrument", 1.5, 0.0, esd=1e-3),  # wavelength >= 0
     ]
     assert [w["field_path"] for w in nr._limit_hits(physical)] == [e["path"] for e in physical]
     assert nr._limit_hits([_hit("payload.phases.P.scale", "scale", 1.0, math.nan, esd=None)]) == []  # read strictly upstream

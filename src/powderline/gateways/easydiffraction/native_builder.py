@@ -28,9 +28,15 @@ Rules implemented (decision log numbers in brackets):
 - **Atom order (A169 b):** anisotropic atoms are handed first (easydiffraction
   0.21.1 CrysPy refines a Uij wrongly when an isotropic atom precedes it,
   EB-86); reports stay keyed by label.
-- **Background (A189, D1):** the payload states the experiment's Chebyshev
-  background (easydiffraction has one per experiment); left out = one fixed
-  0.0 term, which is handed as such.
+- **Background (A189, D1):** ``payload.background.chebyshev`` is the
+  experiment's Chebyshev background (easydiffraction has one per experiment);
+  left out = one fixed 0.0 term, which is handed as such.
+- **Instrument slots (A160, A195):** the recipe's instrument keys are
+  easydiffraction's attribute names, so every value is handed under the name
+  the recipe states (``peak.type`` = ``peak_type``, ``peak.<parameter>`` for the
+  peak type's ``parameters``, ``instrument.<key>`` for radiation, polarization
+  and corrections, ``absorption.<key>``); a left-out optional slot is not
+  touched (the engine's own value stands).
 - **Site check (EB-47; A176, A164, A174):** after the build, every atom's
   easydiffraction Wyckoff multiplicity must equal core's, and the held position
   must be the stated one modulo a lattice translation (accepted with the
@@ -42,15 +48,17 @@ Rules implemented (decision log numbers in brackets):
 - **Peak widths (A171, A178; EB-87):** a negative Gaussian FWHM² (U tan²θ +
   V tanθ + W) or Lorentzian FWHM (X tanθ + Y/cosθ) gives a wrong pattern without
   a message, and easydiffraction computes reflections just outside the handed
-  points. The stated widths are checked on a 0.01° grid over the window widened
-  by ``WIDTH_MARGIN`` (1°) plus the stated zero, displacement and transparency
-  corrections; a negative width there is an error naming the 2θ range
-  (:func:`check_peak_widths`). The runner re-checks the refined widths.
+  points. The stated widths (``broadening.parameters``) are checked on a 0.01°
+  grid over the window widened by ``WIDTH_MARGIN`` (1°) plus the stated
+  ``calib_twotheta_offset``, ``calib_sample_displacement`` and
+  ``calib_sample_transparency``; a negative width there is an error naming the
+  2θ range (:func:`check_peak_widths`). The runner re-checks the refined widths.
 """
 
 from __future__ import annotations
 
 import re
+import tempfile
 from dataclasses import dataclass, field
 from fractions import Fraction
 from itertools import product
@@ -85,8 +93,8 @@ from powderline.symmetry import SiteAnalysis, Ties, cell_tie_groups, coupling_gr
 EXPERIMENT_NAME = "powderline"
 #: File the handed data loop is written to (a record of exactly what easydiffraction read).
 DATA_CIF_NAME = "easydiffraction_data.cif"
-#: Recipe ``peak_type`` -> easydiffraction ``peak.type`` (A162, EB-76).
-PEAK_TYPES = {"pseudo-voigt": "cwl-pseudo-voigt", "tch": "cwl-thompson-cox-hastings"}
+#: Prefix of the easydiffraction data directory :func:`build_project` makes when no ``workdir`` is given.
+WORKDIR_PREFIX = "powderline_easydiffraction_"
 #: Core cell field -> easydiffraction ``cell`` attribute.
 CELL_ATTRS = {"a": "length_a", "b": "length_b", "c": "length_c",
               "alpha": "angle_alpha", "beta": "angle_beta", "gamma": "angle_gamma"}
@@ -98,7 +106,7 @@ UNIT_FRACTIONAL = "fractional"
 #: special-position tolerance (5e-6) and easydiffraction's Wyckoff tolerance (1e-3), above float noise.
 POSITION_TOL = 1e-6
 #: Peak widths are checked over the fit window widened by this (degrees 2θ) plus the stated
-#: zero, displacement and transparency corrections (A178): a reflection just outside the
+#: offset, displacement and transparency corrections (A178): a reflection just outside the
 #: window still reaches it (its tail moved the first window point by 12σ in the S5 probe).
 WIDTH_MARGIN = 1.0
 #: Step of the 2θ grid the widths are checked on (degrees).
@@ -106,6 +114,11 @@ WIDTH_GRID_STEP = 0.01
 #: The two peak widths easydiffraction computes from U, V, W, X, Y (EB-87): name -> formula text.
 WIDTH_FORMULAS = {"gaussian": "Gaussian FWHM^2 = U tan^2(theta) + V tan(theta) + W",
                   "lorentzian": "Lorentzian FWHM = X tan(theta) + Y / cos(theta)"}
+#: Width formula symbol -> the recipe's (= easydiffraction's) parameter name.
+WIDTH_KEYS = {"u": "broad_gauss_u", "v": "broad_gauss_v", "w": "broad_gauss_w",
+              "x": "broad_lorentz_x", "y": "broad_lorentz_y"}
+#: Position corrections (degrees 2θ) that widen the width-check grid (A178 (a)).
+POSITION_CORRECTIONS = ("calib_twotheta_offset", "calib_sample_displacement", "calib_sample_transparency")
 
 
 class SiteError(EasyDiffractionTranslationError, ValueError):
@@ -128,6 +141,8 @@ class BuildResult:
     window_mask: Optional[np.ndarray] = None
     #: phase name -> easydiffraction datablock (structure) name.
     datablock_names: dict = field(default_factory=dict)
+    #: Where the handed data loop was written (the ``workdir`` given, or the temporary directory made).
+    workdir: Optional[Path] = None
 
 
 # --- pure helpers (core-only environment) ----------------------------------
@@ -213,10 +228,10 @@ def atom_order(phase: EasydiffractionPhase) -> list[tuple[str, Any]]:
 
 
 def width_margin(payload) -> float:
-    """``WIDTH_MARGIN`` plus the stated zero, displacement and transparency corrections (A178 (a))."""
+    """``WIDTH_MARGIN`` plus the stated offset, displacement and transparency corrections (A178 (a))."""
     corr = payload.instrument.corrections
-    stated = [corr.zero.value] + [p.value for p in (corr.displacement, corr.transparency) if p is not None]
-    return WIDTH_MARGIN + sum(abs(float(v)) for v in stated)
+    stated = [getattr(corr, k) for k in POSITION_CORRECTIONS]
+    return WIDTH_MARGIN + sum(abs(float(p.value)) for p in stated if p is not None)
 
 
 def width_check_points(payload) -> np.ndarray:
@@ -254,8 +269,9 @@ def negative_width_ranges(widths: dict, tth) -> dict:
 
 
 def stated_widths(payload) -> dict:
-    """``u, v, w, x, y`` as the recipe states them."""
-    return {k: float(getattr(payload.instrument.broadening, k).value) for k in "uvwxy"}
+    """``u, v, w, x, y`` as the recipe states them (``broadening.parameters.broad_gauss_u`` ...)."""
+    parameters = payload.instrument.broadening.parameters
+    return {k: float(getattr(parameters, name).value) for k, name in WIDTH_KEYS.items()}
 
 
 def check_peak_widths(payload) -> None:
@@ -275,8 +291,9 @@ def check_peak_widths(payload) -> None:
         "payload.instrument.broadening: " + "; ".join(parts)
         + f". easydiffraction computes a wrong pattern for such reflections without a message (EB-87) and "
         f"computes reflections beyond the fit window [{lo:.4g}, {hi:.4g}], so the widths must be >= 0 within "
-        f"{width_margin(payload):.4g} degrees of it (1 degree plus the stated zero, displacement and transparency "
-        "corrections, A178); change U, V, W, X, Y or the fit_range (A171)")
+        f"{width_margin(payload):.4g} degrees of it (1 degree plus the stated calib_twotheta_offset, "
+        "calib_sample_displacement and calib_sample_transparency, A178); change the broadening parameters or the "
+        "fit_range (A171)")
 
 
 # --- site check (EB-47, A164, A174, A176) -----------------------------------
@@ -535,20 +552,43 @@ def free_parameter_plan(phase_name: str, phase: EasydiffractionPhase) -> list[Fr
     return plan
 
 
-#: Instrument fields -> (easydiffraction attribute path under the experiment, unit).
+#: Refinable instrument slots: recipe block -> (easydiffraction object under the experiment, {key: unit}).
+#: The recipe key is the easydiffraction attribute name (A160, A195); a key left out of an optional block,
+#: or a left-out block, is not modelled.
 _INSTRUMENT_ATTRS = {
-    ("radiation", "wavelength"): ("instrument.setup_wavelength", UNIT_ANGSTROM),
-    ("corrections", "zero"): ("instrument.calib_twotheta_offset", UNIT_DEG_2THETA),
-    ("corrections", "polarization"): ("instrument.setup_polarization_coefficient", UNIT_ARBITRARY),
-    ("corrections", "polarization_monochromator_angle"): ("instrument.setup_monochromator_twotheta", UNIT_DEGREE),
-    ("corrections", "displacement"): ("instrument.calib_sample_displacement", UNIT_ANGSTROM),
-    ("corrections", "transparency"): ("instrument.calib_sample_transparency", UNIT_ARBITRARY),
-    ("broadening", "u"): ("peak.broad_gauss_u", UNIT_DEG2_FWHM),
-    ("broadening", "v"): ("peak.broad_gauss_v", UNIT_DEG2_FWHM),
-    ("broadening", "w"): ("peak.broad_gauss_w", UNIT_DEG2_FWHM),
-    ("broadening", "x"): ("peak.broad_lorentz_x", UNIT_DEG_FWHM),
-    ("broadening", "y"): ("peak.broad_lorentz_y", UNIT_DEG_FWHM),
+    "radiation": ("instrument", {"setup_wavelength": UNIT_ANGSTROM}),
+    "corrections": ("instrument", {"calib_twotheta_offset": UNIT_DEG_2THETA,
+                                   "calib_sample_displacement": UNIT_DEG_2THETA,
+                                   "calib_sample_transparency": UNIT_DEG_2THETA}),
+    "absorption": ("absorption", {"mu_r": UNIT_ARBITRARY}),
 }
+#: Unit of a peak-type ``parameters`` entry (the five widths; asymmetry terms are dimensionless).
+_PEAK_PARAMETER_UNITS = {"broad_gauss_u": UNIT_DEG2_FWHM, "broad_gauss_v": UNIT_DEG2_FWHM,
+                         "broad_gauss_w": UNIT_DEG2_FWHM, "broad_lorentz_x": UNIT_DEG_FWHM,
+                         "broad_lorentz_y": UNIT_DEG_FWHM}
+
+
+def instrument_parameters(instrument) -> list[tuple[str, str, Any, str]]:
+    """``(recipe path, easydiffraction path under the experiment, parameter, unit)`` of every stated refinable instrument slot (pure).
+
+    The peak type's ``parameters`` come first in the order of their model, then
+    radiation, corrections and absorption; the easydiffraction path is
+    ``peak.<key>`` / ``instrument.<key>`` / ``absorption.<key>``.
+    """
+    found = []
+    parameters = instrument.broadening.parameters
+    for key in type(parameters).model_fields:
+        found.append((f"payload.instrument.broadening.parameters.{key}", f"peak.{key}", getattr(parameters, key),
+                      _PEAK_PARAMETER_UNITS.get(key, UNIT_ARBITRARY)))
+    for block, (ed_obj, keys) in _INSTRUMENT_ATTRS.items():
+        model = getattr(instrument, block)
+        if model is None:
+            continue
+        for key, unit in keys.items():
+            p = getattr(model, key)
+            if p is not None:
+                found.append((f"payload.instrument.{block}.{key}", f"{ed_obj}.{key}", p, unit))
+    return found
 
 
 def experiment_plan(payload) -> list[FreeParam]:
@@ -559,14 +599,14 @@ def experiment_plan(payload) -> list[FreeParam]:
         if phase.scale.refine_flag:
             plan.append(_param(f"payload.phases.{name}.scale", f"{ed_base}.linked_structures.{datablock_name(name)}.scale",
                                phase.scale, UNIT_ARBITRARY, "scale"))
-    if payload.background.refine_flag:
-        for k, coef in enumerate(payload.background.coefficients):
-            plan.append(FreeParam(f"payload.background.coefficients.{k}",
+    chebyshev = payload.background.chebyshev
+    if chebyshev.refine_flag:
+        for k, coef in enumerate(chebyshev.coefficients):
+            plan.append(FreeParam(f"payload.background.chebyshev.coefficients.{k}",
                                   f"{ed_base}.background.{k}.coef", coef, None, None, UNIT_ARBITRARY, "background"))
-    for (block, name), (ed_path, unit) in _INSTRUMENT_ATTRS.items():
-        p = getattr(getattr(payload.instrument, block), name)
-        if p is not None and p.refine_flag:
-            plan.append(_param(f"payload.instrument.{block}.{name}", f"{ed_base}.{ed_path}", p, unit, "instrument"))
+    for path, ed_path, p, unit in instrument_parameters(payload.instrument):
+        if p.refine_flag:
+            plan.append(_param(path, f"{ed_base}.{ed_path}", p, unit, "instrument"))
     return plan
 
 
@@ -669,49 +709,61 @@ def _build_structure(StructureFactory, name: str, phase: EasydiffractionPhase, c
 def _build_experiment(ExperimentFactory, payload, cif: str, names: dict):
     """The experiment: data, calculator and peak type, instrument values, linked phases, background."""
     controls = payload.refinement_controls
+    inst = payload.instrument
     expt = ExperimentFactory.from_cif_str(cif)
     # The calculator must be chosen before the peak type (the setter validates against the
     # active calculator), and both before any peak parameter (switching the type resets them).
     _set(expt.calculator, "type", controls.calculator)
-    _set(expt.peak, "type", PEAK_TYPES[controls.peak_type])
-    if controls.calculator == "cryspy":  # the reflection cutoff is a CrysPy parameter (A162)
-        _set(expt.peak, "cutoff_fwhm", controls.cutoff_fwhm)
+    _set(expt.peak, "type", inst.broadening.peak_type)
+    if inst.broadening.cutoff_fwhm is not None:  # CrysPy only (EB-76; the schema refuses it for CrysFML)
+        _set(expt.peak, "cutoff_fwhm", inst.broadening.cutoff_fwhm)
 
-    inst = payload.instrument
-    _set(expt.instrument, "setup_wavelength", inst.radiation.wavelength.value)
-    if inst.radiation.ka2_wavelength is not None:
-        _set(expt.instrument, "setup_wavelength_2", inst.radiation.ka2_wavelength)
-        _set(expt.instrument, "setup_wavelength_2_to_1_ratio", inst.radiation.ka2_ratio)
-    corr = inst.corrections
-    _set(expt.instrument, "calib_twotheta_offset", corr.zero.value)
-    _set(expt.instrument, "setup_polarization_coefficient", corr.polarization.value)
-    if corr.polarization_monochromator_angle is not None:
-        _set(expt.instrument, "setup_monochromator_twotheta", corr.polarization_monochromator_angle.value)
-    if corr.displacement is not None:
-        _set(expt.instrument, "calib_sample_displacement", corr.displacement.value)
-    if corr.transparency is not None:
-        _set(expt.instrument, "calib_sample_transparency", corr.transparency.value)
-    broad = inst.broadening
-    for key in ("u", "v", "w"):
-        _set(expt.peak, f"broad_gauss_{key}", getattr(broad, key).value)
-    for key in ("x", "y"):
-        _set(expt.peak, f"broad_lorentz_{key}", getattr(broad, key).value)
+    # Fixed slots: the Kα2 pair and the Lorentz-polarization values (EB-75); left out = not touched.
+    radiation = inst.radiation
+    if radiation.setup_wavelength_2 is not None:
+        _set(expt.instrument, "setup_wavelength_2", radiation.setup_wavelength_2)
+        _set(expt.instrument, "setup_wavelength_2_to_1_ratio", radiation.setup_wavelength_2_to_1_ratio)
+    if inst.polarization is not None:
+        _set(expt.instrument, "setup_polarization_coefficient", inst.polarization.setup_polarization_coefficient)
+        _set(expt.instrument, "setup_monochromator_twotheta", inst.polarization.setup_monochromator_twotheta)
+    if inst.absorption is not None:
+        _set(expt.absorption, "type", inst.absorption.type)
+    # Refinable slots (values here; the flags follow in apply_experiment_flags): the recipe key is the attribute.
+    for _path, ed_path, p, _unit in instrument_parameters(inst):
+        obj_name, attr = ed_path.split(".")
+        _set(getattr(expt, obj_name), attr, p.value)
 
     for name, phase in payload.phases.items():
         expt.linked_structures.create(structure_id=names[name], scale=phase.scale.value)
 
     _set(expt.background, "type", "chebyshev")
-    for k, coef in enumerate(payload.background.coefficients):
+    for k, coef in enumerate(payload.background.chebyshev.coefficients):
         expt.background.create(id=str(k), order=k, coef=coef)
     return expt
 
 
-def build_project(recipe: EasydiffractionRecipe, workdir) -> BuildResult:
+def resolve_workdir(workdir=None) -> Path:
+    """The directory the handed data loop is written to: ``workdir`` (made if needed), or a fresh temporary one.
+
+    ``build_project(model)`` with one argument (the devkit's ``make_goldens.py``)
+    gets a ``tempfile.mkdtemp(prefix=WORKDIR_PREFIX)`` directory, recorded in
+    ``BuildResult.workdir`` and left for the caller (A195).
+    """
+    if workdir is None:
+        return Path(tempfile.mkdtemp(prefix=WORKDIR_PREFIX))
+    path = Path(workdir)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def build_project(recipe: EasydiffractionRecipe, workdir=None) -> BuildResult:
     """Build the easydiffraction ``Project`` of a validated native recipe.
 
-    Writes the handed data loop to ``workdir / DATA_CIF_NAME``; values, the
-    site check, then the refinement flags (the manifest has one entry per
-    freed easydiffraction parameter, keyed by its path from the ``Project``).
+    Writes the handed data loop to ``workdir / DATA_CIF_NAME`` (``workdir``
+    left out: a fresh temporary directory, ``WORKDIR_PREFIX``, recorded in the
+    result's ``workdir`` and left for the caller); values, the site check, then
+    the refinement flags (the manifest has one entry per freed easydiffraction
+    parameter, keyed by its path from the ``Project``).
 
     Raises ``ImportError`` without easydiffraction,
     :class:`EasyDiffractionTranslationError` for an unsupported setting,
@@ -722,8 +774,7 @@ def build_project(recipe: EasydiffractionRecipe, workdir) -> BuildResult:
     check_peak_widths(recipe.payload)  # before anything is built: the recipe itself is wrong (A171, A178)
     ExperimentFactory, Project, StructureFactory, Logger = _import_easydiffraction()
     Logger.configure(reaction=Logger.Reaction.RAISE)  # easydiffraction's errors raise instead of logging (EB-48)
-    workdir = Path(workdir)
-    workdir.mkdir(parents=True, exist_ok=True)
+    workdir = resolve_workdir(workdir)
     payload = recipe.payload
     calculator = payload.refinement_controls.calculator
 
@@ -750,4 +801,4 @@ def build_project(recipe: EasydiffractionRecipe, workdir) -> BuildResult:
     manifest.update(apply_experiment_flags(payload, expt))
 
     return BuildResult(project=project, manifest=manifest, warnings=warnings, window_mask=mask,
-                       datablock_names=names)
+                       datablock_names=names, workdir=workdir)

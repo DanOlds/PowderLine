@@ -12,13 +12,12 @@ divergence error ``EngineExecutionError``, never a result; a non-finite ESD is
 
 Rules implemented (decision log numbers in brackets):
 
-- **Stopping criteria (A162, A193):** ``max_iterations`` is handed to the
-  minimizer (lmfit ``max_nfev``); a tolerance the recipe **states** is handed
-  when the minimizer exposes ``ftol``/``xtol``/``gtol``, otherwise
+- **Stopping criteria (A162, A190, A195):** ``max_iterations`` is handed to
+  the minimizer (lmfit ``max_nfev``); each of the three required tolerances is
+  handed where the minimizer exposes ``ftol``/``xtol``/``gtol``; otherwise
   easydiffraction 0.21.1 passes fixed values (1e-8, 1e-8, 0; EB-81) and a
   stated value that differs gets the informative warning
-  ``easydiffraction_stopping_criteria_not_handed`` (A190). A tolerance left
-  out is the engine's: nothing is handed, nothing warned.
+  ``easydiffraction_stopping_criteria_not_handed``.
 - **Not converged (A166, A172):** lmfit stopping without success is a success
   with values and the warning ``easydiffraction_fit_not_converged``.
 - **CrysFML refinements (A175, EB-90):** every CrysFML fit carries
@@ -201,10 +200,10 @@ def reflection_rows(refln, slug: str, phase: str) -> list[dict]:
 
 
 def stopping_criteria_warning(controls, handed: dict) -> Optional[StructuredWarning]:
-    """A190: the stated tolerances the minimizer could not take, when they differ from the engine's fixed values.
+    """A190: the tolerances the minimizer could not take, when they differ from the engine's fixed values.
 
-    ``handed`` holds only the tolerances the recipe states (A193); one left out
-    is the engine's own and never warned about.
+    ``handed`` is :func:`configure_minimizer`'s ``{field: handed?}``; a value
+    equal to the engine's fixed one is never warned about.
     """
     differing = [f"{name} {getattr(controls, name)!r} (easydiffraction passes lmfit {kw}={fixed!r})"
                  for name, (kw, fixed) in TOLERANCES.items()
@@ -220,24 +219,20 @@ def stopping_criteria_warning(controls, handed: dict) -> Optional[StructuredWarn
 
 
 def configure_minimizer(analysis, controls) -> dict:
-    """Select lmfit leastsq and hand the stopping criteria; return ``{stated tolerance field: handed?}``.
+    """Select the recipe's minimizer and hand the stopping criteria; return ``{tolerance field: handed?}``.
 
     ``max_iterations`` is always handed (``minimizer.max_iterations`` = lmfit
-    ``max_nfev``, EB-81; mutation R-q of the review). A tolerance the recipe
-    leaves out (``None``, A193) is the engine's own: not handed, not in the
-    returned dict. A stated one is handed only where the minimizer object
-    exposes the lmfit keyword as an attribute.
+    ``max_nfev``, EB-81; mutation R-q of the review). Each tolerance (required
+    by the schema, A162/A195) is handed only where the minimizer object exposes
+    the lmfit keyword as an attribute (A190).
     """
-    _set(analysis.minimizer, "type", MINIMIZER)
+    _set(analysis.minimizer, "type", controls.minimizer)
     minimizer = analysis.minimizer
     _set(minimizer, "max_iterations", int(controls.max_iterations))
     handed = {}
     for name, (kw, _fixed) in TOLERANCES.items():
-        stated = getattr(controls, name)
-        if stated is None:
-            continue
         if hasattr(minimizer, kw):
-            _set(minimizer, kw, float(stated))
+            _set(minimizer, kw, float(getattr(controls, name)))
             handed[name] = True
         else:
             handed[name] = False
@@ -450,7 +445,7 @@ def _location(model, path: str) -> tuple[str, Optional[int], str, Optional[int]]
 
 
 def descriptive_name(entry: dict) -> str:
-    """A readable name from the recipe path: ``cell_a``, ``x``, ``Uiso``, ``U11``, ``scale``, ``background_coefficient_2``, ``wavelength``."""
+    """A readable name from the recipe path: ``cell_a``, ``x``, ``Uiso``, ``U11``, ``scale``, ``background_coefficient_2``, ``setup_wavelength``, ``broad_gauss_w``."""
     last = entry["path"].split(".")[-1]
     if entry["kind"] == "cell":
         return f"cell_{last}"
@@ -462,7 +457,7 @@ def descriptive_name(entry: dict) -> str:
 def category(entry: dict) -> str:
     if entry["kind"] == "adp":
         return "atom_displacement_anisotropic" if ".Uaniso." in entry["path"] else "atom_displacement_isotropic"
-    if entry["kind"] == "instrument" and entry["path"].split(".")[-1] in ("u", "v", "w", "x", "y"):
+    if entry["kind"] == "instrument" and ".broadening.parameters." in entry["path"]:
         return "instrument_broadening"
     return CATEGORIES[entry["kind"]]
 
@@ -591,8 +586,8 @@ def build_result(model, outcome: RunOutcome, output_dir, *, validated_warnings=N
             "engine": "easydiffraction",
             "engine_version": outcome.engine_version,
             "calculator": controls.calculator,
-            "peak_type": controls.peak_type,
-            "minimizer": MINIMIZER,
+            "peak_type": p.instrument.broadening.peak_type,
+            "minimizer": controls.minimizer,
             "rwp": _undefined(outcome.engine_rwp),
             "r_exp": _undefined(outcome.engine_rexp),
             "chi2_red": _undefined(outcome.engine_chi2_red),
@@ -641,7 +636,7 @@ def physical_limits(entry: dict) -> tuple:
         return PHYSICAL_LIMITS["adp_diagonal"]
     if kind == "scale":
         return PHYSICAL_LIMITS["scale"]
-    if kind == "instrument" and last == "wavelength":
+    if kind == "instrument" and last == "setup_wavelength":
         return PHYSICAL_LIMITS["wavelength"]
     return (None, None)
 
