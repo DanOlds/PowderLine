@@ -38,6 +38,7 @@ from powderline.schema_core import (
     UNIT_ARBITRARY,
     UNIT_DEG_2THETA,
     UNIT_DEGREE,
+    ChebyshevBackground,
     CoreFloat,
     CoreInt,
     CoreModel,
@@ -189,6 +190,76 @@ class Instrument(CoreModel):
             )
 
         return self
+
+
+# --- phase model (A93, A116) -----------------------------------------------
+
+class EasydiffractionPhase(Phase[BoundedRefinableParameter]):
+    """Phase model for easydiffraction.rietveld (A93, A116).
+
+    Extends core Phase with engine-specific fields flat in the same block.
+    All atom parameters are refinable with bounds (A116): x/y/z, occupancy,
+    Uiso, and U11..U23 (anisotropic).
+    """
+    # Flat engine fields (A93)
+    scale: BoundedRefinableParameter = Field(
+        ...,
+        json_schema_extra=_unit(UNIT_ARBITRARY),
+        description="Phase scale factor"
+    )
+
+    # Background (Chebyshev coefficients)
+    background: Optional[ChebyshevBackground] = Field(
+        default=None,
+        validate_default=True,
+        json_schema_extra=absent_not_null_schema(),
+        description="Chebyshev background coefficients"
+    )
+
+    # Engine validators (A109, A122: 'after' only, engine-specific names)
+
+    @field_validator("scale", mode="after")
+    def _easydiffraction_scale_nonnegative(cls, param: BoundedRefinableParameter) -> BoundedRefinableParameter:
+        """Scale >= 0 (A161, Q22 item 13)."""
+        if param.value < 0:
+            raise ValueError(f"scale must be >= 0, got {param.value}")
+        return param
+
+    @field_validator("space_group", mode="after")
+    def _easydiffraction_space_group_supported(cls, name: str) -> str:
+        """Space group must be supported (A105, EB-42).
+
+        Full verification against space_group_support.py happens in builder.
+        Schema-level check: reject obviously invalid (e.g., rhombohedral :R for easydiffraction).
+        """
+        # Basic check: reject :R (easydiffraction doesn't support rhombohedral axes)
+        if ":R" in name:
+            raise ValueError(
+                f"Space group {name!r} uses rhombohedral axes (:R), "
+                "which easydiffraction does not support. Use hexagonal axes (:H)."
+            )
+        return name
+
+    @field_validator("atoms", mode="after")
+    def _easydiffraction_atom_uiso_nonnegative(cls, atoms: dict) -> dict:
+        """Negative starting Uiso is an error (A111, EB-46)."""
+        for label, atom in atoms.items():
+            if atom.ADP == "Uiso" and atom.Uiso is not None:
+                if atom.Uiso.value < 0:
+                    raise ValueError(
+                        f"atom {label!r}: Uiso starting value must be >= 0 "
+                        f"(easydiffraction rejects negative ADP), got {atom.Uiso.value}"
+                    )
+            elif atom.ADP == "Uaniso" and atom.Uaniso is not None:
+                # Check each Uij component
+                for component in ["U11", "U22", "U33", "U12", "U13", "U23"]:
+                    uij = getattr(atom.Uaniso, component, None)
+                    if uij is not None and uij.value < 0:
+                        raise ValueError(
+                            f"atom {label!r}: {component} starting value must be >= 0 "
+                            f"(easydiffraction rejects negative ADP), got {uij.value}"
+                        )
+        return atoms
 
 
 # --- recipe model ----------------------------------------------------------
