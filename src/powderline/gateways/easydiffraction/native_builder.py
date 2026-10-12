@@ -50,13 +50,25 @@ import numpy as np
 
 from powderline.exceptions import StructuredWarning
 from powderline.gateways.easydiffraction.errors import EasyDiffractionTranslationError
-from powderline.gateways.easydiffraction.schema import EasydiffractionPhase, EasydiffractionRecipe
+from powderline.gateways.easydiffraction.schema import (
+    UNIT_DEG2_FWHM,
+    UNIT_DEG_FWHM,
+    EasydiffractionPhase,
+    EasydiffractionRecipe,
+)
 from powderline.gateways.easydiffraction.space_group_support import (
     CRYSPY_ORIGIN1_UNSUPPORTED,
     map_space_group,
 )
-from powderline.schema_core import fit_limits_on_data
-from powderline.symmetry import SiteAnalysis, orbit
+from powderline.schema_core import (
+    UNIT_ANGSTROM,
+    UNIT_ANGSTROM2,
+    UNIT_ARBITRARY,
+    UNIT_DEG_2THETA,
+    UNIT_DEGREE,
+    fit_limits_on_data,
+)
+from powderline.symmetry import SiteAnalysis, Ties, cell_tie_groups, coupling_groups, orbit
 
 #: sigma handed for a data point outside the fit window or with zero weight (A158).
 SIGMA_WEIGHTLESS = 1e8
@@ -71,6 +83,8 @@ CELL_ATTRS = {"a": "length_a", "b": "length_b", "c": "length_c",
               "alpha": "angle_alpha", "beta": "angle_beta", "gamma": "angle_gamma"}
 #: Core Uij component -> easydiffraction ``atom_site_aniso`` attribute.
 UIJ_ATTRS = {"U11": "adp_11", "U22": "adp_22", "U33": "adp_33", "U12": "adp_12", "U13": "adp_13", "U23": "adp_23"}
+#: Unit of a fractional coordinate in the manifest.
+UNIT_FRACTIONAL = "fractional"
 #: Two fractional coordinates are the same (modulo 1) within this (A186): well below core's
 #: special-position tolerance (5e-6) and easydiffraction's Wyckoff tolerance (1e-3), above float noise.
 POSITION_TOL = 1e-6
@@ -381,6 +395,153 @@ def check_sites(phase_name: str, phase: EasydiffractionPhase, calculator: str, e
     return warnings
 
 
+# --- refinement flags (A94, A98, F2, A138, A176) ---------------------------
+
+
+@dataclass(frozen=True)
+class FreeParam:
+    """One easydiffraction parameter to free, with its bounds, and the recipe field it comes from."""
+
+    path: str          # recipe field path, e.g. "payload.phases.LaB6.unit_cell.a"
+    ed_attr_path: str  # from the Project, e.g. "structures.lab6.cell.length_a"
+    value: float
+    min: Optional[float]
+    max: Optional[float]
+    unit: str
+    kind: str          # cell | coordinate | occupancy | adp | scale | background | instrument
+
+
+def _representatives(ties: Ties, params: dict, context: str) -> list[str]:
+    """The flagged representatives of ``ties``; asserts core's flag rules (F1, F2) on ``params``."""
+    for name in ties.fixed:
+        if params[name].refine_flag:
+            raise AssertionError(f"{context}: {name} is fixed by symmetry but flagged for refinement; "
+                                 "core validation refuses this (F2), so the model is not a validated one")
+    chosen = []
+    for group in ties.groups:
+        flags = {params[m].refine_flag for m in group.members}
+        if len(flags) > 1:
+            raise AssertionError(f"{context}: the tie group {group.members} has mixed refine flags; core validation "
+                                 "refuses this (F1), so the model is not a validated one")
+        if flags.pop():
+            chosen.append(group.members[0])
+    return chosen
+
+
+def _param(path: str, ed_path: str, p, unit: str, kind: str) -> FreeParam:
+    return FreeParam(path, ed_path, p.value, p.min, p.max, unit, kind)
+
+
+def free_parameter_plan(phase_name: str, phase: EasydiffractionPhase) -> list[FreeParam]:
+    """Which of a phase's parameters are freed, with which bounds: one per flagged tie group (pure)."""
+    slug = datablock_name(phase_name)
+    base, ed_base = f"payload.phases.{phase_name}", f"structures.{slug}"
+    plan: list[FreeParam] = []
+    cell = phase.unit_cell
+    cell_params = {k: getattr(cell, k) for k in CELL_ATTRS}
+    for rep in _representatives(cell_tie_groups(phase.space_group), cell_params, f"{phase_name} unit cell"):
+        plan.append(_param(f"{base}.unit_cell.{rep}", f"{ed_base}.cell.{CELL_ATTRS[rep]}", cell_params[rep],
+                           UNIT_DEGREE if rep in ("alpha", "beta", "gamma") else UNIT_ANGSTROM, "cell"))
+    for label, atom in phase.atoms.items():
+        apath, ed_atom = f"{base}.atoms.{label}", f"{ed_base}.atom_sites.{label}"
+        ties = coupling_groups(phase.space_group, (atom.x.value, atom.y.value, atom.z.value))
+        xyz = {k: getattr(atom, k) for k in "xyz"}
+        for rep in _representatives(ties.xyz, xyz, f"{phase_name} atom {label!r} coordinates"):
+            plan.append(_param(f"{apath}.{rep}", f"{ed_atom}.fract_{rep}", xyz[rep], UNIT_FRACTIONAL, "coordinate"))
+        if atom.occupancy.refine_flag:
+            plan.append(_param(f"{apath}.occupancy", f"{ed_atom}.occupancy", atom.occupancy, UNIT_ARBITRARY,
+                               "occupancy"))
+        if atom.Uiso is not None and atom.Uiso.refine_flag:
+            plan.append(_param(f"{apath}.Uiso", f"{ed_atom}.adp_iso", atom.Uiso, UNIT_ANGSTROM2, "adp"))
+        if atom.Uaniso is not None:
+            uij = {k: getattr(atom.Uaniso, k) for k in UIJ_ATTRS}
+            for rep in _representatives(ties.uij, uij, f"{phase_name} atom {label!r} Uaniso"):
+                plan.append(_param(f"{apath}.Uaniso.{rep}", f"{ed_base}.atom_site_aniso.{label}.{UIJ_ATTRS[rep]}",
+                                   uij[rep], UNIT_ANGSTROM2, "adp"))
+    return plan
+
+
+#: Instrument fields -> (easydiffraction attribute path under the experiment, unit).
+_INSTRUMENT_ATTRS = {
+    ("radiation", "wavelength"): ("instrument.setup_wavelength", UNIT_ANGSTROM),
+    ("corrections", "zero"): ("instrument.calib_twotheta_offset", UNIT_DEG_2THETA),
+    ("corrections", "polarization"): ("instrument.setup_polarization_coefficient", UNIT_ARBITRARY),
+    ("corrections", "polarization_monochromator_angle"): ("instrument.setup_monochromator_twotheta", UNIT_DEGREE),
+    ("corrections", "displacement"): ("instrument.calib_sample_displacement", UNIT_ANGSTROM),
+    ("corrections", "transparency"): ("instrument.calib_sample_transparency", UNIT_ARBITRARY),
+    ("broadening", "u"): ("peak.broad_gauss_u", UNIT_DEG2_FWHM),
+    ("broadening", "v"): ("peak.broad_gauss_v", UNIT_DEG2_FWHM),
+    ("broadening", "w"): ("peak.broad_gauss_w", UNIT_DEG2_FWHM),
+    ("broadening", "x"): ("peak.broad_lorentz_x", UNIT_DEG_FWHM),
+    ("broadening", "y"): ("peak.broad_lorentz_y", UNIT_DEG_FWHM),
+}
+
+
+def experiment_plan(payload) -> list[FreeParam]:
+    """The experiment's freed parameters: phase scales, background coefficients, instrument (pure)."""
+    ed_base = f"experiments.{EXPERIMENT_NAME}"
+    plan: list[FreeParam] = []
+    for name, phase in payload.phases.items():
+        if phase.scale.refine_flag:
+            plan.append(_param(f"payload.phases.{name}.scale", f"{ed_base}.linked_structures.{datablock_name(name)}.scale",
+                               phase.scale, UNIT_ARBITRARY, "scale"))
+    bg_phase = background_phase(payload)
+    if bg_phase is not None and payload.phases[bg_phase].background.refine_flag:
+        for k, coef in enumerate(payload.phases[bg_phase].background.coefficients):
+            plan.append(FreeParam(f"payload.phases.{bg_phase}.background.coefficients.{k}",
+                                  f"{ed_base}.background.{k}.coef", coef, None, None, UNIT_ARBITRARY, "background"))
+    for (block, name), (ed_path, unit) in _INSTRUMENT_ATTRS.items():
+        p = getattr(getattr(payload.instrument, block), name)
+        if p is not None and p.refine_flag:
+            plan.append(_param(f"payload.instrument.{block}.{name}", f"{ed_base}.{ed_path}", p, unit, "instrument"))
+    return plan
+
+
+def _resolve(root: Any, path: str) -> Any:
+    """Walk a dotted path: attributes, or ``[]`` lookup for a collection keyed by id (``atom_sites.B1``)."""
+    obj = root
+    for seg in path.split("."):
+        if hasattr(obj, seg):
+            obj = getattr(obj, seg)
+        else:
+            try:
+                obj = obj[seg]
+            except (KeyError, TypeError, IndexError) as exc:
+                raise AttributeError(f"easydiffraction object has no {seg!r} on the path {path!r}") from exc
+    return obj
+
+
+def _free(param: Any, fp: FreeParam, shift: float = 0.0) -> dict:
+    """Free ``param`` with the stated bounds (moved by ``shift``, A176); return its manifest entry."""
+    _set(param, "free", True)
+    if fp.min is not None:
+        _set(param, "fit_min", fp.min + shift)
+    if fp.max is not None:
+        _set(param, "fit_max", fp.max + shift)
+    return {"path": fp.path, "unit": fp.unit, "kind": fp.kind, "value": fp.value, "min": fp.min, "max": fp.max,
+            "shift": shift, "parameter": param}
+
+
+def apply_refinement_flags(phase_name: str, phase: EasydiffractionPhase, ed_phase) -> dict:
+    """Execute :func:`free_parameter_plan` on the built structure; return ``{ed_attr_path: manifest entry}``."""
+    prefix = f"structures.{datablock_name(phase_name)}."
+    manifest = {}
+    for fp in free_parameter_plan(phase_name, phase):
+        param = _resolve(ed_phase, fp.ed_attr_path[len(prefix):])
+        shift = 0.0
+        if fp.kind == "coordinate":  # a position held translated by a lattice vector (A176): bounds move with it
+            shift = float(round(float(param.value) - fp.value))
+        manifest[fp.ed_attr_path] = _free(param, fp, shift)
+    return manifest
+
+
+def apply_experiment_flags(payload, expt) -> dict:
+    """Execute :func:`experiment_plan` on the built experiment; return ``{ed_attr_path: manifest entry}``."""
+    prefix = f"experiments.{EXPERIMENT_NAME}."
+    return {fp.ed_attr_path: _free(_resolve(expt, fp.ed_attr_path[len(prefix):]), fp)
+            for fp in experiment_plan(payload)}
+
+
 # --- runtime layer (imports easydiffraction) -------------------------------
 
 
@@ -477,8 +638,9 @@ def _build_experiment(ExperimentFactory, payload, cif: str, names: dict):
 def build_project(recipe: EasydiffractionRecipe, workdir) -> BuildResult:
     """Build the easydiffraction ``Project`` of a validated native recipe.
 
-    Writes the handed data loop to ``workdir / DATA_CIF_NAME``. Values and the
-    site check here; the refinement flags are applied by the next step.
+    Writes the handed data loop to ``workdir / DATA_CIF_NAME``; values, the
+    site check, then the refinement flags (the manifest has one entry per
+    freed easydiffraction parameter, keyed by its path from the ``Project``).
 
     Raises ``ImportError`` without easydiffraction,
     :class:`EasyDiffractionTranslationError` for an unsupported setting and
@@ -506,7 +668,12 @@ def build_project(recipe: EasydiffractionRecipe, workdir) -> BuildResult:
     project.experiments.add(expt)
 
     warnings: list[StructuredWarning] = []
+    manifest: dict = {}
     for name, phase in payload.phases.items():  # easydiffraction detects the Wyckoff sites at build time (EB-74)
-        warnings += check_sites(name, phase, calculator, project.structures[names[name]])
+        structure = project.structures[names[name]]
+        warnings += check_sites(name, phase, calculator, structure)
+        manifest.update(apply_refinement_flags(name, phase, structure))
+    manifest.update(apply_experiment_flags(payload, expt))
 
-    return BuildResult(project=project, manifest={}, warnings=warnings, window_mask=mask, datablock_names=names)
+    return BuildResult(project=project, manifest=manifest, warnings=warnings, window_mask=mask,
+                       datablock_names=names)

@@ -349,3 +349,216 @@ def test_build_project_runs_site_check(tmp_path):
     assert [w["code"] for w in result.warnings] in ([], ["easydiffraction_position_translated"])
     zn = result.project.structures["zn"].atom_sites["Zn1"]
     assert int(zn.multiplicity.value) == 6
+
+
+# ---------------------------------------------------------------------------
+# 3.3 refinement flags: one free parameter per tie group (pure plans)
+# ---------------------------------------------------------------------------
+
+
+class _FakeParam:
+    def __init__(self, value):
+        self.value = value
+        self.free = False
+        self.fit_min = None
+        self.fit_max = None
+
+
+class _Obj:
+    """Attribute bag; ``__getitem__`` serves collections keyed by id."""
+
+    def __init__(self, **attrs):
+        self.__dict__.update(attrs)
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+
+def _plan_by_path(plan):
+    return {fp.ed_attr_path: fp for fp in plan}
+
+
+def test_cubic_cell_flagged_frees_only_length_a():
+    recipe = _recipe()
+    cell = recipe["payload"]["phases"]["LaB6"]["unit_cell"]
+    for k in "abc":  # every tie member states the flag and the bounds (A94, F4)
+        cell[k] = P(4.1568, True, 4.0, 4.3)
+    plan = nb.free_parameter_plan("LaB6", _validated(recipe).payload.phases["LaB6"])
+    cell_params = [fp for fp in plan if fp.kind == "cell"]
+    assert [fp.ed_attr_path for fp in cell_params] == ["structures.lab6.cell.length_a"]
+    fp = cell_params[0]
+    assert (fp.path, fp.value, fp.min, fp.max, fp.unit) == ("payload.phases.LaB6.unit_cell.a", 4.1568, 4.0, 4.3,
+                                                             "angstrom")
+
+
+def test_hexagonal_cell_frees_a_and_c_not_b():
+    phase = _hex_phase()
+    for k in "abc":
+        phase["unit_cell"][k] = P(phase["unit_cell"][k][0], True, None, None)
+    plan = nb.free_parameter_plan("Zn", _validated(Zn=phase).payload.phases["Zn"])
+    assert [fp.ed_attr_path for fp in plan if fp.kind == "cell"] == ["structures.zn.cell.length_a",
+                                                                       "structures.zn.cell.length_c"]
+
+
+def test_monoclinic_cell_frees_beta_only_when_flagged():
+    recipe = _recipe(Mono={
+        "space_group": "C 1 2/m 1",
+        "unit_cell": {"a": P(5.1), "b": P(6.2), "c": P(7.3, True, 7.0, 7.6), "alpha": P(90.0),
+                      "beta": P(103.0, True, 100.0, 106.0), "gamma": P(90.0)},
+        "atoms": {"Fe1": {"element": "Fe", "x": P(0.0), "y": P(0.0), "z": P(0.0), "occupancy": P(1.0),
+                          "ADP": "Uiso", "Uiso": P(0.01)}},
+        "scale": P(1.0)})
+    plan = nb.free_parameter_plan("Mono", _validated(recipe).payload.phases["Mono"])
+    assert [(fp.ed_attr_path, fp.unit) for fp in plan] == [("structures.mono.cell.length_c", "angstrom"),
+                                                            ("structures.mono.cell.angle_beta", "degree")]
+
+
+def test_special_position_atom_frees_one_coordinate():
+    recipe = _recipe()
+    recipe["payload"]["phases"]["LaB6"]["atoms"]["B1"]["x"] = P(0.1997, True, 0.15, 0.25)  # 6f: (x, 1/2, 1/2)
+    plan = nb.free_parameter_plan("LaB6", _validated(recipe).payload.phases["LaB6"])
+    coords = [fp for fp in plan if fp.kind == "coordinate"]
+    assert [fp.ed_attr_path for fp in coords] == ["structures.lab6.atom_sites.B1.fract_x"]
+    assert (coords[0].min, coords[0].max, coords[0].unit) == (0.15, 0.25, "fractional")
+    # a coupled pair (x, -x, z): both flagged with mapped bounds, one free parameter (A94, A98)
+    hexp = _hex_phase()
+    hexp["atoms"]["Zn1"]["x"] = P(0.137, True, 0.1, 0.2)
+    hexp["atoms"]["Zn1"]["y"] = P(0.863, True, 0.8, 0.9)
+    plan = nb.free_parameter_plan("Zn", _validated(Zn=hexp).payload.phases["Zn"])
+    assert [fp.ed_attr_path for fp in plan if fp.kind == "coordinate"] == ["structures.zn.atom_sites.Zn1.fract_x"]
+
+
+def test_uaniso_cubic_site_frees_one_uij():
+    recipe = _recipe()
+    la = recipe["payload"]["phases"]["LaB6"]["atoms"]["La1"]
+    la["ADP"] = "Uaniso"
+    la.pop("Uiso")
+    la["Uaniso"] = {"U11": P(0.005, True, 0.0, 0.05), "U22": P(0.005, True, 0.0, 0.05), "U33": P(0.005, True, 0.0, 0.05),
+                    "U12": P(0.0), "U13": P(0.0), "U23": P(0.0)}
+    plan = nb.free_parameter_plan("LaB6", _validated(recipe).payload.phases["LaB6"])
+    adps = [fp for fp in plan if fp.kind == "adp"]
+    assert [fp.ed_attr_path for fp in adps] == ["structures.lab6.atom_site_aniso.La1.adp_11"]
+    assert (adps[0].path, adps[0].min, adps[0].max, adps[0].unit) == ("payload.phases.LaB6.atoms.La1.Uaniso.U11",
+                                                                      0.0, 0.05, "angstrom^2")
+
+
+def test_occupancy_and_uiso_flags_and_bounds():
+    recipe = _recipe()
+    b1 = recipe["payload"]["phases"]["LaB6"]["atoms"]["B1"]
+    b1["occupancy"] = P(0.9, True, 0.5, 1.0)
+    b1["Uiso"] = P(0.006, True, None, 0.05)
+    plan = _plan_by_path(nb.free_parameter_plan("LaB6", _validated(recipe).payload.phases["LaB6"]))
+    assert plan["structures.lab6.atom_sites.B1.occupancy"].min == 0.5
+    uiso = plan["structures.lab6.atom_sites.B1.adp_iso"]
+    assert (uiso.min, uiso.max) == (None, 0.05)  # None keeps the engine's physical limit (A138)
+
+
+def test_experiment_plan_scale_background_instrument_bounds():
+    recipe = _recipe()
+    recipe["payload"]["phases"]["LaB6"]["scale"] = P(1.0, True, 0.0, None)
+    recipe["payload"]["phases"]["LaB6"]["background"]["refine_flag"] = True
+    inst = recipe["payload"]["instrument"]
+    inst["corrections"]["zero"] = P(0.0, True, -0.1, 0.1)
+    inst["broadening"]["w"] = P(0.002, True, 0.0, 0.1)
+    inst["corrections"]["displacement"] = P(0.001, True, None, None)
+    plan = _plan_by_path(nb.experiment_plan(_validated(recipe).payload))
+    assert set(plan) == {"experiments.powderline.linked_structures.lab6.scale",
+                         "experiments.powderline.background.0.coef", "experiments.powderline.background.1.coef",
+                         "experiments.powderline.instrument.calib_twotheta_offset",
+                         "experiments.powderline.peak.broad_gauss_w",
+                         "experiments.powderline.instrument.calib_sample_displacement"}
+    zero = plan["experiments.powderline.instrument.calib_twotheta_offset"]
+    assert (zero.path, zero.min, zero.max, zero.unit) == ("payload.instrument.corrections.zero", -0.1, 0.1,
+                                                          "degree 2theta")
+    assert plan["experiments.powderline.peak.broad_gauss_w"].unit == "degree^2 2theta (FWHM^2)"
+    assert plan["experiments.powderline.background.1.coef"].value == 0.0
+    assert plan["experiments.powderline.linked_structures.lab6.scale"].path == "payload.phases.LaB6.scale"
+
+
+def test_nothing_flagged_gives_empty_plans():
+    model = _validated()
+    assert nb.free_parameter_plan("LaB6", model.payload.phases["LaB6"]) == []
+    assert nb.experiment_plan(model.payload) == []
+
+
+def test_flagged_but_symmetry_fixed_asserts():
+    phase = _validated().payload.phases["LaB6"]
+    phase.atoms["B1"].y.refine_flag = True  # behind core's back: y of 6f is fixed at 1/2 (F2)
+    with pytest.raises(AssertionError, match="fixed by symmetry"):
+        nb.free_parameter_plan("LaB6", phase)
+    phase = _validated().payload.phases["LaB6"]
+    phase.unit_cell.gamma.refine_flag = True
+    with pytest.raises(AssertionError, match="fixed by symmetry"):
+        nb.free_parameter_plan("LaB6", phase)
+    phase = _validated().payload.phases["LaB6"]
+    phase.unit_cell.b.refine_flag = True  # mixed flags in the {a, b, c} group (F1)
+    with pytest.raises(AssertionError, match="mixed refine flags"):
+        nb.free_parameter_plan("LaB6", phase)
+
+
+def test_apply_refinement_flags_sets_free_and_bounds_and_moves_translated_bounds():
+    hexp = _hex_phase()
+    hexp["atoms"]["Zn1"]["x"] = P(0.137, True, 0.1, 0.2)
+    hexp["atoms"]["Zn1"]["y"] = P(0.863, True, 0.8, 0.9)
+    for k in "abc":
+        hexp["unit_cell"][k] = P(hexp["unit_cell"][k][0], True, 5.0, 9.0)
+    phase = _validated(Zn=hexp).payload.phases["Zn"]
+    structure = _Obj(
+        cell=_Obj(length_a=_FakeParam(5.2), length_b=_FakeParam(5.2), length_c=_FakeParam(8.6)),
+        atom_sites=_Obj(Zn1=_Obj(fract_x=_FakeParam(0.137), fract_y=_FakeParam(-0.137), fract_z=_FakeParam(0.25)),
+                        Mg1=_Obj()))
+    manifest = nb.apply_refinement_flags("Zn", phase, structure)
+    assert set(manifest) == {"structures.zn.cell.length_a", "structures.zn.cell.length_c",
+                             "structures.zn.atom_sites.Zn1.fract_x"}
+    assert structure.cell.length_a.free is True and structure.cell.length_b.free is False
+    assert (structure.cell.length_a.fit_min, structure.cell.length_a.fit_max) == (5.0, 9.0)
+    x = structure.atom_sites["Zn1"].fract_x
+    assert x.free is True and (x.fit_min, x.fit_max) == (0.1, 0.2)
+    entry = manifest["structures.zn.atom_sites.Zn1.fract_x"]
+    assert entry["path"] == "payload.phases.Zn.atoms.Zn1.x" and entry["shift"] == 0.0 and entry["parameter"] is x
+    # the free member itself held translated by -1 (A176): bounds move with it, the manifest records the shift
+    structure.atom_sites["Zn1"].fract_x = _FakeParam(-0.863)
+    entry = nb.apply_refinement_flags("Zn", phase, structure)["structures.zn.atom_sites.Zn1.fract_x"]
+    assert entry["shift"] == -1.0
+    assert (entry["parameter"].fit_min, entry["parameter"].fit_max) == pytest.approx((-0.9, -0.8))
+
+
+def test_apply_experiment_flags_with_none_bounds_leaves_engine_defaults():
+    recipe = _recipe()
+    recipe["payload"]["phases"]["LaB6"]["scale"] = P(1.0, True, 0.0, None)
+    recipe["payload"]["instrument"]["radiation"]["wavelength"] = P(1.5406, True, None, None)
+    expt = _Obj(linked_structures=_Obj(lab6=_Obj(scale=_FakeParam(1.0))),
+                instrument=_Obj(setup_wavelength=_FakeParam(1.5406)))
+    manifest = nb.apply_experiment_flags(_validated(recipe).payload, expt)
+    assert set(manifest) == {"experiments.powderline.linked_structures.lab6.scale",
+                             "experiments.powderline.instrument.setup_wavelength"}
+    scale = expt.linked_structures["lab6"].scale
+    assert scale.free is True and scale.fit_min == 0.0 and scale.fit_max is None
+    lam = expt.instrument.setup_wavelength
+    assert lam.free is True and lam.fit_min is None and lam.fit_max is None
+
+
+def test_set_refuses_unknown_easydiffraction_attribute():
+    with pytest.raises(AttributeError, match="has no attribute 'fit_mni'"):
+        nb._set(_FakeParam(1.0), "fit_mni", 0.0)
+
+
+@needs_ed
+def test_build_project_frees_one_parameter_per_tie_group(tmp_path):
+    recipe = _recipe()
+    phase = recipe["payload"]["phases"]["LaB6"]
+    for k in "abc":
+        phase["unit_cell"][k] = P(4.1568, True, 4.0, 4.3)
+    phase["atoms"]["B1"]["x"] = P(0.1997, True, 0.15, 0.25)
+    phase["scale"] = P(1.0, True, 0.0, None)
+    recipe["payload"]["instrument"]["broadening"]["w"] = P(0.002, True, 0.0, 0.1)
+    result = nb.build_project(_validated(recipe), tmp_path)
+    assert set(result.manifest) == {"structures.lab6.cell.length_a", "structures.lab6.atom_sites.B1.fract_x",
+                                    "experiments.powderline.linked_structures.lab6.scale",
+                                    "experiments.powderline.peak.broad_gauss_w"}
+    structure = result.project.structures["lab6"]
+    assert structure.cell.length_a.free is True and structure.cell.length_b.free is False
+    assert structure.cell.length_a.fit_min == 4.0 and structure.cell.length_a.fit_max == 4.3
+    assert structure.atom_sites["B1"].fract_x.free is True and structure.atom_sites["B1"].fract_y.free is False
+    for entry in result.manifest.values():
+        assert entry["parameter"].free is True
