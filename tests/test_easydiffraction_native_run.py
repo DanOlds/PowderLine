@@ -238,3 +238,229 @@ def test_execute_fit_reads_lmfit_outcome(tmp_path):
     (value, esd), = outcome.values.values()
     assert math.isfinite(value) and (esd is None or esd >= 0)
     assert outcome.engine_rwp is not None
+
+
+# ---------------------------------------------------------------------------
+# 4.2 statistics, reports, result dict (A23, A41, A125, A128, A129, A152/A157 B5)
+# ---------------------------------------------------------------------------
+
+import pandas as pd  # noqa: E402
+
+from powderline import reports  # noqa: E402
+from powderline.gateways.easydiffraction import native_builder as nb  # noqa: E402
+from powderline.schema_core import parameters_requested  # noqa: E402
+
+_GSASII_CONTRACT = {
+    "success": bool, "run_id": str, "rwp": (float, type(None)), "elapsed_time": float, "method": str,
+    "output_files": list, "fit_profile": pd.DataFrame, "unit_cell_data": dict, "peak_list_data": dict,
+    "refined_parameters": pd.DataFrame, "spf_peaks": pd.DataFrame, "spf_convergence_diagnostics": pd.DataFrame,
+    "error": type(None), "traceback": type(None),
+}
+
+
+def _refined_recipe():
+    """LaB6 with the cell (one tie group), B1.x, the scale and W refined: 4 requested parameters."""
+    recipe = _recipe()
+    phase = recipe["payload"]["phases"]["LaB6"]
+    for k in "abc":
+        phase["unit_cell"][k] = P(4.1568, True, 4.0, 4.3)
+    phase["atoms"]["B1"]["x"] = P(0.1997, True, 0.15, 0.25)
+    phase["scale"] = P(1.0, True, 0.0, None)
+    recipe["payload"]["instrument"]["broadening"]["w"] = P(0.002, True, 0.0, 0.1)
+    return recipe
+
+
+def _manifest(model, finals=None, esds=None):
+    """The builder's manifest for ``model`` with fake live parameters (A185 shape)."""
+    finals, esds = finals or {}, esds or {}
+    manifest = {}
+    for name, phase in model.payload.phases.items():
+        for fp in nb.free_parameter_plan(name, phase):
+            manifest[fp.ed_attr_path] = _entry(fp.path, fp.value, kind=fp.kind, unit=fp.unit, lo=fp.min, hi=fp.max,
+                                               final=finals.get(fp.ed_attr_path), esd=esds.get(fp.ed_attr_path))
+    for fp in nb.experiment_plan(model.payload):
+        manifest[fp.ed_attr_path] = _entry(fp.path, fp.value, kind=fp.kind, unit=fp.unit, lo=fp.min, hi=fp.max,
+                                           final=finals.get(fp.ed_attr_path), esd=esds.get(fp.ed_attr_path))
+    return manifest
+
+
+def _outcome(model, manifest=None, *, n_varied=None, converged=True, cell_a=4.1568, cell_a_esd=None, **over):
+    """A RunOutcome as execute() would read it, from fake arrays: calc = 1.01 obs, bkg = 100 (the stated background)."""
+    tth, itth, sigma, mask = nb.prepare_data(model.payload)
+    manifest = {} if manifest is None else manifest
+    simulation = not manifest
+    build = nb.BuildResult(project=None, manifest=manifest, warnings=[], window_mask=mask,
+                           datablock_names={n: nb.datablock_name(n) for n in model.payload.phases})
+    cells = {name: {m: (cell_a if m in "abc" else 90.0, cell_a_esd if m in "abc" else None) for m in nb.CELL_ATTRS}
+             for name in model.payload.phases}
+    reflections = {name: [{"h": 1, "k": 0, "l": 0, "d_spacing": 4.1568, "2theta": 21.36, "F_calc_squared": 1234.5},
+                          {"h": 1, "k": 1, "l": 0, "d_spacing": 2.9393, "2theta": 30.39, "F_calc_squared": 987.6}]
+                   for name in model.payload.phases}
+    fields = dict(build=build, simulation=simulation, x=tth, y_obs=itth, y_calc=itth * 1.01,
+                  y_bkg=np.full_like(itth, 100.0), sigma=sigma, values=nr.read_values(manifest),
+                  reflections=reflections, reflections_available=True,
+                  n_varied=(0 if simulation else len(manifest)) if n_varied is None else n_varied,
+                  converged=None if simulation else converged, message=None if simulation else "Fit succeeded.",
+                  engine_rwp=None if simulation else 7.5, engine_rexp=None if simulation else 5.0,
+                  engine_chi2_red=None if simulation else 2.25, widths=nb.stated_widths(model.payload),
+                  contributes={n: True for n in model.payload.phases}, wavelength=1.5406, warnings=[], cells=cells,
+                  engine_version="0.21.1")
+    fields.update(over)
+    return nr.RunOutcome(**fields)
+
+
+def test_result_matches_the_gsasii_key_and_type_contract(tmp_path):
+    model = _validated(_refined_recipe())
+    result = nr.build_result(model, _outcome(model, _manifest(model)), tmp_path, elapsed=0.5)
+    assert result["success"] is True
+    for key, expected in _GSASII_CONTRACT.items():
+        assert key in result, key
+        assert isinstance(result[key], expected), (key, type(result[key]))
+    for extra in ("r_exp", "gof", "chi2_red", "simulation_mode", "warnings", "engine_details"):
+        assert extra in result
+    assert result["spf_peaks"].empty and list(result["spf_peaks"].columns) == []
+    assert list(result["spf_convergence_diagnostics"].columns) == []
+    for frame in list(result["unit_cell_data"].values()) + list(result["peak_list_data"].values()):
+        assert isinstance(frame, pd.DataFrame)
+    import json
+    json.dumps(result["engine_details"])  # JSON-safe (the server boundary)
+    json.dumps(result["warnings"])
+
+
+def test_reports_are_written_through_the_core_writers(tmp_path):
+    model = _validated(_refined_recipe())
+    result = nr.build_result(model, _outcome(model, _manifest(model)), tmp_path)
+    names = {f.name for f in tmp_path.iterdir()}
+    assert {"refined_parameters.csv", "fit_profile.txt", "LaB6_unit_cell_report.csv",
+            "LaB6_peak_list_report.csv"} <= names
+    header = (tmp_path / "refined_parameters.csv").read_text(encoding="utf-8").splitlines()[0]
+    assert header == ",".join(reports.REFINED_PARAMETERS_COLUMNS)
+    profile_header = (tmp_path / "fit_profile.txt").read_text(encoding="utf-8").splitlines()[0]
+    assert profile_header == "\t".join(reports.FIT_PROFILE_COLUMNS)
+    peaks = (tmp_path / "LaB6_peak_list_report.csv").read_text(encoding="utf-8").splitlines()
+    assert peaks[0] == ",".join(nr.PEAK_LIST_COLUMNS) and peaks[1].startswith("1,0,0,4.1568,21.36,1234.5")
+    assert all(str(tmp_path / n) in result["output_files"] for n in ("refined_parameters.csv", "fit_profile.txt"))
+    assert b"\r" not in (tmp_path / "fit_profile.txt").read_bytes()
+
+
+def test_statistics_are_core_fitstats_over_the_handed_points_with_lmfit_p(tmp_path):
+    from powderline.fitstats import compute_fit_statistics
+
+    model = _validated(_refined_recipe())
+    manifest = _manifest(model)
+    outcome = _outcome(model, manifest)
+    result = nr.build_result(model, outcome, tmp_path)
+    p = model.payload
+    tth = np.asarray(p.xrd_data.tth)
+    yobs = np.asarray(p.xrd_data.Itth)
+    w = np.asarray(p.xrd_data.Itth_weights)
+    ycalc = np.zeros_like(tth)
+    ycalc[outcome.build.window_mask] = outcome.y_calc
+    fs = compute_fit_statistics(yobs, ycalc, w, len(manifest), mask=outcome.build.window_mask)
+    assert result["rwp"] == pytest.approx(fs.rwp) and result["r_exp"] == pytest.approx(fs.rexp)
+    assert result["gof"] == pytest.approx(fs.gof) and result["chi2_red"] == pytest.approx(fs.chi2_red)
+    d = result["engine_details"]
+    assert d["n_points"] == int(outcome.build.window_mask.sum()) == fs.n_points
+    assert d["parameters_requested"] == parameters_requested(model) == 4
+    assert d["parameters_varied"] == 4 and d["rwp"] == 7.5 and d["engine"] == "easydiffraction"
+    assert d["calculator"] == "cryspy" and d["peak_type"] == "pseudo-voigt" and d["engine_version"] == "0.21.1"
+    assert d["converged"] is True and d["message"] == "Fit succeeded."
+    assert [w["code"] for w in result["warnings"]] == []
+
+
+def test_fewer_parameters_varied_than_requested_warns(tmp_path):
+    model = _validated(_refined_recipe())
+    result = nr.build_result(model, _outcome(model, _manifest(model), n_varied=3), tmp_path)
+    codes = [w["code"] for w in result["warnings"]]
+    assert codes == ["easydiffraction_parameters_not_varied"]
+    assert "lmfit varied 3 parameter(s), but the recipe refines 4" in result["warnings"][0]["message"]
+
+
+def test_y_bkg_is_the_engines_background_and_the_profile_is_the_handed_points(tmp_path):
+    model = _validated(_refined_recipe())
+    outcome = _outcome(model, _manifest(model), y_bkg=np.linspace(90.0, 110.0, int(nb.prepare_data(model.payload)[3].sum())))
+    result = nr.build_result(model, outcome, tmp_path)
+    profile = result["fit_profile"]
+    assert len(profile) == int(outcome.build.window_mask.sum())
+    assert profile["y_bkg"].to_numpy().tolist() == outcome.y_bkg.tolist()
+    assert profile["two_theta"].to_numpy().tolist() == outcome.x.tolist()
+    assert profile["y_diff"].to_numpy() == pytest.approx(outcome.y_obs - outcome.y_calc)
+    assert profile["d_spacings"].iloc[0] == pytest.approx(1.5406 / (2 * math.sin(math.radians(outcome.x[0] / 2))))
+
+
+def test_refined_rows_carry_values_in_the_recipes_writing_and_empty_undetermined_esds(tmp_path):
+    model = _validated(_refined_recipe())
+    key_x = "structures.lab6.atom_sites.B1.fract_x"
+    manifest = _manifest(model, finals={key_x: -0.8, "structures.lab6.cell.length_a": 4.157},
+                         esds={"structures.lab6.cell.length_a": 2e-5})
+    manifest[key_x]["shift"] = -1.0  # held translated by -1 (A176)
+    result = nr.build_result(model, _outcome(model, manifest), tmp_path)
+    rp = result["refined_parameters"].set_index("parameter_name")
+    assert rp.loc[key_x, "value"] == pytest.approx(0.2) and pd.isna(rp.loc[key_x, "esd"])
+    assert rp.loc[key_x, "descriptive_name"] == "x" and rp.loc[key_x, "category"] == "atom_position"
+    assert rp.loc[key_x, "phase_name"] == "LaB6" and rp.loc[key_x, "atom_name"] == "B1" and rp.loc[key_x, "atom_idx"] == 1
+    a = rp.loc["structures.lab6.cell.length_a"]
+    assert a["value"] == 4.157 and a["esd"] == 2e-5 and a["descriptive_name"] == "cell_a" and a["category"] == "unit_cell"
+    w = rp.loc["experiments.powderline.peak.broad_gauss_w"]
+    assert w["category"] == "instrument_broadening" and w["phase_name"] == "" and w["descriptive_name"] == "w"
+    assert rp.loc["experiments.powderline.linked_structures.lab6.scale", "category"] == "scale"
+    import csv
+    with (tmp_path / "refined_parameters.csv").open(encoding="utf-8", newline="") as fh:
+        row = {r["parameter_name"]: r for r in csv.DictReader(fh)}[key_x]
+    assert float(row["value"]) == pytest.approx(0.2) and row["esd"] == "" and row["atom_idx"] == "1"
+
+
+def test_unit_cell_rows_tied_members_and_volume(tmp_path):
+    model = _validated(_refined_recipe())
+    manifest = _manifest(model, finals={"structures.lab6.cell.length_a": 4.157}, esds={"structures.lab6.cell.length_a": 2e-5})
+    cells = {"LaB6": {"a": (4.157, 2e-5), "b": (4.157, None), "c": (4.157, None),
+                      "alpha": (90.0, None), "beta": (90.0, None), "gamma": (90.0, None)}}
+    result = nr.build_result(model, _outcome(model, manifest, cells=cells), tmp_path)
+    cell = result["unit_cell_data"]["LaB6"].set_index("parameter")
+    assert list(cell.index) == ["cell_a", "cell_b", "cell_c", "cell_alpha", "cell_beta", "cell_gamma", "cell_volume"]
+    assert cell.loc["cell_b", "esd"] == 2e-5          # tied to a: a's ESD
+    assert cell.loc["cell_alpha", "esd"] == 0.0        # fixed by symmetry
+    assert cell.loc["cell_volume", "value"] == pytest.approx(4.157 ** 3)
+    assert cell.loc["cell_volume", "esd"] == pytest.approx(3 * 4.157 ** 2 * 2e-5, rel=1e-3)  # a, b, c move together
+
+
+def test_simulation_has_statistics_and_says_it_is_one(tmp_path):
+    model = _validated()
+    result = nr.build_result(model, _outcome(model), tmp_path)
+    assert result["simulation_mode"] is True and result["method"] == "easydiffraction_simulation"
+    assert isinstance(result["rwp"], float) and isinstance(result["r_exp"], float)
+    assert result["engine_details"]["parameters_varied"] == 0 and result["engine_details"]["converged"] is None
+    assert result["warnings"] == []  # no not-varied warning for a simulation
+    assert result["refined_parameters"].empty
+    assert list(result["refined_parameters"].columns) == list(reports.REFINED_PARAMETERS_COLUMNS)
+
+
+def test_undefined_statistics_are_none_not_nan(tmp_path):
+    model = _validated(_refined_recipe())
+    n = int(nb.prepare_data(model.payload)[3].sum())
+    result = nr.build_result(model, _outcome(model, _manifest(model), n_varied=n), tmp_path)
+    assert isinstance(result["rwp"], float)
+    assert result["r_exp"] is None and result["gof"] is None and result["chi2_red"] is None
+
+
+def test_no_reflections_means_no_peak_list_report(tmp_path):
+    model = _validated()
+    result = nr.build_result(model, _outcome(model, reflections={}, reflections_available=False), tmp_path)
+    assert result["peak_list_data"] == {} and not (tmp_path / "LaB6_peak_list_report.csv").exists()
+
+
+def test_builder_and_outcome_warnings_are_carried_once_in_order(tmp_path):
+    model = _validated(_refined_recipe())
+    outcome = _outcome(model, _manifest(model), n_varied=3,
+                       warnings=[{"code": "easydiffraction_crysfml_start_dependent", "message": "m", "field_path": None}])
+    result = nr.build_result(model, outcome, tmp_path, validated_warnings=[{"code": "v", "message": "m", "field_path": "p"}])
+    assert [w["code"] for w in result["warnings"]] == ["v", "easydiffraction_crysfml_start_dependent",
+                                                       "easydiffraction_parameters_not_varied"]
+
+
+@needs_ed
+def test_run_refinement_end_to_end(tmp_path):
+    result = nr.run_refinement(_validated(_refined_recipe()), tmp_path)
+    assert result["success"] and isinstance(result["rwp"], float)
+    assert result["engine_details"]["parameters_varied"] == 4
+    assert (tmp_path / "refined_parameters.csv").exists()

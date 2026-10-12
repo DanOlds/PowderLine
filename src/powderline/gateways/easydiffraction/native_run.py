@@ -40,14 +40,20 @@ and the library source (A184); every ``_set`` refuses an unknown attribute.
 from __future__ import annotations
 
 import math
+import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import numpy as np
+import pandas as pd
 
+from powderline import reports
 from powderline.exceptions import EngineExecutionError, StructuredWarning
+from powderline.fitstats import compute_fit_statistics
 from powderline.gateways.easydiffraction.native_builder import (
+    CELL_ATTRS,
     EXPERIMENT_NAME,
     BuildResult,
     WIDTH_FORMULAS,
@@ -57,6 +63,8 @@ from powderline.gateways.easydiffraction.native_builder import (
     width_check_points,
 )
 from powderline.gateways.easydiffraction.schema import EasydiffractionRecipe
+from powderline.schema_core import collect_warnings, parameters_requested
+from powderline.symmetry import cell_tie_groups
 
 #: The minimizer easydiffraction runs (A162: the only one in 1.0.0; P and the ESDs come from lmfit).
 MINIMIZER = "lmfit (leastsq)"
@@ -104,6 +112,8 @@ class RunOutcome:
     contributes: dict = field(default_factory=dict)
     #: The final wavelength (refined if freed).
     wavelength: float = 1.0
+    #: phase name -> {member: (value, esd or None)} for a..gamma as the engine holds them after the run.
+    cells: dict = field(default_factory=dict)
     #: Warnings raised while running (after the builder's).
     warnings: list = field(default_factory=list)
     #: Installed easydiffraction version.
@@ -284,6 +294,13 @@ def refined_widths(expt) -> dict:
            {k: _param_value(getattr(expt.peak, f"broad_lorentz_{k}")) for k in "xy"}
 
 
+def read_cell(structure) -> dict:
+    """``{member: (value, esd or None)}`` for a..gamma from an easydiffraction structure after the run."""
+    cell = structure.cell
+    return {member: (_param_value(getattr(cell, attr)), _esd(getattr(getattr(cell, attr), "uncertainty", None)))
+            for member, attr in CELL_ATTRS.items()}
+
+
 def phase_contributions(project, expt, names: dict, y_calc: np.ndarray, y_bkg: np.ndarray) -> dict:
     """phase name -> whether its calculated contribution has a non-zero point (A157 B7, A191).
 
@@ -374,6 +391,7 @@ def execute(recipe: EasydiffractionRecipe, output_dir, *, verbose: bool = False)
     if refln is not None:
         reflections = {name: reflection_rows(refln, slug, name) for name, slug in build.datablock_names.items()}
     widths = refined_widths(expt)
+    cells = {name: read_cell(project.structures[slug]) for name, slug in build.datablock_names.items()}
     contributes = phase_contributions(project, expt, build.datablock_names, y_calc, y_bkg)
     warnings += run_warnings(simulation=simulation, calculator=controls.calculator, n_varied=n_varied,
                              converged=converged, message=message, widths=widths,
@@ -387,4 +405,216 @@ def execute(recipe: EasydiffractionRecipe, output_dir, *, verbose: bool = False)
                       n_varied=n_varied, converged=converged, message=message, engine_rwp=engine_rwp,
                       engine_rexp=engine_rexp, engine_chi2_red=engine_chi2, widths=widths, contributes=contributes,
                       wavelength=_param_value(expt.instrument.setup_wavelength), warnings=warnings,
-                      engine_version=_installed_version())
+                      cells=cells, engine_version=_installed_version())
+
+
+# --- result assembly (A23, A41, A125, A128, A129; pure given a RunOutcome) ---
+
+#: Manifest ``kind`` -> ``refined_parameters.csv`` category (GSAS-II's vocabulary where it has one).
+CATEGORIES = {"cell": "unit_cell", "coordinate": "atom_position", "occupancy": "atom_occupancy",
+              "scale": "scale", "background": "background", "instrument": "instrument"}
+#: Unit-cell report rows (the GSAS-II report's names).
+CELL_ROW_NAMES = {"a": "cell_a", "b": "cell_b", "c": "cell_c", "alpha": "cell_alpha", "beta": "cell_beta",
+                  "gamma": "cell_gamma"}
+
+
+def _location(model, path: str) -> tuple[str, Optional[int], str, Optional[int]]:
+    """``(phase_name, phase_idx, atom_name, atom_idx)`` of a recipe field path; empty where it is not a phase's."""
+    parts = path.split(".")
+    if len(parts) < 3 or parts[1] != "phases":
+        return "", None, "", None
+    phases = list(model.payload.phases)
+    phase = parts[2]
+    atom, atom_idx = "", None
+    if len(parts) > 4 and parts[3] == "atoms":
+        atom = parts[4]
+        atoms = list(model.payload.phases[phase].atoms)
+        atom_idx = atoms.index(atom) if atom in atoms else None
+    return phase, phases.index(phase) if phase in phases else None, atom, atom_idx
+
+
+def descriptive_name(entry: dict) -> str:
+    """A readable name from the recipe path: ``cell_a``, ``x``, ``Uiso``, ``U11``, ``scale``, ``background_coefficient_2``, ``wavelength``."""
+    last = entry["path"].split(".")[-1]
+    if entry["kind"] == "cell":
+        return f"cell_{last}"
+    if entry["kind"] == "background":
+        return f"background_coefficient_{last}"
+    return last
+
+
+def category(entry: dict) -> str:
+    if entry["kind"] == "adp":
+        return "atom_displacement_anisotropic" if ".Uaniso." in entry["path"] else "atom_displacement_isotropic"
+    if entry["kind"] == "instrument" and entry["path"].split(".")[-1] in ("u", "v", "w", "x", "y"):
+        return "instrument_broadening"
+    return CATEGORIES[entry["kind"]]
+
+
+def refined_rows(model, manifest: dict, values: dict) -> list[dict]:
+    """``refined_parameters.csv`` rows: one per freed easydiffraction parameter, named by its easydiffraction path."""
+    rows = []
+    for key, entry in manifest.items():
+        value, esd = values[key]
+        phase, phase_idx, atom, atom_idx = _location(model, entry["path"])
+        rows.append({"parameter_name": key, "descriptive_name": descriptive_name(entry), "phase_name": phase,
+                     "phase_idx": phase_idx, "atom_name": atom, "atom_idx": atom_idx, "value": value, "esd": esd,
+                     "category": category(entry)})
+    return rows
+
+
+def cell_volume(a, b, c, alpha, beta, gamma) -> float:
+    ca, cb, cg = (math.cos(math.radians(v)) for v in (alpha, beta, gamma))
+    arg = 1.0 - ca * ca - cb * cb - cg * cg + 2.0 * ca * cb * cg
+    return a * b * c * math.sqrt(max(arg, 0.0))
+
+
+def cell_rows(space_group: str, cell: dict, manifest: dict, slug: str) -> list[dict]:
+    """``<phase>_unit_cell_report.csv`` rows (pure): a..gamma as the engine holds them, then the volume.
+
+    ``cell`` is ``{member: (value, esd or None)}``. A member's ESD is the
+    engine's; a tied member without one takes its group's first member's; a
+    member that was not refined has 0.0; a refined one the engine gave no ESD
+    stays empty. The volume ESD is first-order propagation, one perturbation
+    per independent parameter (a tie group moves together) summed in
+    quadrature; GSAS-II uses the covariance between groups, so it can differ.
+    """
+    ties = cell_tie_groups(space_group)
+    rep = {m: g.members[0] for g in ties.groups for m in g.members}
+    refined = {m for m in CELL_ATTRS if f"structures.{slug}.cell.{CELL_ATTRS[rep.get(m, m)]}" in manifest}
+    rows, values, esds = [], {}, {}
+    for member in CELL_ATTRS:
+        value, esd = cell[member]
+        if esd is None and member in refined:
+            esd = cell[rep.get(member, member)][1]
+        if esd is None and member not in refined:
+            esd = 0.0
+        rows.append({"parameter": CELL_ROW_NAMES[member], "value": value, "esd": esd})
+        values[member], esds[member] = value, esd or 0.0
+    vol = cell_volume(*values.values())
+    independent = [tuple(g.members) for g in ties.groups] + [(m,) for m in CELL_ATTRS if m not in rep]
+    var = 0.0
+    for group in independent:
+        if esds[group[0]]:
+            moved = {m: v + (esds[m] if m in group else 0.0) for m, v in values.items()}
+            var += (cell_volume(*moved.values()) - vol) ** 2
+    rows.append({"parameter": "cell_volume", "value": vol, "esd": math.sqrt(var)})
+    return rows
+
+
+def profile_rows(x, y_obs, weights, y_calc, y_bkg, wavelength: float) -> list[dict]:
+    """``fit_profile.txt`` rows on the handed points (what the engine calculated, A158); q and d from the final wavelength."""
+    rows = []
+    for xi, yo, w, yc, yb in zip(x, y_obs, weights, y_calc, y_bkg):
+        s = math.sin(math.radians(float(xi) / 2.0))
+        rows.append({"two_theta": float(xi), "y_obs": float(yo), "y_weights": float(w), "y_calc": float(yc),
+                     "y_diff": float(yo) - float(yc), "y_bkg": float(yb), "q_values": 4.0 * math.pi * s / wavelength,
+                     "d_spacings": wavelength / (2.0 * s) if s else math.inf})
+    return rows
+
+
+def _undefined(v) -> Optional[float]:
+    """A plain float, or ``None`` where a statistic is undefined (A129: never NaN)."""
+    return None if v is None or not math.isfinite(v) else float(v)
+
+
+def build_result(model, outcome: RunOutcome, output_dir, *, validated_warnings=None, elapsed: float = 0.0) -> dict:
+    """The standard result dict and report files from a :class:`RunOutcome` (pure: tested without the engine).
+
+    Statistics are core :mod:`powderline.fitstats` over exactly the handed
+    points (``window_mask``, A131) with the recipe's weights and P = lmfit's
+    varied count (A41); the engine's own numbers go under ``engine_details``.
+    ``y_bkg`` is the engine's ``intensity_bkg`` (A152's principle, A157 B5).
+    """
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    p = model.payload
+    build = outcome.build
+    mask = np.asarray(build.window_mask, dtype=bool)
+    tth = np.asarray(p.xrd_data.tth, dtype=float)
+    yobs = np.asarray(p.xrd_data.Itth, dtype=float)
+    w = np.asarray(p.xrd_data.Itth_weights, dtype=float)
+    ycalc_full = np.zeros_like(tth)
+    ycalc_full[mask] = outcome.y_calc
+    fs = compute_fit_statistics(yobs, ycalc_full, w, outcome.n_varied, mask=mask)
+    requested = parameters_requested(model)
+
+    warnings = list(validated_warnings if validated_warnings is not None else collect_warnings(model))
+    warnings += list(build.warnings) + list(outcome.warnings)
+    if not outcome.simulation and outcome.n_varied < requested:
+        warnings.append(StructuredWarning(
+            code="easydiffraction_parameters_not_varied",
+            message=(f"lmfit varied {outcome.n_varied} parameter(s), but the recipe refines {requested} (one per "
+                     "symmetry tie group); compare refined_parameters with the recipe's refine flags (A128)"),
+            field_path=None))
+    warnings += limit_hits(build.manifest, outcome.values)
+
+    rows = refined_rows(model, build.manifest, outcome.values)
+    unit_cells = {name: cell_rows(phase.space_group, outcome.cells[name], build.manifest, build.datablock_names[name])
+                  for name, phase in p.phases.items() if name in outcome.cells}
+    peak_lists = dict(outcome.reflections) if outcome.reflections_available else {}
+    profile = profile_rows(outcome.x, outcome.y_obs, w[mask], outcome.y_calc, outcome.y_bkg, outcome.wavelength)
+
+    reports.write_refined_parameters(out, rows)
+    reports.write_fit_profile(out, profile)
+    for name, cell in unit_cells.items():
+        reports.write_unit_cell_report(out, name, cell)
+    for name, refl in peak_lists.items():
+        reports.write_peak_list_report(out, name, refl, PEAK_LIST_COLUMNS)
+
+    controls = p.refinement_controls
+    return {
+        "success": True,
+        "run_id": str(uuid.uuid4()),
+        "rwp": _undefined(fs.rwp),
+        "r_exp": _undefined(fs.rexp),
+        "gof": _undefined(fs.gof),
+        "chi2_red": _undefined(fs.chi2_red),
+        "simulation_mode": outcome.simulation,
+        "engine_details": {
+            "engine": "easydiffraction",
+            "engine_version": outcome.engine_version,
+            "calculator": controls.calculator,
+            "peak_type": controls.peak_type,
+            "minimizer": MINIMIZER,
+            "rwp": _undefined(outcome.engine_rwp),
+            "r_exp": _undefined(outcome.engine_rexp),
+            "chi2_red": _undefined(outcome.engine_chi2_red),
+            "converged": outcome.converged,
+            "message": outcome.message,
+            "n_points": fs.n_points,
+            "parameters_requested": requested,
+            "parameters_varied": outcome.n_varied,
+            "parameters_varied_source": "fit_result.n_free_parameters (the parameters handed to lmfit, EB-81)",
+        },
+        "warnings": warnings,
+        "elapsed_time": elapsed,
+        "method": "easydiffraction_simulation" if outcome.simulation else "easydiffraction",
+        "output_files": sorted(str(f) for f in out.rglob("*") if f.is_file()),
+        "fit_profile": pd.DataFrame(profile, columns=list(reports.FIT_PROFILE_COLUMNS)),
+        "unit_cell_data": {k: pd.DataFrame(v, columns=list(reports.UNIT_CELL_COLUMNS)) for k, v in unit_cells.items()},
+        "peak_list_data": {k: pd.DataFrame(v, columns=list(PEAK_LIST_COLUMNS)) for k, v in peak_lists.items()},
+        "refined_parameters": pd.DataFrame(rows, columns=list(reports.REFINED_PARAMETERS_COLUMNS)),
+        "spf_peaks": pd.DataFrame(),  # easydiffraction has no single-peak workflow (A13.3)
+        "spf_convergence_diagnostics": pd.DataFrame(),
+        "error": None,
+        "traceback": None,
+    }
+
+
+def limit_hits(manifest: dict, values: dict) -> list:
+    """Placeholder until the at-limit check lands (A147 Q-L4, A157 B4, A181): no warnings."""
+    return []
+
+
+def run_refinement(recipe: EasydiffractionRecipe, output_dir, *, verbose: bool = False) -> dict:
+    """Run a validated native recipe end to end and return the standard result dict.
+
+    ``recipe`` is the model validated from the user's recipe (A115): its
+    validation warnings are carried into the result once, here.
+    """
+    started = time.time()
+    validated_warnings = collect_warnings(recipe)
+    outcome = execute(recipe, output_dir, verbose=verbose)
+    return build_result(recipe, outcome, output_dir, validated_warnings=validated_warnings,
+                        elapsed=time.time() - started)
