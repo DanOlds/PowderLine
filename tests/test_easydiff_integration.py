@@ -10,7 +10,7 @@ import pytest
 
 ed = pytest.importorskip("easydiffraction")
 
-from powderline.easydiff.errors import EasyDiffractionTranslationError
+from powderline.gateways.easydiffraction.errors import EasyDiffractionTranslationError
 from powderline.engine import run
 
 EXAMPLE = Path("examples/example_LaB6_easydiff/input.json")

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from powderline.easydiff.conversions import (
+from powderline.gateways.easydiffraction.conversions import (
     CDEG_TO_DEG,
     GAUSS_CDEG2_TO_DEG2,
     crop_and_sigma,
@@ -20,8 +20,8 @@ from powderline.easydiff.conversions import (
     lorentz_broadening_to_ed,
     zero_to_ed,
 )
-from powderline.easydiff.errors import EasyDiffractionTranslationError
-from powderline.easydiff.policy import check_unsupported, param_flag, param_value
+from powderline.gateways.easydiffraction.errors import EasyDiffractionTranslationError
+from powderline.gateways.easydiffraction.policy import check_unsupported, param_flag, param_value
 from powderline.exceptions import SymmetryError
 from powderline.symmetry import cell_constraints
 

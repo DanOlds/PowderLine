@@ -62,7 +62,7 @@ dependencies = [
 [project.entry-points."powderline.gateways"]
 gsasii = "powderline.gateways.gsasii.gateway:get_gateway"
 topas = "powderline.gateways.topas.gateway:get_gateway"
-easydiffraction = "powderline.easydiff.gateway:get_gateway"
+easydiffraction = "powderline.gateways.easydiffraction.gateway:get_gateway"
 
 [project.urls]
 Homepage = "https://github.com/NSLS2/PowderLine"

@@ -4,7 +4,7 @@ import math
 import numpy as np
 import pytest
 
-from powderline.easydiff.conversions import (
+from powderline.gateways.easydiffraction.conversions import (
     crop_and_sigma,
     datablock_slug,
     gauss_broadening_to_ed,

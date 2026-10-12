@@ -8,8 +8,8 @@ import pytest
 
 ed = pytest.importorskip("easydiffraction")
 
-from powderline.easydiff.builder import BuildResult, ManifestEntry, build_project
-from powderline.easydiff.conversions import GAUSS_CDEG2_TO_DEG2
+from powderline.gateways.easydiffraction.builder import BuildResult, ManifestEntry, build_project
+from powderline.gateways.easydiffraction.conversions import GAUSS_CDEG2_TO_DEG2
 
 from test_easydiff_policy import base_recipe  # same tests/ dir; pytest adds it to sys.path
 

@@ -7,7 +7,7 @@ import pytest
 
 ed = pytest.importorskip("easydiffraction")
 
-from powderline.easydiff.engine import run_easydiffraction_recipe
+from powderline.gateways.easydiffraction.engine import run_easydiffraction_recipe
 
 from test_easydiff_builder import rich_recipe
 from test_easydiff_policy import base_recipe

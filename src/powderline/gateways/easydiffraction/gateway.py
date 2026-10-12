@@ -5,7 +5,7 @@
   then runs the policy pre-flight, exactly the check ``validate_only`` runs today
   (raises ``EasyDiffractionTranslationError``; no easydiffraction import).
 - **Runtime layer** — ``run``: a thin wrapper over
-  ``powderline.easydiff.engine.run_easydiffraction_recipe`` (behavior unchanged).
+  ``powderline.gateways.easydiffraction.engine.run_easydiffraction_recipe`` (behavior unchanged).
   On a real run it first reads the installed easydiffraction version: missing ⇒
   ``EngineNotAvailableError``; outside ``ENGINE_VERSION_SPEC`` ⇒
   ``EngineVersionError``.
@@ -37,7 +37,7 @@ def validate(recipe, *, verbose: bool = False):
     ``verbose`` is part of the uniform gateway contract; this gateway prints
     nothing extra today.
     """
-    from powderline.easydiff.policy import check_unsupported
+    from powderline.gateways.easydiffraction.policy import check_unsupported
 
     model = recipe if isinstance(recipe, RecipeModel) else RecipeModel.model_validate(recipe)
     check_unsupported(model.model_dump())  # may raise EasyDiffractionTranslationError
@@ -68,7 +68,7 @@ def run(recipe, output_dir, *, verbose: bool = False, validate_only: bool = Fals
                              allow_unsupported=allow_unsupported_engine_version)
     # Bind the module (not the function) so tests can monkeypatch
     # ``run_easydiffraction_recipe`` on it.
-    from powderline.easydiff import engine as _easydiff_engine
+    from powderline.gateways.easydiffraction import engine as _easydiff_engine
 
     return _easydiff_engine.run_easydiffraction_recipe(recipe, output_dir, verbose=verbose,
                                                        validate_only=validate_only)

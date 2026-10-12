@@ -3,8 +3,8 @@ import copy
 
 import pytest
 
-from powderline.easydiff.errors import EasyDiffractionTranslationError
-from powderline.easydiff.policy import check_unsupported, param_flag, param_value
+from powderline.gateways.easydiffraction.errors import EasyDiffractionTranslationError
+from powderline.gateways.easydiffraction.policy import check_unsupported, param_flag, param_value
 
 
 def base_recipe():
