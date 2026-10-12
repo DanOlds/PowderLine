@@ -152,7 +152,8 @@ class Broadening(CoreModel):
     v: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_DEG2_FWHM))
     w: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_DEG2_FWHM))
 
-    # Lorentzian terms (FWHM = X/cosθ + Y tanθ)
+    # Lorentzian terms (FWHM = X tanθ + Y/cosθ: easydiffraction's X is CrysPy's
+    # _pd_instr_resolution_X, the tanθ term; A171, EB-87)
     x: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_DEG_FWHM))
     y: BoundedRefinableParameter = Field(..., json_schema_extra=_unit(UNIT_DEG_FWHM))
 
@@ -168,7 +169,8 @@ class Instrument(CoreModel):
     def _check_negative_widths(self) -> "Instrument":
         """Check for negative peak widths at representative points (A171, A178).
 
-        Full grid check over window happens in builder (commit 3.5).
+        The full grid check over the window widened by its margin is
+        ``native_builder.check_peak_widths`` (run by ``build_project``).
         Schema-level check: at θ=45° (representative angle).
         """
         import math

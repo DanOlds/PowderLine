@@ -565,3 +565,77 @@ def test_build_project_frees_one_parameter_per_tie_group(tmp_path):
     assert structure.atom_sites["B1"].fract_x.free is True and structure.atom_sites["B1"].fract_y.free is False
     for entry in result.manifest.values():
         assert entry["parameter"].free is True
+
+
+# ---------------------------------------------------------------------------
+# 4.0 peak widths over the window with a margin (A171, A178; PR review S5)
+# ---------------------------------------------------------------------------
+
+
+def _crossing_w(v: float, tth_cross: float) -> float:
+    """W such that FWHM^2 = V tan(theta) + W crosses zero at 2theta = tth_cross (U = 0): negative below it."""
+    import math
+    return -v * math.tan(math.radians(tth_cross / 2))
+
+
+def _negative_below(recipe, tth_cross: float, zero: float = 0.0) -> EasydiffractionRecipe:
+    """A recipe whose Gaussian FWHM^2 is negative only below ``tth_cross`` (positive at theta = 45, so it validates)."""
+    broad = recipe["payload"]["instrument"]["broadening"]
+    broad["u"], broad["v"], broad["w"] = P(0.0), P(0.001), P(_crossing_w(0.001, tth_cross))
+    recipe["payload"]["instrument"]["corrections"]["zero"] = P(zero)
+    return _validated(recipe)
+
+
+def test_width_check_points_span_the_window_plus_margin_and_stated_corrections():
+    model = _validated()  # window [10, 55], zero 0
+    grid = nb.width_check_points(model.payload)
+    assert grid[0] == pytest.approx(10.0 - nb.WIDTH_MARGIN) and grid[-1] == pytest.approx(55.0 + nb.WIDTH_MARGIN)
+    assert np.allclose(np.diff(grid), nb.WIDTH_GRID_STEP)
+    recipe = _recipe()
+    recipe["payload"]["instrument"]["corrections"].update(
+        {"zero": P(-0.25), "displacement": P(0.1), "transparency": P(0.05)})
+    assert nb.width_margin(_validated(recipe).payload) == pytest.approx(1.0 + 0.25 + 0.1 + 0.05)
+    assert nb.width_check_points(_validated(recipe).payload)[0] == pytest.approx(10.0 - 1.4)
+
+
+def test_negative_width_ranges_is_pure_and_names_each_width():
+    tth = np.array([5.0, 10.0, 20.0, 40.0])
+    none = nb.negative_width_ranges({"u": 0.01, "v": -0.001, "w": 0.002, "x": 0.01, "y": 0.0}, tth)
+    assert none == {}
+    found = nb.negative_width_ranges({"u": 0.0, "v": 0.001, "w": _crossing_w(0.001, 15.0),
+                                      "x": 0.01, "y": -0.002}, tth)
+    assert found["gaussian"] == (5.0, 10.0)          # FWHM^2 < 0 below 15 deg
+    assert found["lorentzian"][0] == 5.0             # X tan(theta) + Y / cos(theta) < 0 at small angles
+
+
+def test_s5_negative_width_just_outside_the_window_is_an_error():
+    """The S5 case: FWHM^2 < 0 only below the window, where easydiffraction still computes reflections."""
+    model = _negative_below(_recipe(), tth_cross=9.9)  # window starts at 10.0: every handed point is fine
+    tth, _, _, mask = nb.prepare_data(model.payload)
+    assert nb.negative_width_ranges(nb.stated_widths(model.payload), tth) == {}  # the handed points alone miss it
+    with pytest.raises(nb.NegativeWidthError) as exc:
+        nb.check_peak_widths(model.payload)
+    message = str(exc.value)
+    assert message.startswith("payload.instrument.broadening: ")
+    assert "Gaussian FWHM^2" in message and "[9, 9.89" in message and "EB-87" in message
+    assert isinstance(exc.value, ValueError) and isinstance(exc.value, EasyDiffractionTranslationError)
+
+
+def test_valid_recipe_passes_the_width_check():
+    nb.check_peak_widths(_validated().payload)
+
+
+def test_width_margin_grows_with_a_stated_zero():
+    """A crossing 1.1 deg below the window is beyond the 1 deg margin; a stated zero of 0.5 deg brings it inside."""
+    nb.check_peak_widths(_negative_below(_recipe(), tth_cross=8.9).payload)
+    with pytest.raises(nb.NegativeWidthError, match=r"Gaussian FWHM\^2 .* \[8\.5, 8\.89"):
+        nb.check_peak_widths(_negative_below(_recipe(), tth_cross=8.9, zero=0.5).payload)
+
+
+def test_build_project_checks_widths_before_importing_the_engine(monkeypatch, tmp_path):
+    """The check runs first, so a wrong profile fails the same way with or without easydiffraction."""
+    def no_engine():
+        raise AssertionError("easydiffraction must not be imported before the width check")
+    monkeypatch.setattr(nb, "_import_easydiffraction", no_engine)
+    with pytest.raises(nb.NegativeWidthError):
+        nb.build_project(_negative_below(_recipe(), tth_cross=9.9), tmp_path)

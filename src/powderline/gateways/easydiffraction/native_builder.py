@@ -39,6 +39,13 @@ Rules implemented (decision log numbers in brackets):
   written in the pattern of easydiffraction's Wyckoff template (EB-77), and the
   nine origin-choice-1 settings it computes wrongly are refused; the error names
   the position to write, never substitutes it (the A117 pattern).
+- **Peak widths (A171, A178; EB-87):** a negative Gaussian FWHM² (U tan²θ +
+  V tanθ + W) or Lorentzian FWHM (X tanθ + Y/cosθ) gives a wrong pattern without
+  a message, and easydiffraction computes reflections just outside the handed
+  points. The stated widths are checked on a 0.01° grid over the window widened
+  by ``WIDTH_MARGIN`` (1°) plus the stated zero, displacement and transparency
+  corrections; a negative width there is an error naming the 2θ range
+  (:func:`check_peak_widths`). The runner re-checks the refined widths.
 """
 
 from __future__ import annotations
@@ -90,10 +97,23 @@ UNIT_FRACTIONAL = "fractional"
 #: Two fractional coordinates are the same (modulo 1) within this (A186): well below core's
 #: special-position tolerance (5e-6) and easydiffraction's Wyckoff tolerance (1e-3), above float noise.
 POSITION_TOL = 1e-6
+#: Peak widths are checked over the fit window widened by this (degrees 2θ) plus the stated
+#: zero, displacement and transparency corrections (A178): a reflection just outside the
+#: window still reaches it (its tail moved the first window point by 12σ in the S5 probe).
+WIDTH_MARGIN = 1.0
+#: Step of the 2θ grid the widths are checked on (degrees).
+WIDTH_GRID_STEP = 0.01
+#: The two peak widths easydiffraction computes from U, V, W, X, Y (EB-87): name -> formula text.
+WIDTH_FORMULAS = {"gaussian": "Gaussian FWHM^2 = U tan^2(theta) + V tan(theta) + W",
+                  "lorentzian": "Lorentzian FWHM = X tan(theta) + Y / cos(theta)"}
 
 
 class SiteError(EasyDiffractionTranslationError, ValueError):
     """easydiffraction cannot use an atom position as stated (EB-47, EB-77); the message names the remedy."""
+
+
+class NegativeWidthError(EasyDiffractionTranslationError, ValueError):
+    """The stated profile makes a peak width negative where easydiffraction computes reflections (A171, A178)."""
 
 
 @dataclass(frozen=True)
@@ -187,6 +207,76 @@ def data_cif(tth, itth, sigma, name: str = EXPERIMENT_NAME) -> str:
 def atom_order(phase: EasydiffractionPhase) -> list[tuple[str, Any]]:
     """``(label, atom)`` pairs in the order handed to easydiffraction: anisotropic atoms first (A169 b, EB-86)."""
     return sorted(phase.atoms.items(), key=lambda item: item[1].Uaniso is None)
+
+
+# --- peak widths (A171, A178; EB-87) ----------------------------------------
+
+
+def width_margin(payload) -> float:
+    """``WIDTH_MARGIN`` plus the stated zero, displacement and transparency corrections (A178 (a))."""
+    corr = payload.instrument.corrections
+    stated = [corr.zero.value] + [p.value for p in (corr.displacement, corr.transparency) if p is not None]
+    return WIDTH_MARGIN + sum(abs(float(v)) for v in stated)
+
+
+def width_check_points(payload) -> np.ndarray:
+    """The 2θ grid the widths are checked on: ``[lo - margin, hi + margin]`` in ``WIDTH_GRID_STEP`` steps.
+
+    ``(lo, hi)`` are the window's limits on the data (core
+    :func:`~powderline.schema_core.fit_limits_on_data`); the grid stays inside
+    (0°, 180°), where tan θ and 1/cos θ are finite.
+    """
+    lo, hi = fit_limits_on_data(payload.fit_range, payload.xrd_data)
+    pad = width_margin(payload)
+    start = max(lo - pad, WIDTH_GRID_STEP)
+    stop = min(hi + pad, 180.0 - WIDTH_GRID_STEP)
+    n = int(np.floor((stop - start) / WIDTH_GRID_STEP + 1e-9)) + 1
+    return start + WIDTH_GRID_STEP * np.arange(max(n, 1))
+
+
+def negative_width_ranges(widths: dict, tth) -> dict:
+    """``{"gaussian": (lo, hi), "lorentzian": (lo, hi)}``: the 2θ ranges of ``tth`` where a width is negative (pure).
+
+    ``widths`` holds ``u, v, w, x, y`` in easydiffraction's units (FWHM² deg²,
+    FWHM deg). An empty dict means every width is >= 0 on ``tth``.
+    """
+    theta = np.radians(np.asarray(tth, dtype=float) / 2.0)
+    t, c = np.tan(theta), np.cos(theta)
+    gaussian = widths["u"] * t**2 + widths["v"] * t + widths["w"]
+    lorentzian = widths["x"] * t + widths["y"] / c
+    found = {}
+    for name, values in (("gaussian", gaussian), ("lorentzian", lorentzian)):
+        neg = values < 0
+        if neg.any():
+            where = np.asarray(tth, dtype=float)[neg]
+            found[name] = (float(where.min()), float(where.max()))
+    return found
+
+
+def stated_widths(payload) -> dict:
+    """``u, v, w, x, y`` as the recipe states them."""
+    return {k: float(getattr(payload.instrument.broadening, k).value) for k in "uvwxy"}
+
+
+def check_peak_widths(payload) -> None:
+    """Raise :class:`NegativeWidthError` when a stated width is negative on :func:`width_check_points` (A171, A178).
+
+    The message is reported at ``payload.instrument.broadening`` and names the
+    2θ range, the formula and the margin, so the user sees why a value outside
+    the window matters.
+    """
+    found = negative_width_ranges(stated_widths(payload), width_check_points(payload))
+    if not found:
+        return
+    lo, hi = fit_limits_on_data(payload.fit_range, payload.xrd_data)
+    parts = [f"{WIDTH_FORMULAS[name]} is negative for 2theta in [{a:.4g}, {b:.4g}] degrees"
+             for name, (a, b) in found.items()]
+    raise NegativeWidthError(
+        "payload.instrument.broadening: " + "; ".join(parts)
+        + f". easydiffraction computes a wrong pattern for such reflections without a message (EB-87) and "
+        f"computes reflections beyond the fit window [{lo:.4g}, {hi:.4g}], so the widths must be >= 0 within "
+        f"{width_margin(payload):.4g} degrees of it (1 degree plus the stated zero, displacement and transparency "
+        "corrections, A178); change U, V, W, X, Y or the fit_range (A171)")
 
 
 # --- site check (EB-47, A164, A174, A176) -----------------------------------
@@ -624,9 +714,12 @@ def build_project(recipe: EasydiffractionRecipe, workdir) -> BuildResult:
     freed easydiffraction parameter, keyed by its path from the ``Project``).
 
     Raises ``ImportError`` without easydiffraction,
-    :class:`EasyDiffractionTranslationError` for an unsupported setting and
-    :class:`SiteError` for a position easydiffraction cannot use as stated.
+    :class:`EasyDiffractionTranslationError` for an unsupported setting,
+    :class:`NegativeWidthError` for a stated profile with a negative width near
+    the window and :class:`SiteError` for a position easydiffraction cannot use
+    as stated.
     """
+    check_peak_widths(recipe.payload)  # before anything is built: the recipe itself is wrong (A171, A178)
     ExperimentFactory, Project, StructureFactory, Logger = _import_easydiffraction()
     Logger.configure(reaction=Logger.Reaction.RAISE)  # easydiffraction's errors raise instead of logging (EB-48)
     workdir = Path(workdir)
