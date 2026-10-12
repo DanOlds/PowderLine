@@ -56,7 +56,7 @@ def isolated_registry():
     [
         (gsasii_gateway, "==5.7.9"),
         (topas_gateway, ">=7,<8"),
-        (easydiff_gateway, ">=0.20.1,<0.21"),
+        (easydiff_gateway, ">=0.21.1,<0.22"),
     ],
 )
 def test_engine_version_spec_parses_and_matches_capabilities(gateway_module, expected_spec):
@@ -303,8 +303,8 @@ def test_easydiff_version_out_of_range_raises(tmp_path, monkeypatch):
 
 
 def test_easydiff_version_in_range_calls_engine(tmp_path, monkeypatch):
-    """When installed_engine_version() returns '0.20.1', run() calls the engine."""
-    monkeypatch.setattr(easydiff_gateway, "installed_engine_version", lambda: "0.20.1")
+    """When installed_engine_version() returns '0.21.1', run() calls the engine."""
+    monkeypatch.setattr(easydiff_gateway, "installed_engine_version", lambda: "0.21.1")
     from powderline.gateways.easydiffraction import engine
 
     fake_run = Mock(return_value={})
@@ -476,7 +476,7 @@ import powderline.gateways.topas.gateway
 import powderline.gateways.topas.schema
 import powderline.gateways.topas.native_writer
 import powderline.gateways.topas.native_run
-import powderline.easydiff.gateway
+import powderline.gateways.easydiffraction.gateway
 from powderline import registry
 
 # The core phase block and its symmetry rules run engine-free (re/03b)

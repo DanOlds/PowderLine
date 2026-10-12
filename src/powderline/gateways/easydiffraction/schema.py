@@ -344,15 +344,18 @@ class EasydiffractionPayload(CoreModel):
     @model_validator(mode="after")
     def _check_negative_intensities(self) -> "EasydiffractionPayload":
         """Negative intensities in fit window are an error (A177, EB-91)."""
+        import numpy as np
+
         from powderline.schema_core import fit_limits_on_data
 
-        mask = fit_limits_on_data(
-            self.xrd_data.tth,
-            self.xrd_data.Itth_weights,
-            self.fit_range
-        )
+        # The points core scores: inside the window's first/last weighted points, w > 0 (A149, A131).
+        lo, hi = fit_limits_on_data(self.fit_range, self.xrd_data)
+        tth = np.asarray(self.xrd_data.tth, dtype=float)
+        weights = np.asarray(self.xrd_data.Itth_weights, dtype=float)
+        intensities = np.asarray(self.xrd_data.Itth, dtype=float)
+        mask = (tth >= lo) & (tth <= hi) & (weights > 0)
 
-        in_window_intensities = self.xrd_data.Itth[mask]
+        in_window_intensities = intensities[mask]
         if (in_window_intensities < 0).any():
             neg_count = (in_window_intensities < 0).sum()
             raise ValueError(
@@ -370,7 +373,7 @@ class EasydiffractionPayload(CoreModel):
         Physical limits (easydiffraction):
         - cell lengths: [0, 30] Å (cannot model > 30 Å)
         - cell angles: [0, 180]°
-        - occupancy: [0, 1]
+        - occupancy: [0, 1] (enforced by core, A76)
         - adp_iso: [0, 10] Å²
         - scale, wavelength: >= 0
 
@@ -381,7 +384,7 @@ class EasydiffractionPayload(CoreModel):
         for phase_name, phase in self.phases.items():
             # Cell lengths
             for length in ["a", "b", "c"]:
-                param = phase.unit_cell[length]
+                param = getattr(phase.unit_cell, length)
                 if param.value > 30.0 and param.max is None:
                     raise ValueError(
                         f"Phase {phase_name!r}: cell length {length} = {param.value} Å > 30 Å. "
@@ -389,15 +392,8 @@ class EasydiffractionPayload(CoreModel):
                         "Either reduce the value or set an explicit max bound."
                     )
 
-            # Atoms
-            for atom_label, atom in phase.atoms.items():
-                # Occupancy [0, 1]
-                if atom.occupancy.value > 1.0 and atom.occupancy.max is None:
-                    raise ValueError(
-                        f"Phase {phase_name!r}, atom {atom_label!r}: occupancy {atom.occupancy.value} > 1.0 "
-                        "(physical limit). Set explicit max or reduce value."
-                    )
-
+        # Occupancy [0, 1]: core already enforces it strictly (A76), so easydiffraction's
+        # identical limit (EB-22) can never be reached here.
         # Wavelength >= 0 already checked in Radiation validator
         # Scale >= 0 already checked in Phase validator
 

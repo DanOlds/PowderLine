@@ -95,7 +95,7 @@ def test_output_files_cross_platform(tmp_path):
 def test_post_build_fit_failure(tmp_path, monkeypatch):
     """Fit failure after build returns success=False with error/traceback."""
     from unittest.mock import MagicMock
-    import powderline.easydiff.builder as builder_module
+    import powderline.gateways.easydiffraction.builder as builder_module
 
     original_build = builder_module.build_project
 

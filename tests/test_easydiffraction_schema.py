@@ -290,7 +290,7 @@ def test_payload_crysfml_uaniso_rejected():
         FitRange,
         Atom,
         BoundedRefinableParameter,
-        Uaniso as UanisoModel,
+        UanisoTensor as UanisoModel,
     )
     import numpy as np
 
@@ -302,7 +302,7 @@ def test_payload_crysfml_uaniso_rejected():
                 Itth=np.array([100.0, 200.0, 150.0]),
                 Itth_weights=np.array([1.0, 1.0, 1.0]),
             ),
-            fit_range=FitRange(min=10.0, max=30.0),
+            fit_range=FitRange.model_validate([10.0, 30.0]),
             phases={
                 "TestPhase": EasydiffractionPhase(
                     space_group="P m -3 m",
@@ -385,7 +385,7 @@ def test_payload_negative_intensity_rejected():
                 Itth=np.array([100.0, -50.0, 150.0]),  # Negative intensity!
                 Itth_weights=np.array([1.0, 1.0, 1.0]),
             ),
-            fit_range=FitRange(min=10.0, max=30.0),  # Window includes negative
+            fit_range=FitRange.model_validate([10.0, 30.0]),  # Window includes negative
             phases={
                 "TestPhase": EasydiffractionPhase(
                     space_group="P m -3 m",
@@ -461,7 +461,7 @@ def test_bounds_cell_over_30_angstrom():
                 Itth=np.array([100.0, 200.0, 150.0]),
                 Itth_weights=np.array([1.0, 1.0, 1.0]),
             ),
-            fit_range=FitRange(min=10.0, max=30.0),
+            fit_range=FitRange.model_validate([10.0, 30.0]),
             phases={
                 "TestPhase": EasydiffractionPhase(
                     space_group="P 1",  # Triclinic - no constraints
@@ -512,7 +512,7 @@ def test_bounds_cell_over_30_angstrom():
 
 
 def test_bounds_occupancy_over_1():
-    """Occupancy > 1.0 with null max is rejected (A138)."""
+    """Occupancy > 1.0 is rejected by core (A76) before easydiffraction's limit (EB-22) applies."""
     from powderline.gateways.easydiffraction.schema import (
         EasydiffractionPayload,
         EasydiffractionPhase,
@@ -537,7 +537,7 @@ def test_bounds_occupancy_over_1():
                 Itth=np.array([100.0, 200.0, 150.0]),
                 Itth_weights=np.array([1.0, 1.0, 1.0]),
             ),
-            fit_range=FitRange(min=10.0, max=30.0),
+            fit_range=FitRange.model_validate([10.0, 30.0]),
             phases={
                 "TestPhase": EasydiffractionPhase(
                     space_group="P m -3 m",
@@ -583,5 +583,4 @@ def test_bounds_occupancy_over_1():
             ),
         )
 
-    assert "occupancy 1.5 > 1.0" in str(exc.value)
-    assert "physical limit" in str(exc.value)
+    assert "occupancy must be between 0 and 1" in str(exc.value)

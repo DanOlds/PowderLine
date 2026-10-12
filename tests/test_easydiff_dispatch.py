@@ -14,7 +14,7 @@ def test_unknown_engine_message_lists_easydiffraction(tmp_path):
 
 
 def test_dispatch_reaches_easydiff_engine(tmp_path, monkeypatch):
-    import powderline.easydiff.engine as ede
+    import powderline.gateways.easydiffraction.engine as ede
     calls = {}
 
     def fake(recipe, output_dir, *, verbose=False, validate_only=False):
