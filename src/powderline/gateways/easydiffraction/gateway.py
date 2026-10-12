@@ -19,7 +19,7 @@ from powderline.schema import RecipeModel
 
 NAME = "easydiffraction"
 #: Supported easydiffraction versions (A41/A44); mirrors the pixi pin.
-ENGINE_VERSION_SPEC = ">=0.20.1,<0.21"
+ENGINE_VERSION_SPEC = ">=0.21.1,<0.22"
 #: Workflows served (0.26.0 schema name until re/06; no SPF — A13.3).
 WORKFLOWS = ("GSASII_Rietveld",)
 #: pixi environment providing easydiffraction + how to install it (renamed in re/08, A42).

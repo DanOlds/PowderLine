@@ -85,7 +85,7 @@ python = ">=3.12"                 # easydiffraction floor; default env stays >=3
 "diffpy.pdffit2" = "*"            # from conda-forge: its PyPI sdist needs GSL to build
 
 [feature.easydiff.pypi-dependencies]
-easydiffraction = ">=0.20.1,<0.21"
+easydiffraction = "==0.21.1"
 
 [environments]
 easydiff = ["easydiff"]
