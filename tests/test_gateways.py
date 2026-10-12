@@ -31,6 +31,12 @@ from test_easydiffraction_native_builder import _recipe as _native_easydiff_reci
 
 REPO = Path(__file__).resolve().parent.parent
 EXAMPLES = REPO / "examples"
+#: The hand-derived native easydiffraction fixtures (A137; the realigned recipe shape, A195).
+EASYDIFF_NATIVE = REPO / "tests" / "data" / "easydiffraction" / "native"
+
+
+def _easydiff_fixture(name="lab6_cryspy_pv.json") -> dict:
+    return json.loads((EASYDIFF_NATIVE / name).read_text(encoding="utf-8"))
 
 
 def _lab6_recipe():
@@ -160,6 +166,24 @@ def test_easydiff_validate_native_dict_returns_native_model():
     assert isinstance(model, easydiff_schema.EasydiffractionRecipe)
     assert easydiff_gateway.validate(model, verbose=True) is model
     assert "easydiffraction.rietveld" in easydiff_gateway.WORKFLOWS
+    fixture = easydiff_gateway.validate(_easydiff_fixture())  # the committed shape (A195)
+    assert isinstance(fixture, easydiff_schema.EasydiffractionRecipe)
+    assert fixture.payload.instrument.broadening.peak_type == "cwl-pseudo-voigt"
+    assert fixture.payload.refinement_controls.calculator == "cryspy"
+
+
+@pytest.mark.parametrize("name, simulation, phases", [
+    ("lab6_crysfml_tch.json", False, 1), ("lab6_cryspy_pv.json", False, 1),
+    ("lab6_slots_simulation.json", True, 1), ("drx33_two_phase_cryspy.json", False, 2),
+])
+def test_easydiff_native_validate_only_on_the_fixtures(name, simulation, phases, tmp_path, monkeypatch):
+    """``run(validate_only=True)`` on each committed fixture: the A194 summary with the fixture's controls."""
+    monkeypatch.setattr(easydiff_gateway, "installed_engine_version", lambda: pytest.fail("no engine for validate_only"))
+    result = easydiff_gateway.run(_easydiff_fixture(name), tmp_path, validate_only=True)
+    assert result["success"] is True and result["method"] == "validate_only"
+    assert result["phases"] == phases and result["max_iterations"] == 1000  # the fixtures' refinement_controls
+    assert result["simulation_mode"] is simulation
+    assert not any(tmp_path.iterdir())  # nothing written
 
 
 def test_easydiff_validate_legacy_dict_returns_recipe_model():
@@ -239,9 +263,11 @@ def test_easydiff_native_run_not_installed_names_env_and_install_command(tmp_pat
 
 
 def test_import_block_easydiff_native_schema_layer(tmp_path):
-    """The native easydiffraction schema layer (validate, run(validate_only=True)) works with the engine blocked."""
-    recipe_path = tmp_path / "native.json"
-    recipe_path.write_text(json.dumps(_native_easydiff_recipe()), encoding="utf-8")
+    """The native easydiffraction schema layer (validate, run(validate_only=True)) works with the engine blocked.
+
+    Runs on the committed CrysFML + TCH fixture (A195 shape; the width check needs numpy only).
+    """
+    recipe_path = EASYDIFF_NATIVE / "lab6_crysfml_tch.json"
     script = f"""
 import sys, importlib.abc, json
 from pathlib import Path
@@ -258,9 +284,16 @@ from powderline.gateways.easydiffraction import gateway
 recipe = json.loads(Path(r'{recipe_path}').read_text(encoding="utf-8"))
 caps = gateway.capabilities()
 assert "easydiffraction.rietveld" in caps["workflows"] and caps["supported_engine_schemas"] == "==1.0.0"
-assert type(gateway.validate(recipe)).__name__ == "EasydiffractionRecipe"
+model = gateway.validate(recipe)
+assert type(model).__name__ == "EasydiffractionRecipe"
+assert model.payload.instrument.broadening.peak_type == "cwl-thompson-cox-hastings"
+assert model.payload.refinement_controls.calculator == "crysfml"
+from powderline.gateways.easydiffraction import native_builder
+native_builder.check_peak_widths(model.payload)
+assert len(native_builder.experiment_plan(model.payload)) == 12
 summary = gateway.run(recipe, r'{tmp_path}', validate_only=True)
 assert summary["method"] == "validate_only" and summary["schema_name"] == "easydiffraction.rietveld"
+assert summary["max_iterations"] == 1000 and summary["simulation_mode"] is False
 assert "easydiffraction" not in sys.modules and "GSASII" not in sys.modules
 print("OK")
 """
@@ -575,8 +608,7 @@ def test_import_block_schema_layer_and_validate(tmp_path):
     """Schema-layer imports (registry, gateways, capabilities, validate) work with engines blocked."""
     recipe_path = str(EXAMPLES / "example_LaB6" / "input.json")
     easydiff_recipe_path = str(EXAMPLES / "example_LaB6_easydiff" / "input.json")
-    easydiff_native_path = tmp_path / "easydiff_native.json"
-    easydiff_native_path.write_text(json.dumps(_native_easydiff_recipe()), encoding="utf-8")
+    easydiff_native_path = EASYDIFF_NATIVE / "lab6_cryspy_pv.json"  # the committed fixture, as for topas
     topas_native_path = str(REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json")
     script = f"""
 import sys, importlib.abc, json

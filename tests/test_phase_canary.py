@@ -23,8 +23,10 @@ ENGINE_PHASES: list[tuple[str, str, type, dict]] = [
     ("powderline.gateways.gsasii.schema", "GsasiiPhase", RefinableParameter, {"scale": [1.0, False]}),
     ("powderline.gateways.topas.schema", "TopasPhase", BoundedRefinableParameter,
      {"scale": [1e-6, False, None, None]}),
+    # easydiffraction (re/06): `scale` is the only engine field of a phase (the background is the experiment's,
+    # A189); the value is the LaB6 fixtures' (tests/data/easydiffraction/native, A195).
     ("powderline.gateways.easydiffraction.schema", "EasydiffractionPhase", BoundedRefinableParameter,
-     {"scale": [1.0, False, None, None]}),
+     {"scale": [5.4e-6, False, None, None]}),
 ]
 
 
