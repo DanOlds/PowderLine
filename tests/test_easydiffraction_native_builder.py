@@ -194,3 +194,158 @@ def test_build_project_values_only(tmp_path):
     assert expt.instrument.setup_wavelength.value == pytest.approx(1.5406)
     assert result.window_mask.sum() == int(((np.asarray(model.payload.xrd_data.tth) >= 10.0)
                                             & (np.asarray(model.payload.xrd_data.tth) <= 55.0)).sum()) - 1
+
+
+# ---------------------------------------------------------------------------
+# 3.2 site check and special positions (pure, with a duck-typed structure)
+# ---------------------------------------------------------------------------
+
+
+class _Value:
+    def __init__(self, value):
+        self.value = value
+
+
+class _FakeSite:
+    def __init__(self, xyz, multiplicity, letter="f"):
+        self.fract_x, self.fract_y, self.fract_z = (_Value(v) for v in xyz)
+        self.multiplicity = _Value(multiplicity)
+        self.wyckoff_letter = _Value(letter)
+
+
+class _FakeStructure:
+    """What ``site_problems`` reads of an easydiffraction structure: ``atom_sites[label]``."""
+
+    def __init__(self, sites: dict):
+        self.atom_sites = sites
+
+
+def _hex_phase(x=0.137, y=0.863):
+    """P 63/m m c with Zn on 6h (x, -x, 1/4), stated with y = 1 - x (in [0, 1))."""
+    return {
+        "space_group": "P 63/m m c",
+        "unit_cell": {"a": P(5.2), "b": P(5.2), "c": P(8.6), "alpha": P(90.0), "beta": P(90.0), "gamma": P(120.0)},
+        "atoms": {
+            "Mg1": {"element": "Mg", "x": P(0.333333), "y": P(0.666667), "z": P(0.0625), "occupancy": P(1.0),
+                    "ADP": "Uiso", "Uiso": P(0.01)},
+            "Zn1": {"element": "Zn", "x": P(x), "y": P(y), "z": P(0.25), "occupancy": P(1.0),
+                    "ADP": "Uiso", "Uiso": P(0.01)},
+        },
+        "scale": P(1.0),
+    }
+
+
+def test_compare_site_same_translated_moved_multiplicity():
+    assert nb._compare_site((0.1997, 0.5, 0.5), (0.1997, 0.5, 0.5), 6, 6) == nb.SiteComparison("same")
+    found = nb._compare_site((0.137, 0.863, 0.25), (0.137, -0.137, 0.25), 6, 6)
+    assert found.status == "translated" and found.shift == (0, -1, 0)
+    assert nb._compare_site((0.137, 0.863, 0.25), (0.137, 0.863 + 2e-3, 0.25), 6, 6).status == "moved"
+    assert nb._compare_site((0.137, 0.863, 0.25), (0.5, 0.863, 0.25), 6, 6).status == "moved"
+    assert nb._compare_site((0.47, 0.5, 0.5), (0.47, 0.5, 0.5), 6, 24).status == "multiplicity"
+    # float noise below POSITION_TOL is the same position
+    assert nb._compare_site((1 / 3, 2 / 3, 0.25), (0.33333333333, 0.66666666667, 0.25), 2, 2).status == "same"
+
+
+def test_check_sites_accepts_lattice_translation_with_warning():
+    phase = _validated(Zn=_hex_phase()).payload.phases["Zn"]
+    structure = _FakeStructure({"Mg1": _FakeSite((1 / 3, 2 / 3, 0.0625), 4, "f"),
+                                "Zn1": _FakeSite((0.137, -0.137, 0.25), 6, "h")})
+    warnings = nb.check_sites("Zn", phase, "crysfml", structure)
+    assert [w["code"] for w in warnings] == ["easydiffraction_position_translated"]
+    assert warnings[0]["field_path"] == "payload.phases.Zn.atoms.Zn1"
+    assert "(0, -1, 0)" in warnings[0]["message"] and "(0.137, -0.137, 0.25)" in warnings[0]["message"]
+
+
+def test_check_sites_rejects_move_that_is_not_a_translation():
+    phase = _validated(Zn=_hex_phase()).payload.phases["Zn"]
+    structure = _FakeStructure({"Mg1": _FakeSite((1 / 3, 2 / 3, 0.0625), 4),
+                                "Zn1": _FakeSite((0.137, 0.137, 0.25), 6)})
+    with pytest.raises(nb.SiteError) as exc:
+        nb.check_sites("Zn", phase, "crysfml", structure)
+    assert "payload.phases.Zn.atoms.Zn1 at (0.137, 0.863, 0.25)" in str(exc.value)
+    assert "holds it at (0.137, 0.137, 0.25)" in str(exc.value)
+    assert isinstance(exc.value, (EasyDiffractionTranslationError, ValueError))
+
+
+def test_check_sites_rejects_multiplicity_mismatch_naming_both():
+    phase = _validated().payload.phases["LaB6"]
+    structure = _FakeStructure({"La1": _FakeSite((0.0, 0.0, 0.0), 1, "a"),
+                                "B1": _FakeSite((0.1997, 0.5, 0.5), 24, "l")})
+    with pytest.raises(nb.SiteError) as exc:
+        nb.check_sites("LaB6", phase, "crysfml", structure)
+    message = str(exc.value)
+    assert "B1" in message and "multiplicity 24" in message and "multiplicity in 'P m -3 m' is 6" in message
+    assert "equivalent positions" in message and "(0.5, 0.1997, 0.5)" in message
+    assert "La1" not in message.split("- ")[1]  # only the problem atom is listed
+
+
+def test_origin1_refused_for_cryspy_only():
+    from powderline.symmetry import analyze_site
+
+    special = analyze_site("F d -3 m:1", (0.137, 0.25, 0.25))  # 48f
+    general = analyze_site("F d -3 m:1", (0.137, 0.271, 0.389))
+    why = nb.origin1_problem("F d -3 m:1", "cryspy", special)
+    assert why is not None and "'F d -3 m:2'" in why and "crysfml" in why
+    assert nb.origin1_problem("F d -3 m:1", "crysfml", special) is None
+    assert nb.origin1_problem("F d -3 m:1", "cryspy", general) is None
+    assert nb.origin1_problem("F d -3 m:2", "cryspy", analyze_site("F d -3 m:2", (0.137, 0.125, 0.125))) is None
+    assert nb.origin1_problem("P m -3 m", "cryspy", analyze_site("P m -3 m", (0.1997, 0.5, 0.5))) is None
+
+
+def test_check_sites_origin1_error_before_reading_the_structure(monkeypatch):
+    """The origin-1 refusal needs no easydiffraction reading of the atom (the setting is the problem)."""
+    from powderline.gateways.easydiffraction import space_group_support as sgs
+
+    monkeypatch.setitem(sgs.CRYSPY_SETTINGS, "F d -3 m:1", {"short_name": "F d -3 m", "coord_system_code": "1"})
+    phase = _validated(Spinel={
+        "space_group": "F d -3 m:1",
+        "unit_cell": {k: P(8.08) for k in "abc"} | {k: P(90.0) for k in ("alpha", "beta", "gamma")},
+        "atoms": {"O1": {"element": "O", "x": P(0.137), "y": P(0.25), "z": P(0.25), "occupancy": P(1.0),
+                         "ADP": "Uiso", "Uiso": P(0.01)}},
+        "scale": P(1.0)}).payload.phases["Spinel"]
+    with pytest.raises(nb.SiteError, match="origin-choice-1"):
+        nb.check_sites("Spinel", phase, "cryspy", _FakeStructure({}))
+
+
+@pytest.mark.parametrize("template, xyz, expected", [
+    ("(x,1/2,1/2)", (0.1997, 0.5, 0.5), True),
+    ("(x,1/2,1/2)", (0.5, 0.5, 0.1997), False),      # another image of the orbit (EB-77)
+    ("(x,-x,z)", (0.137, 0.863, 0.25), True),         # modulo 1 (EB-74)
+    ("(x,-x,z)", (0.137, -0.137, 0.25), True),
+    ("(x,2x,1/4)", (0.863, 0.726, 0.25), True),
+    ("(x,2x,1/4)", (0.274, 0.137, 0.25), False),
+    ("(1/4,1/4,z)", (0.25, 0.25, 0.389), True),
+    ("(1/4,1/4,z)", (0.75, 0.25, 0.389), False),
+    ("(x,1/2-x,z)", (0.137, 0.363, 0.3), True),
+    ("(2x,x,z)", (0.274, 0.137, 0.3), True),
+])
+def test_matches_template(template, xyz, expected):
+    assert nb._matches_template(template, xyz) is expected
+
+
+def test_check_sites_cryspy_template_rule_names_the_position_to_write(monkeypatch):
+    """CrysPy: B on 6f written as (1/2, 1/2, x) is refused with (x, 1/2, 1/2) suggested (A164)."""
+    recipe = _recipe()
+    b1 = recipe["payload"]["phases"]["LaB6"]["atoms"]["B1"]
+    b1["x"], b1["y"], b1["z"] = P(0.5), P(0.5), P(0.1997)
+    phase = _validated(recipe).payload.phases["LaB6"]
+    structure = _FakeStructure({"La1": _FakeSite((0.0, 0.0, 0.0), 1, "a"),
+                                "B1": _FakeSite((0.5, 0.5, 0.1997), 6, "f")})
+    monkeypatch.setattr(nb, "_ed_wyckoff_template", lambda name, code, letter: {"f": "(x,1/2,1/2)"}.get(letter))
+    with pytest.raises(nb.SiteError) as exc:
+        nb.check_sites("LaB6", phase, "cryspy", structure)
+    assert "template (x,1/2,1/2)" in str(exc.value) and "(0.1997, 0.5, 0.5)" in str(exc.value)
+    # CrysFML has no such rule, and CrysPy accepts the template's own pattern
+    assert nb.check_sites("LaB6", phase, "crysfml", structure) == []
+    phase_ok = _validated().payload.phases["LaB6"]
+    structure_ok = _FakeStructure({"La1": _FakeSite((0.0, 0.0, 0.0), 1, "a"),
+                                   "B1": _FakeSite((0.1997, 0.5, 0.5), 6, "f")})
+    assert nb.check_sites("LaB6", phase_ok, "cryspy", structure_ok) == []
+
+
+@needs_ed
+def test_build_project_runs_site_check(tmp_path):
+    result = nb.build_project(_validated(Zn=_hex_phase()), tmp_path)
+    assert [w["code"] for w in result.warnings] in ([], ["easydiffraction_position_translated"])
+    zn = result.project.structures["zn"].atom_sites["Zn1"]
+    assert int(zn.multiplicity.value) == 6

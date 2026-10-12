@@ -27,11 +27,22 @@ Rules implemented (decision log numbers in brackets):
   EB-86); reports stay keyed by label.
 - **Background (A183):** the schema states a Chebyshev background per phase;
   easydiffraction has one per experiment, so at most one phase may state one.
+- **Site check (EB-47; A176, A164, A174):** after the build, every atom's
+  easydiffraction Wyckoff multiplicity must equal core's, and the held position
+  must be the stated one modulo a lattice translation (accepted with the
+  informative warning ``easydiffraction_position_translated``); any other move
+  is an error. With CrysPy, a special position with a free coordinate must be
+  written in the pattern of easydiffraction's Wyckoff template (EB-77), and the
+  nine origin-choice-1 settings it computes wrongly are refused; the error names
+  the position to write, never substitutes it (the A117 pattern).
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from fractions import Fraction
+from itertools import product
 from pathlib import Path
 from typing import Any, Optional
 
@@ -40,8 +51,12 @@ import numpy as np
 from powderline.exceptions import StructuredWarning
 from powderline.gateways.easydiffraction.errors import EasyDiffractionTranslationError
 from powderline.gateways.easydiffraction.schema import EasydiffractionPhase, EasydiffractionRecipe
-from powderline.gateways.easydiffraction.space_group_support import map_space_group
+from powderline.gateways.easydiffraction.space_group_support import (
+    CRYSPY_ORIGIN1_UNSUPPORTED,
+    map_space_group,
+)
 from powderline.schema_core import fit_limits_on_data
+from powderline.symmetry import SiteAnalysis, orbit
 
 #: sigma handed for a data point outside the fit window or with zero weight (A158).
 SIGMA_WEIGHTLESS = 1e8
@@ -56,6 +71,13 @@ CELL_ATTRS = {"a": "length_a", "b": "length_b", "c": "length_c",
               "alpha": "angle_alpha", "beta": "angle_beta", "gamma": "angle_gamma"}
 #: Core Uij component -> easydiffraction ``atom_site_aniso`` attribute.
 UIJ_ATTRS = {"U11": "adp_11", "U22": "adp_22", "U33": "adp_33", "U12": "adp_12", "U13": "adp_13", "U23": "adp_23"}
+#: Two fractional coordinates are the same (modulo 1) within this (A186): well below core's
+#: special-position tolerance (5e-6) and easydiffraction's Wyckoff tolerance (1e-3), above float noise.
+POSITION_TOL = 1e-6
+
+
+class SiteError(EasyDiffractionTranslationError, ValueError):
+    """easydiffraction cannot use an atom position as stated (EB-47, EB-77); the message names the remedy."""
 
 
 @dataclass(frozen=True)
@@ -169,6 +191,196 @@ def background_phase(payload) -> Optional[str]:
     return stated[0] if stated else None
 
 
+# --- site check (EB-47, A164, A174, A176) -----------------------------------
+
+
+@dataclass(frozen=True)
+class SiteComparison:
+    """How easydiffraction holds an atom against the recipe's statement.
+
+    ``status``: ``"same"``; ``"translated"`` (the same position, moved by the lattice
+    vector ``shift`` = held - stated; A176); ``"moved"`` (another position); or
+    ``"multiplicity"`` (easydiffraction's site multiplicity differs from core's, EB-47).
+    """
+
+    status: str
+    shift: tuple = (0, 0, 0)
+
+
+def _compare_site(stated_xyz, held_xyz, core_mult: int, ed_mult: int) -> SiteComparison:
+    """Pure comparison of the stated and held positions (modulo 1) and multiplicities."""
+    if int(core_mult) != int(ed_mult):
+        return SiteComparison("multiplicity")
+    delta = np.asarray(held_xyz, dtype=float) - np.asarray(stated_xyz, dtype=float)
+    shift = np.round(delta)
+    if np.max(np.abs(delta - shift)) > POSITION_TOL:
+        return SiteComparison("moved")
+    shift = tuple(int(v) for v in shift)
+    return SiteComparison("translated" if any(shift) else "same", shift)
+
+
+def _coordinate(v: float) -> str:
+    """A coordinate as a recipe states it (A120, A121): exactly when it has a finite decimal form, else to 6 decimals."""
+    frac = Fraction(v).limit_denominator(48)
+    if abs(float(frac) - v) < 1e-9:
+        d = frac.denominator
+        while d % 2 == 0:
+            d //= 2
+        while d % 5 == 0:
+            d //= 5
+        return repr(float(frac)) if d == 1 else f"{float(frac):.6f}"  # 1/5 -> 0.2; 1/3 -> 0.333333
+    return repr(round(v, 10))
+
+
+def _fmt_xyz(xyz) -> str:
+    return "(" + ", ".join(_coordinate(float(v)) for v in xyz) + ")"
+
+
+_TERM = re.compile(r"([+-]?)(\d+(?:/\d+)?)?\*?([xyz])?")
+
+
+def _linear_form(expr: str) -> tuple[dict, Fraction]:
+    """``"-2x+1/2"`` -> ``({"x": -2}, 1/2)``: coefficients per variable and the constant."""
+    coefficients: dict = {}
+    constant = Fraction(0)
+    for sign, number, var in _TERM.findall(expr.replace(" ", "")):
+        if not number and not var:
+            continue
+        k = Fraction(number) if number else Fraction(1)
+        if sign == "-":
+            k = -k
+        if var:
+            coefficients[var] = coefficients.get(var, Fraction(0)) + k
+        else:
+            constant += k
+    return coefficients, constant
+
+
+def _matches_template(template: str, xyz, tol: float = POSITION_TOL) -> bool:
+    """True when ``xyz`` is written in the pattern of easydiffraction's Wyckoff ``template`` (modulo 1).
+
+    ``template`` is one entry of easydiffraction's table, e.g. ``"(x,1/2,1/2)"``,
+    ``"(x,-x,z)"``, ``"(x,2x,1/4)"``. The free variables are read from the
+    components where they stand alone (``k·v + c``; ``v = (comp - c + n)/k`` for
+    the ``|k|`` candidates ``n``), the template is evaluated at them and compared
+    with ``xyz`` modulo 1. Pure: no easydiffraction.
+    """
+    forms = [_linear_form(part) for part in template.strip().strip("()").split(",")]
+    if len(forms) != 3:
+        return False
+    xyz = [float(v) for v in xyz]
+    candidates: dict = {}
+    for var in "xyz":
+        options = []
+        for (coefs, const), value in zip(forms, xyz):
+            if set(coefs) == {var}:
+                k = coefs[var]
+                options = [(value - float(const) + n) / float(k) for n in range(abs(k.numerator))]
+                if k == 1:
+                    break
+        if options:
+            candidates[var] = options
+        elif any(var in coefs for coefs, _ in forms):
+            return False  # the variable never stands alone: not a template form we can read
+    names = list(candidates)
+    for values in product(*(candidates[n] for n in names)):
+        assignment = dict(zip(names, values))
+        for (coefs, const), value in zip(forms, xyz):
+            evaluated = float(const) + sum(float(k) * assignment[v] for v, k in coefs.items())
+            d = evaluated - value
+            if abs(d - round(d)) > tol:
+                break
+        else:
+            return True
+    return False
+
+
+def _ed_wyckoff_template(name_h_m: str, code: str, letter: str) -> Optional[str]:
+    """easydiffraction's template for a Wyckoff letter (``"(x,1/2,1/2)"``), or ``None`` when it has none."""
+    from easydiffraction.crystallography.crystallography import space_group_wyckoff_table
+
+    entry = space_group_wyckoff_table(name_h_m, code or None).get(letter)
+    return None if entry is None else entry["coords_xyz"][0]
+
+
+def origin1_problem(space_group: str, calculator: str, site: SiteAnalysis) -> Optional[str]:
+    """The A174 refusal: CrysPy computes special positions wrongly in nine origin-choice-1 settings (EB-77)."""
+    if calculator != "cryspy" or site.stabilizer_order == 1 or space_group not in CRYSPY_ORIGIN1_UNSUPPORTED:
+        return None
+    return (f"it is on a special position (multiplicity {site.multiplicity}) of {space_group!r}, an origin-choice-1 "
+            f"setting in which CrysPy computes special positions wrongly (EB-77); state the origin-choice-2 setting "
+            f"{space_group[:-2] + ':2'!r} (transforming the coordinates), or use calculator 'crysfml' (A174)")
+
+
+def _held(ed_atom) -> tuple:
+    return (float(ed_atom.fract_x.value), float(ed_atom.fract_y.value), float(ed_atom.fract_z.value))
+
+
+def site_problems(phase_name: str, phase: EasydiffractionPhase, calculator: str, ed_phase) -> tuple[list, list]:
+    """``(problems, warnings)`` of a built structure's atoms against the validated phase.
+
+    ``ed_phase`` is the easydiffraction structure built from ``phase`` (its atom
+    sites expose ``fract_x/y/z``, ``multiplicity`` and ``wyckoff_letter``).
+    """
+    problems: list[str] = []
+    warnings: list[StructuredWarning] = []
+    sg = phase.space_group
+    name_h_m, code = resolve_space_group(sg, calculator)
+    for label, atom in phase.atoms.items():
+        site = phase.site(label)
+        stated = (atom.x.value, atom.y.value, atom.z.value)
+        where = f"payload.phases.{phase_name}.atoms.{label} at {_fmt_xyz(stated)}"
+        why = origin1_problem(sg, calculator, site)
+        if why is not None:
+            problems.append(f"{where}: {why}")
+            continue
+        ed_atom = ed_phase.atom_sites[label]
+        held = _held(ed_atom)
+        ed_mult = int(ed_atom.multiplicity.value)
+        found = _compare_site(stated, held, site.multiplicity, ed_mult)
+        if found.status == "multiplicity":
+            others = [p for p in orbit(sg, stated) if _compare_site(stated, p, 1, 1).status == "moved"][:3]
+            hint = (f"; equivalent positions of the same site: {', '.join(_fmt_xyz(p) for p in others)}"
+                    if others else "")
+            problems.append(f"{where}: easydiffraction reads it as Wyckoff {ed_atom.wyckoff_letter.value!r} with "
+                            f"multiplicity {ed_mult}, but its multiplicity in {sg!r} is {site.multiplicity}: the site "
+                            f"weight, so the intensities, would be wrong (EB-47){hint}")
+            continue
+        if found.status == "moved":
+            problems.append(f"{where}: easydiffraction holds it at {_fmt_xyz(held)}, which is not the stated position "
+                            f"modulo a lattice translation (EB-47); state a position easydiffraction keeps")
+            continue
+        if found.status == "translated":
+            warnings.append(StructuredWarning(
+                code="easydiffraction_position_translated",
+                message=(f"{where}: easydiffraction holds it at {_fmt_xyz(held)}, the same position translated by "
+                         f"the lattice vector {found.shift}; the pattern is identical and results are reported in "
+                         "the recipe's writing (A176)"),
+                field_path=f"payload.phases.{phase_name}.atoms.{label}"))
+        if calculator == "cryspy" and site.stabilizer_order > 1 and any(a != "FIXED" for a in site.axes):
+            template = _ed_wyckoff_template(name_h_m, code, ed_atom.wyckoff_letter.value)
+            if template is not None and not _matches_template(template, stated):
+                suggestion = next((p for p in orbit(sg, stated) if _matches_template(template, p)), None)
+                remedy = (f"state the equivalent position {_fmt_xyz(suggestion)} instead" if suggestion is not None
+                          else "no equivalent position in the template's pattern was found")
+                aniso = ("; its Uaniso must be transformed by the same symmetry operation (U' = R U R^T)"
+                         if atom.Uaniso is not None else "")
+                problems.append(f"{where}: with CrysPy, a special position with a free coordinate must be written in "
+                                f"the pattern of easydiffraction's Wyckoff template {template} for site "
+                                f"{ed_atom.wyckoff_letter.value!r}; another image of the orbit gives wrong structure "
+                                f"factors (EB-77); {remedy}{aniso} (A164)")
+    return problems, warnings
+
+
+def check_sites(phase_name: str, phase: EasydiffractionPhase, calculator: str, ed_phase) -> list:
+    """Raise :class:`SiteError` listing every problem :func:`site_problems` finds; return its warnings."""
+    problems, warnings = site_problems(phase_name, phase, calculator, ed_phase)
+    if problems:
+        raise SiteError("easydiffraction cannot use these atom positions as stated:\n"
+                        + "\n".join(f"  - {p}" for p in problems))
+    return warnings
+
+
 # --- runtime layer (imports easydiffraction) -------------------------------
 
 
@@ -265,11 +477,12 @@ def _build_experiment(ExperimentFactory, payload, cif: str, names: dict):
 def build_project(recipe: EasydiffractionRecipe, workdir) -> BuildResult:
     """Build the easydiffraction ``Project`` of a validated native recipe.
 
-    Writes the handed data loop to ``workdir / DATA_CIF_NAME``. Values only here;
-    the site check and the refinement flags are applied by the later steps.
+    Writes the handed data loop to ``workdir / DATA_CIF_NAME``. Values and the
+    site check here; the refinement flags are applied by the next step.
 
-    Raises ``ImportError`` without easydiffraction and
-    :class:`EasyDiffractionTranslationError` for an unsupported setting.
+    Raises ``ImportError`` without easydiffraction,
+    :class:`EasyDiffractionTranslationError` for an unsupported setting and
+    :class:`SiteError` for a position easydiffraction cannot use as stated.
     """
     ExperimentFactory, Project, StructureFactory, Logger = _import_easydiffraction()
     Logger.configure(reaction=Logger.Reaction.RAISE)  # easydiffraction's errors raise instead of logging (EB-48)
@@ -292,4 +505,8 @@ def build_project(recipe: EasydiffractionRecipe, workdir) -> BuildResult:
         project.structures.add(structure)
     project.experiments.add(expt)
 
-    return BuildResult(project=project, manifest={}, warnings=[], window_mask=mask, datablock_names=names)
+    warnings: list[StructuredWarning] = []
+    for name, phase in payload.phases.items():  # easydiffraction detects the Wyckoff sites at build time (EB-74)
+        warnings += check_sites(name, phase, calculator, project.structures[names[name]])
+
+    return BuildResult(project=project, manifest={}, warnings=warnings, window_mask=mask, datablock_names=names)
