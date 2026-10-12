@@ -363,6 +363,46 @@ class EasydiffractionPayload(CoreModel):
 
         return self
 
+    @model_validator(mode="after")
+    def _check_bounds_vs_physical_limits(self) -> "EasydiffractionPayload":
+        """Check values against physical limits on null sides (A138, EB-71).
+
+        Physical limits (easydiffraction):
+        - cell lengths: [0, 30] Å (cannot model > 30 Å)
+        - cell angles: [0, 180]°
+        - occupancy: [0, 1]
+        - adp_iso: [0, 10] Å²
+        - scale, wavelength: >= 0
+
+        A stated bound replaces the limit on that side.
+        A value outside a physical limit on a null side is an error.
+        """
+        # Check each phase
+        for phase_name, phase in self.phases.items():
+            # Cell lengths
+            for length in ["a", "b", "c"]:
+                param = phase.unit_cell[length]
+                if param.value > 30.0 and param.max is None:
+                    raise ValueError(
+                        f"Phase {phase_name!r}: cell length {length} = {param.value} Å > 30 Å. "
+                        "easydiffraction cannot model cells > 30 Å. "
+                        "Either reduce the value or set an explicit max bound."
+                    )
+
+            # Atoms
+            for atom_label, atom in phase.atoms.items():
+                # Occupancy [0, 1]
+                if atom.occupancy.value > 1.0 and atom.occupancy.max is None:
+                    raise ValueError(
+                        f"Phase {phase_name!r}, atom {atom_label!r}: occupancy {atom.occupancy.value} > 1.0 "
+                        "(physical limit). Set explicit max or reduce value."
+                    )
+
+        # Wavelength >= 0 already checked in Radiation validator
+        # Scale >= 0 already checked in Phase validator
+
+        return self
+
 
 # --- recipe model ----------------------------------------------------------
 

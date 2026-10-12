@@ -433,3 +433,155 @@ def test_payload_negative_intensity_rejected():
 
     assert "Negative intensities in fit window" in str(exc.value)
     assert "easydiffraction rejects negative intensity data" in str(exc.value)
+
+
+def test_bounds_cell_over_30_angstrom():
+    """Cell length > 30 Å with null max is rejected (A138, EB-71)."""
+    from powderline.gateways.easydiffraction.schema import (
+        EasydiffractionPayload,
+        EasydiffractionPhase,
+        Instrument,
+        Radiation,
+        Corrections,
+        Broadening,
+        RefinementControls,
+    )
+    from powderline.schema_core import (
+        XRDData,
+        FitRange,
+        Atom,
+        BoundedRefinableParameter,
+    )
+    import numpy as np
+
+    with pytest.raises(ValidationError) as exc:
+        EasydiffractionPayload(
+            xrd_data=XRDData(
+                tth=np.array([10.0, 20.0, 30.0]),
+                Itth=np.array([100.0, 200.0, 150.0]),
+                Itth_weights=np.array([1.0, 1.0, 1.0]),
+            ),
+            fit_range=FitRange(min=10.0, max=30.0),
+            phases={
+                "TestPhase": EasydiffractionPhase(
+                    space_group="P 1",  # Triclinic - no constraints
+                    unit_cell={
+                        "a": [35.0, True, None, None],  # > 30 Å with null max!
+                        "b": [4.15, False, None, None],
+                        "c": [4.15, False, None, None],
+                        "alpha": [90.0, False, None, None],
+                        "beta": [90.0, False, None, None],
+                        "gamma": [90.0, False, None, None],
+                    },
+                    atoms={
+                        "Fe1": Atom[BoundedRefinableParameter](
+                            element="Fe",
+                            x=[0.0, False, None, None],
+                            y=[0.0, False, None, None],
+                            z=[0.0, False, None, None],
+                            occupancy=[1.0, False, None, None],
+                            ADP="Uiso",
+                            Uiso=[0.01, False, None, None],
+                        )
+                    },
+                    scale=[1.0, False, None, None],
+                )
+            },
+            instrument=Instrument(
+                radiation=Radiation(wavelength=[1.5406, False, None, None]),
+                corrections=Corrections(
+                    zero=[0.0, False, None, None],
+                    polarization=[0.99, False, None, None],
+                ),
+                broadening=Broadening(
+                    u=[1.0, False, None, None],
+                    v=[0.0, False, None, None],
+                    w=[1.0, False, None, None],
+                    x=[0.0, False, None, None],
+                    y=[0.0, False, None, None],
+                ),
+            ),
+            refinement_controls=RefinementControls(
+                calculator="cryspy",
+                peak_type="pseudo-voigt",
+            ),
+        )
+
+    assert "cell length a = 35.0 Å > 30 Å" in str(exc.value)
+    assert "easydiffraction cannot model cells > 30 Å" in str(exc.value)
+
+
+def test_bounds_occupancy_over_1():
+    """Occupancy > 1.0 with null max is rejected (A138)."""
+    from powderline.gateways.easydiffraction.schema import (
+        EasydiffractionPayload,
+        EasydiffractionPhase,
+        Instrument,
+        Radiation,
+        Corrections,
+        Broadening,
+        RefinementControls,
+    )
+    from powderline.schema_core import (
+        XRDData,
+        FitRange,
+        Atom,
+        BoundedRefinableParameter,
+    )
+    import numpy as np
+
+    with pytest.raises(ValidationError) as exc:
+        EasydiffractionPayload(
+            xrd_data=XRDData(
+                tth=np.array([10.0, 20.0, 30.0]),
+                Itth=np.array([100.0, 200.0, 150.0]),
+                Itth_weights=np.array([1.0, 1.0, 1.0]),
+            ),
+            fit_range=FitRange(min=10.0, max=30.0),
+            phases={
+                "TestPhase": EasydiffractionPhase(
+                    space_group="P m -3 m",
+                    unit_cell={
+                        "a": [4.15, False, None, None],
+                        "b": [4.15, False, None, None],
+                        "c": [4.15, False, None, None],
+                        "alpha": [90.0, False, None, None],
+                        "beta": [90.0, False, None, None],
+                        "gamma": [90.0, False, None, None],
+                    },
+                    atoms={
+                        "Fe1": Atom[BoundedRefinableParameter](
+                            element="Fe",
+                            x=[0.0, False, None, None],
+                            y=[0.0, False, None, None],
+                            z=[0.0, False, None, None],
+                            occupancy=[1.5, True, None, None],  # > 1.0 with null max!
+                            ADP="Uiso",
+                            Uiso=[0.01, False, None, None],
+                        )
+                    },
+                    scale=[1.0, False, None, None],
+                )
+            },
+            instrument=Instrument(
+                radiation=Radiation(wavelength=[1.5406, False, None, None]),
+                corrections=Corrections(
+                    zero=[0.0, False, None, None],
+                    polarization=[0.99, False, None, None],
+                ),
+                broadening=Broadening(
+                    u=[1.0, False, None, None],
+                    v=[0.0, False, None, None],
+                    w=[1.0, False, None, None],
+                    x=[0.0, False, None, None],
+                    y=[0.0, False, None, None],
+                ),
+            ),
+            refinement_controls=RefinementControls(
+                calculator="cryspy",
+                peak_type="pseudo-voigt",
+            ),
+        )
+
+    assert "occupancy 1.5 > 1.0" in str(exc.value)
+    assert "physical limit" in str(exc.value)
