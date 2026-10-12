@@ -233,3 +233,203 @@ def test_phase_with_atom_refinement():
     assert phase.scale.refine_flag is True
     assert phase.atoms["La1"].occupancy.refine_flag is True
     assert phase.atoms["B1"].z.refine_flag is True
+
+
+def test_refinement_controls_cryspy_pseudo_voigt():
+    """CrysPy supports pseudo-voigt peak type."""
+    from powderline.gateways.easydiffraction.schema import RefinementControls
+
+    controls = RefinementControls(
+        calculator="cryspy",
+        peak_type="pseudo-voigt"
+    )
+    assert controls.calculator == "cryspy"
+    assert controls.peak_type == "pseudo-voigt"
+
+
+def test_refinement_controls_cryspy_tch():
+    """CrysPy supports tch peak type."""
+    from powderline.gateways.easydiffraction.schema import RefinementControls
+
+    controls = RefinementControls(
+        calculator="cryspy",
+        peak_type="tch"
+    )
+    assert controls.calculator == "cryspy"
+    assert controls.peak_type == "tch"
+
+
+def test_refinement_controls_crysfml_tch_only():
+    """CrysFML only supports tch peak type (A162)."""
+    from powderline.gateways.easydiffraction.schema import RefinementControls
+
+    # tch is allowed
+    controls = RefinementControls(calculator="crysfml", peak_type="tch")
+    assert controls.calculator == "crysfml"
+    assert controls.peak_type == "tch"
+
+    # pseudo-voigt is not
+    with pytest.raises(ValidationError) as exc:
+        RefinementControls(calculator="crysfml", peak_type="pseudo-voigt")
+    assert "not supported by calculator" in str(exc.value)
+
+
+def test_payload_crysfml_uaniso_rejected():
+    """CrysFML + Uaniso raises error (A169a, EB-23)."""
+    from powderline.gateways.easydiffraction.schema import (
+        EasydiffractionPayload,
+        EasydiffractionPhase,
+        Instrument,
+        Radiation,
+        Corrections,
+        Broadening,
+        RefinementControls,
+    )
+    from powderline.schema_core import (
+        XRDData,
+        FitRange,
+        Atom,
+        BoundedRefinableParameter,
+        Uaniso as UanisoModel,
+    )
+    import numpy as np
+
+    # Create a minimal payload with CrysFML + Uaniso atom
+    with pytest.raises(ValidationError) as exc:
+        EasydiffractionPayload(
+            xrd_data=XRDData(
+                tth=np.array([10.0, 20.0, 30.0]),
+                Itth=np.array([100.0, 200.0, 150.0]),
+                Itth_weights=np.array([1.0, 1.0, 1.0]),
+            ),
+            fit_range=FitRange(min=10.0, max=30.0),
+            phases={
+                "TestPhase": EasydiffractionPhase(
+                    space_group="P m -3 m",
+                    unit_cell={
+                        "a": [4.15, False, None, None],
+                        "b": [4.15, False, None, None],
+                        "c": [4.15, False, None, None],
+                        "alpha": [90.0, False, None, None],
+                        "beta": [90.0, False, None, None],
+                        "gamma": [90.0, False, None, None],
+                    },
+                    atoms={
+                        "Fe1": Atom[BoundedRefinableParameter](
+                            element="Fe",
+                            x=[0.0, False, None, None],
+                            y=[0.0, False, None, None],
+                            z=[0.0, False, None, None],
+                            occupancy=[1.0, False, None, None],
+                            ADP="Uaniso",  # Anisotropic!
+                            Uaniso=UanisoModel[BoundedRefinableParameter](
+                                U11=[0.01, False, None, None],
+                                U22=[0.01, False, None, None],
+                                U33=[0.01, False, None, None],
+                                U12=[0.0, False, None, None],
+                                U13=[0.0, False, None, None],
+                                U23=[0.0, False, None, None],
+                            ),
+                        )
+                    },
+                    scale=[1.0, False, None, None],
+                )
+            },
+            instrument=Instrument(
+                radiation=Radiation(wavelength=[1.5406, False, None, None]),
+                corrections=Corrections(
+                    zero=[0.0, False, None, None],
+                    polarization=[0.99, False, None, None],
+                ),
+                broadening=Broadening(
+                    u=[1.0, False, None, None],
+                    v=[0.0, False, None, None],
+                    w=[1.0, False, None, None],
+                    x=[0.0, False, None, None],
+                    y=[0.0, False, None, None],
+                ),
+            ),
+            refinement_controls=RefinementControls(
+                calculator="crysfml",  # CrysFML!
+                peak_type="tch",
+            ),
+        )
+
+    assert "CrysFML calculator does not support anisotropic thermal parameters" in str(exc.value)
+    assert "Use ADP='Uiso'" in str(exc.value)
+
+
+def test_payload_negative_intensity_rejected():
+    """Negative intensity in window rejected (A177, EB-91)."""
+    from powderline.gateways.easydiffraction.schema import (
+        EasydiffractionPayload,
+        EasydiffractionPhase,
+        Instrument,
+        Radiation,
+        Corrections,
+        Broadening,
+        RefinementControls,
+    )
+    from powderline.schema_core import (
+        XRDData,
+        FitRange,
+        Atom,
+        BoundedRefinableParameter,
+    )
+    import numpy as np
+
+    with pytest.raises(ValidationError) as exc:
+        EasydiffractionPayload(
+            xrd_data=XRDData(
+                tth=np.array([10.0, 20.0, 30.0]),
+                Itth=np.array([100.0, -50.0, 150.0]),  # Negative intensity!
+                Itth_weights=np.array([1.0, 1.0, 1.0]),
+            ),
+            fit_range=FitRange(min=10.0, max=30.0),  # Window includes negative
+            phases={
+                "TestPhase": EasydiffractionPhase(
+                    space_group="P m -3 m",
+                    unit_cell={
+                        "a": [4.15, False, None, None],
+                        "b": [4.15, False, None, None],
+                        "c": [4.15, False, None, None],
+                        "alpha": [90.0, False, None, None],
+                        "beta": [90.0, False, None, None],
+                        "gamma": [90.0, False, None, None],
+                    },
+                    atoms={
+                        "Fe1": Atom[BoundedRefinableParameter](
+                            element="Fe",
+                            x=[0.0, False, None, None],
+                            y=[0.0, False, None, None],
+                            z=[0.0, False, None, None],
+                            occupancy=[1.0, False, None, None],
+                            ADP="Uiso",
+                            Uiso=[0.01, False, None, None],
+                        )
+                    },
+                    scale=[1.0, False, None, None],
+                )
+            },
+            instrument=Instrument(
+                radiation=Radiation(wavelength=[1.5406, False, None, None]),
+                corrections=Corrections(
+                    zero=[0.0, False, None, None],
+                    polarization=[0.99, False, None, None],
+                ),
+                broadening=Broadening(
+                    u=[1.0, False, None, None],
+                    v=[0.0, False, None, None],
+                    w=[1.0, False, None, None],
+                    x=[0.0, False, None, None],
+                    y=[0.0, False, None, None],
+                ),
+            ),
+            refinement_controls=RefinementControls(
+                calculator="cryspy",
+                peak_type="pseudo-voigt",
+            ),
+        )
+
+    assert "Negative intensities in fit window" in str(exc.value)
+    assert "easydiffraction rejects negative intensity data" in str(exc.value)

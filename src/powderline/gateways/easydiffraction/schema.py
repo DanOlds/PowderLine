@@ -262,6 +262,108 @@ class EasydiffractionPhase(Phase[BoundedRefinableParameter]):
         return atoms
 
 
+# --- refinement controls (A162) --------------------------------------------
+
+class RefinementControls(CoreModel):
+    """Refinement controls for easydiffraction calculators (A162).
+
+    Calculator and peak type determine profile calculation method.
+    """
+    calculator: Literal["cryspy", "crysfml"] = Field(
+        ...,
+        description="Structure factor calculator"
+    )
+
+    peak_type: str = Field(
+        ...,
+        description="Peak profile type (validated per calculator)"
+    )
+
+    minimizer: Literal["lmfit (leastsq)"] = Field(
+        default="lmfit (leastsq)",
+        description="Minimization algorithm"
+    )
+
+    max_iterations: CoreInt = Field(default=100, gt=0)
+    chi_square_change_tolerance: CoreFloat = Field(default=0.001, gt=0)
+    parameter_change_tolerance: CoreFloat = Field(default=0.001, gt=0)
+    gradient_tolerance: CoreFloat = Field(default=1e-6, gt=0)
+    cutoff_fwhm: CoreFloat = Field(default=10.0, gt=0, description="Reflection cutoff in FWHM units")
+
+    @model_validator(mode="after")
+    def _validate_calculator_peak_type(self) -> "RefinementControls":
+        """Validate peak_type is compatible with calculator (A162)."""
+        valid_combinations = {
+            "cryspy": {"pseudo-voigt", "tch"},
+            "crysfml": {"tch"},
+        }
+
+        allowed = valid_combinations.get(self.calculator, set())
+        if self.peak_type not in allowed:
+            raise ValueError(
+                f"peak_type {self.peak_type!r} not supported by calculator {self.calculator!r}. "
+                f"Allowed: {', '.join(sorted(allowed))}"
+            )
+
+        return self
+
+
+# --- payload (complete recipe payload) -------------------------------------
+
+class EasydiffractionPayload(CoreModel):
+    """Complete payload for easydiffraction.rietveld recipe."""
+    xrd_data: XRDData
+    fit_range: FitRange
+    phases: Annotated[dict[CoreName, EasydiffractionPhase], name_keyed] = Field(
+        ...,
+        description="Phase definitions keyed by name"
+    )
+    instrument: Instrument
+    refinement_controls: RefinementControls
+
+    @model_validator(mode="after")
+    def _check_names_unique(self) -> "EasydiffractionPayload":
+        """Phase names must be unique ignoring case (A112)."""
+        check_names_unique_ignoring_case(self.phases, "phases")
+        return self
+
+    @model_validator(mode="after")
+    def _check_crysfml_uaniso(self) -> "EasydiffractionPayload":
+        """CrysFML + Uaniso is an error (A169a, EB-23)."""
+        if self.refinement_controls.calculator == "crysfml":
+            for phase_name, phase in self.phases.items():
+                for atom_label, atom in phase.atoms.items():
+                    if atom.ADP == "Uaniso":
+                        raise ValueError(
+                            f"CrysFML calculator does not support anisotropic thermal parameters. "
+                            f"Phase {phase_name!r}, atom {atom_label!r} has ADP='Uaniso'. "
+                            f"Use ADP='Uiso' or switch to calculator='cryspy'."
+                        )
+        return self
+
+    @model_validator(mode="after")
+    def _check_negative_intensities(self) -> "EasydiffractionPayload":
+        """Negative intensities in fit window are an error (A177, EB-91)."""
+        from powderline.schema_core import fit_limits_on_data
+
+        mask = fit_limits_on_data(
+            self.xrd_data.tth,
+            self.xrd_data.Itth_weights,
+            self.fit_range
+        )
+
+        in_window_intensities = self.xrd_data.Itth[mask]
+        if (in_window_intensities < 0).any():
+            neg_count = (in_window_intensities < 0).sum()
+            raise ValueError(
+                f"Negative intensities in fit window: {neg_count} point(s). "
+                "easydiffraction rejects negative intensity data. "
+                "Check xrd_data.Itth values."
+            )
+
+        return self
+
+
 # --- recipe model ----------------------------------------------------------
 
 class EasydiffractionRecipe(CoreRecipe):
@@ -273,6 +375,8 @@ class EasydiffractionRecipe(CoreRecipe):
         ...,
         json_schema_extra={"description": "Schema identifier for easydiffraction Rietveld refinement"}
     )
+
+    payload: EasydiffractionPayload
 
     @model_validator(mode="after")
     def _check_versions(self) -> "EasydiffractionRecipe":
