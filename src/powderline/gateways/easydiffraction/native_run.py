@@ -689,6 +689,28 @@ def limit_hits(manifest: dict, values: dict) -> list:
     return _limit_hits(entries)
 
 
+def validate_only_result(model: EasydiffractionRecipe, validated_warnings: list) -> dict:
+    """The ``validate_only`` summary: the gsasii native shape, with this engine's controls (A194).
+
+    ``simulation_mode`` is A129's rule: nothing flagged for refinement means a
+    single calculation, never lmfit.
+    """
+    p = model.payload
+    return {
+        "success": True, "rwp": None, "elapsed_time": 0.0, "method": "validate_only",
+        "schema_name": model.schema_name, "core_schema_version": model.core_schema_version,
+        "engine_schema_version": model.engine_schema_version,
+        "phases": len(p.phases), "max_iterations": p.refinement_controls.max_iterations,
+        "simulation_mode": parameters_requested(model) == 0,
+        "warnings": validated_warnings,
+    }
+
+
+def run_native_validate(model: EasydiffractionRecipe) -> dict:
+    """``validate_only`` for a native recipe (no easydiffraction import)."""
+    return validate_only_result(model, collect_warnings(model))
+
+
 def run_refinement(recipe: EasydiffractionRecipe, output_dir, *, verbose: bool = False) -> dict:
     """Run a validated native recipe end to end and return the standard result dict.
 

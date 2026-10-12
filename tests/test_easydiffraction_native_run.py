@@ -18,7 +18,7 @@ import pytest
 from powderline.exceptions import EngineExecutionError
 from powderline.gateways.easydiffraction import native_run as nr
 from powderline.gateways.easydiffraction.schema import RefinementControls
-from test_easydiffraction_native_builder import P, _declare_schema_versions, _recipe, _validated  # noqa: F401
+from test_easydiffraction_native_builder import P, _recipe, _validated  # noqa: F401
 
 _HAS_ED = importlib.util.find_spec("easydiffraction") is not None
 needs_ed = pytest.mark.skipif(not _HAS_ED, reason="easydiffraction not installed")

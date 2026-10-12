@@ -25,7 +25,9 @@ from powderline.exceptions import EngineNotAvailableError, EngineVersionError
 from powderline.gateways.gsasii import gateway as gsasii_gateway
 from powderline.gateways.topas import gateway as topas_gateway
 from powderline.gateways.easydiffraction import gateway as easydiff_gateway
+from powderline.gateways.easydiffraction import schema as easydiff_schema
 from subprocess_utils import run_subprocess_utf8
+from test_easydiffraction_native_builder import _recipe as _native_easydiff_recipe
 
 REPO = Path(__file__).resolve().parent.parent
 EXAMPLES = REPO / "examples"
@@ -137,6 +139,134 @@ def test_easydiff_validate_lab6_raises_translation_error():
     recipe = _lab6_recipe()
     with pytest.raises(EasyDiffractionTranslationError, match="Z is flagged for refinement"):
         easydiff_gateway.validate(recipe)
+
+
+@pytest.mark.parametrize("gateway_module", [gsasii_gateway, topas_gateway, easydiff_gateway],
+                         ids=["gsasii", "topas", "easydiffraction"])
+def test_capabilities_declare_schema_versions(gateway_module):
+    """Every gateway declares its engine schema versions (A65; easydiffraction since re/06, A188)."""
+    caps = gateway_module.capabilities()
+    assert {"engine_schema_version", "supported_engine_schemas", "requires_core_schema"} <= set(caps)
+    assert caps["engine_schema_version"] == "1.0.0"
+    assert set(caps["workflows"]) >= {"GSASII_Rietveld"}
+
+
+# --- easydiffraction native routing (re/06, A136) ---
+
+
+def test_easydiff_validate_native_dict_returns_native_model():
+    """An ``easydiffraction.rietveld`` dict validates to ``EasydiffractionRecipe``; a model passes through (A50)."""
+    model = easydiff_gateway.validate(_native_easydiff_recipe())
+    assert isinstance(model, easydiff_schema.EasydiffractionRecipe)
+    assert easydiff_gateway.validate(model, verbose=True) is model
+    assert "easydiffraction.rietveld" in easydiff_gateway.WORKFLOWS
+
+
+def test_easydiff_validate_legacy_dict_returns_recipe_model():
+    """A 0.26.0 recipe still validates to the legacy ``RecipeModel`` (until re/07)."""
+    recipe = json.loads((EXAMPLES / "example_LaB6_easydiff" / "input.json").read_text(encoding="utf-8"))
+    assert isinstance(easydiff_gateway.validate(recipe), schema.RecipeModel)
+
+
+def test_easydiff_unknown_native_workflow_reported_at_schema_name():
+    """A mistyped ``easydiffraction.*`` name is an error at ``schema_name`` naming the native workflows (A133)."""
+    recipe = _native_easydiff_recipe()
+    recipe["schema_name"] = "easydiffraction.reitveld"
+    with pytest.raises(ValidationError) as exc_info:
+        easydiff_gateway.validate(recipe)
+    errors = exc_info.value.errors()
+    assert [e["loc"] for e in errors] == [("schema_name",)]
+    assert "easydiffraction.rietveld" in errors[0]["msg"]
+
+
+def test_easydiff_native_validate_only_needs_no_engine(tmp_path, monkeypatch):
+    """``run(validate_only=True)`` on a native recipe skips the version check and imports no engine (A52)."""
+    def no_engine():
+        raise AssertionError("installed_engine_version must not be called for validate_only")
+
+    monkeypatch.setattr(easydiff_gateway, "installed_engine_version", no_engine)
+    result = easydiff_gateway.run(_native_easydiff_recipe(), tmp_path, validate_only=True)
+    assert result["method"] == "validate_only" and result["success"] is True and result["rwp"] is None
+    assert (result["schema_name"], result["core_schema_version"], result["engine_schema_version"]) == \
+        ("easydiffraction.rietveld", "1.0.0", "1.0.0")
+    assert result["phases"] == 1 and result["max_iterations"] == 100
+    assert result["simulation_mode"] is True and result["warnings"] == []  # nothing flagged (A129)
+    assert "schema_version" not in result and "refinement_cycles" not in result
+
+
+def test_easydiff_native_run_routes_to_the_native_runner(tmp_path, monkeypatch):
+    """A native real run goes to ``native_run.run_refinement`` with the validated model, never the legacy engine."""
+    from powderline.gateways.easydiffraction import engine, native_run
+
+    monkeypatch.setattr(easydiff_gateway, "installed_engine_version", lambda: "0.21.1")
+    legacy = Mock()
+    monkeypatch.setattr(engine, "run_easydiffraction_recipe", legacy)
+    native = Mock(return_value={"success": True})
+    monkeypatch.setattr(native_run, "run_refinement", native)
+
+    recipe = _native_easydiff_recipe()
+    recipe["payload"]["phases"]["LaB6"]["scale"][1] = True
+    assert easydiff_gateway.run(recipe, tmp_path, verbose=True) == {"success": True}
+    (model, out), kwargs = native.call_args
+    assert isinstance(model, easydiff_schema.EasydiffractionRecipe) and out == tmp_path
+    assert kwargs == {"verbose": True}
+    assert not legacy.called
+
+
+def test_easydiff_native_run_version_out_of_range_raises(tmp_path, monkeypatch):
+    """The engine version check applies to native recipes too (A53)."""
+    from powderline.gateways.easydiffraction import native_run
+
+    monkeypatch.setattr(easydiff_gateway, "installed_engine_version", lambda: "0.21.0")
+    native = Mock()
+    monkeypatch.setattr(native_run, "run_refinement", native)
+    with pytest.raises(EngineVersionError):
+        easydiff_gateway.run(_native_easydiff_recipe(), tmp_path)
+    assert not native.called
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("easydiffraction") is not None,
+    reason="easydiffraction is installed",
+)
+def test_easydiff_native_run_not_installed_names_env_and_install_command(tmp_path):
+    """A native real run without easydiffraction raises ``EngineNotAvailableError`` naming env + install command."""
+    with pytest.raises(EngineNotAvailableError) as exc_info:
+        easydiff_gateway.run(_native_easydiff_recipe(), tmp_path)
+    message = str(exc_info.value)
+    assert isinstance(exc_info.value, ImportError)
+    assert easydiff_gateway.ENV in message and easydiff_gateway.INSTALL_COMMAND in message
+
+
+def test_import_block_easydiff_native_schema_layer(tmp_path):
+    """The native easydiffraction schema layer (validate, run(validate_only=True)) works with the engine blocked."""
+    recipe_path = tmp_path / "native.json"
+    recipe_path.write_text(json.dumps(_native_easydiff_recipe()), encoding="utf-8")
+    script = f"""
+import sys, importlib.abc, json
+from pathlib import Path
+
+class _Block(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path, target=None):
+        if name in ("GSASII", "easydiffraction") or name.startswith(("GSASII.", "easydiffraction.")):
+            raise ImportError(f"{{name}} blocked for import-block test")
+        return None
+
+sys.meta_path.insert(0, _Block())
+
+from powderline.gateways.easydiffraction import gateway
+recipe = json.loads(Path(r'{recipe_path}').read_text(encoding="utf-8"))
+caps = gateway.capabilities()
+assert "easydiffraction.rietveld" in caps["workflows"] and caps["supported_engine_schemas"] == "==1.0.0"
+assert type(gateway.validate(recipe)).__name__ == "EasydiffractionRecipe"
+summary = gateway.run(recipe, r'{tmp_path}', validate_only=True)
+assert summary["method"] == "validate_only" and summary["schema_name"] == "easydiffraction.rietveld"
+assert "easydiffraction" not in sys.modules and "GSASII" not in sys.modules
+print("OK")
+"""
+    proc = run_subprocess_utf8([sys.executable, "-c", script], capture_output=True, text=True)
+    assert proc.returncode == 0, f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    assert "OK" in proc.stdout
 
 
 # --- gsasii version checking ---
@@ -441,10 +571,12 @@ def test_dispatcher_unknown_engine_raises_value_error():
 # --- Import-block guarantee ---
 
 
-def test_import_block_schema_layer_and_validate():
+def test_import_block_schema_layer_and_validate(tmp_path):
     """Schema-layer imports (registry, gateways, capabilities, validate) work with engines blocked."""
     recipe_path = str(EXAMPLES / "example_LaB6" / "input.json")
     easydiff_recipe_path = str(EXAMPLES / "example_LaB6_easydiff" / "input.json")
+    easydiff_native_path = tmp_path / "easydiff_native.json"
+    easydiff_native_path.write_text(json.dumps(_native_easydiff_recipe()), encoding="utf-8")
     topas_native_path = str(REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json")
     script = f"""
 import sys, importlib.abc, json
@@ -516,6 +648,11 @@ from powderline.gateways.topas.native_writer import render_native
 topas_native = registry.get("topas").validate(json.loads(Path(r'{topas_native_path}').read_text(encoding="utf-8")))
 assert type(topas_native).__name__ == "TopasRietveldRecipe"
 assert "TCHZ_Peak_Type" in render_native(topas_native, "lab6").inp_text
+
+# The native easydiffraction schema validates engine-free (re/06)
+easydiff_native = registry.get("easydiffraction").validate(
+    json.loads(Path(r'{easydiff_native_path}').read_text(encoding="utf-8")))
+assert type(easydiff_native).__name__ == "EasydiffractionRecipe"
 
 recipes = {{
     "gsasii": json.loads(Path(r'{recipe_path}').read_text(encoding="utf-8")),

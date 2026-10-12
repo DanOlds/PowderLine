@@ -22,18 +22,6 @@ _HAS_ED = importlib.util.find_spec("easydiffraction") is not None
 needs_ed = pytest.mark.skipif(not _HAS_ED, reason="easydiffraction not installed")
 
 
-@pytest.fixture(autouse=True)
-def _declare_schema_versions(monkeypatch):
-    """Until the gateway adoption commit adds ``schema.DECLARATIONS`` to ``gateway.capabilities()``,
-    a full native recipe cannot pass its version check (A65); declare them here so the
-    builder tests validate complete recipes."""
-    from powderline.gateways.easydiffraction import gateway, schema
-
-    if "supported_engine_schemas" not in gateway.capabilities():
-        base = gateway.capabilities
-        monkeypatch.setattr(gateway, "capabilities", lambda: {**base(), **schema.DECLARATIONS})
-
-
 def P(v, f=False, lo=None, hi=None):
     return [v, f, lo, hi]
 

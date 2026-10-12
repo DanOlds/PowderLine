@@ -30,6 +30,7 @@ from typing import Annotated, Any, Literal, Optional
 
 import gemmi
 from pydantic import Field, ValidationError, field_validator, model_validator
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from powderline.compat import check_engine_schema_version
 from powderline.exceptions import StructuredWarning
@@ -449,3 +450,34 @@ class EasydiffractionRecipe(CoreRecipe):
         """Validate schema versions (A65, A70)."""
         check_version(self.core_schema_version, self.engine_schema_version)
         return self
+
+
+# --- routing (the gateway's schema layer, A39) -----------------------------
+
+def is_native_recipe(recipe) -> bool:
+    """True for an ``easydiffraction.*`` recipe (dict or model); False for anything else (e.g. 0.26.0 ``GSASII_*``).
+
+    Any ``easydiffraction.`` name counts, so a mistyped one (``easydiffraction.reitveld``)
+    is reported against the native schema names, not the 0.26.0 schema.
+    """
+    if isinstance(recipe, EasydiffractionRecipe):
+        return True
+    name = recipe.get("schema_name") if isinstance(recipe, dict) else None
+    return isinstance(name, str) and name.startswith("easydiffraction.")
+
+
+def validate_recipe(recipe) -> EasydiffractionRecipe:
+    """Validate an ``easydiffraction.*`` recipe (dict or model); return the model (idempotent, A50).
+
+    Errors are located from the recipe's top level (``payload.phases.<name>...``);
+    an unknown ``schema_name`` is reported at ``schema_name`` (A133).
+    """
+    if isinstance(recipe, EasydiffractionRecipe):
+        return recipe
+    if isinstance(recipe, dict) and recipe.get("schema_name") not in SCHEMA_NAMES:
+        raise ValidationError.from_exception_data("EasydiffractionRecipe", [InitErrorDetails(
+            type=PydanticCustomError("schema_name", "schema_name '{name}' is not an easydiffraction workflow; "
+                                                    "expected one of {names}",
+                                     {"name": recipe.get("schema_name"), "names": ", ".join(SCHEMA_NAMES)}),
+            loc=("schema_name",), input=recipe.get("schema_name"))])
+    return EasydiffractionRecipe.model_validate(recipe)
