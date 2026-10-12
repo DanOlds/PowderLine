@@ -138,13 +138,25 @@ def _controls(**kw):
                               **kw)
 
 
-def test_configure_minimizer_hands_max_iterations_and_only_exposed_tolerances():
+_STATED = dict(chi_square_change_tolerance=0.001, parameter_change_tolerance=0.001, gradient_tolerance=1e-6)
+
+
+def test_configure_minimizer_hands_max_iterations_and_only_exposed_stated_tolerances():
     minimizer = SimpleNamespace(type="other", max_iterations=1000, ftol=1e-8)  # no xtol / gtol
-    handed = nr.configure_minimizer(SimpleNamespace(minimizer=minimizer), _controls(max_iterations=7))
+    handed = nr.configure_minimizer(SimpleNamespace(minimizer=minimizer), _controls(max_iterations=7, **_STATED))
     assert minimizer.type == nr.MINIMIZER and minimizer.max_iterations == 7
     assert minimizer.ftol == 0.001 and not hasattr(minimizer, "xtol")
     assert handed == {"chi_square_change_tolerance": True, "parameter_change_tolerance": False,
                       "gradient_tolerance": False}
+
+
+def test_configure_minimizer_leaves_unstated_tolerances_to_the_engine():
+    """A193: a tolerance left out is not handed, even where the minimizer exposes it, and is not reported."""
+    minimizer = SimpleNamespace(type="other", max_iterations=1000, ftol=1e-8, xtol=1e-8, gtol=0.0)
+    handed = nr.configure_minimizer(SimpleNamespace(minimizer=minimizer), _controls(gradient_tolerance=1e-3))
+    assert (minimizer.ftol, minimizer.xtol, minimizer.gtol) == (1e-8, 1e-8, 1e-3)
+    assert handed == {"gradient_tolerance": True}
+    assert nr.stopping_criteria_warning(_controls(), {}) is None  # nothing stated: never a warning
 
 
 def test_configure_minimizer_refuses_an_unknown_attribute_map():
@@ -154,7 +166,7 @@ def test_configure_minimizer_refuses_an_unknown_attribute_map():
 
 def test_stopping_criteria_warning_only_when_stated_values_differ_from_the_fixed_ones():
     none_handed = {k: False for k in nr.TOLERANCES}
-    w = nr.stopping_criteria_warning(_controls(), none_handed)  # schema defaults 0.001 / 0.001 / 1e-6
+    w = nr.stopping_criteria_warning(_controls(**_STATED), none_handed)  # stated 0.001 / 0.001 / 1e-6
     assert w["code"] == "easydiffraction_stopping_criteria_not_handed"
     assert w["field_path"] == "payload.refinement_controls"
     for name in nr.TOLERANCES:
@@ -163,7 +175,10 @@ def test_stopping_criteria_warning_only_when_stated_values_differ_from_the_fixed
     fixed = _controls(chi_square_change_tolerance=1e-8, parameter_change_tolerance=1e-8, gradient_tolerance=1e-300)
     w2 = nr.stopping_criteria_warning(fixed, none_handed)
     assert w2 is not None and "gradient_tolerance" in w2["message"] and "chi_square_change_tolerance" not in w2["message"]
-    assert nr.stopping_criteria_warning(_controls(), {k: True for k in nr.TOLERANCES}) is None
+    assert nr.stopping_criteria_warning(_controls(**_STATED), {k: True for k in nr.TOLERANCES}) is None
+    # a stated tolerance that was not handed is reported even when the others were left out
+    w3 = nr.stopping_criteria_warning(_controls(gradient_tolerance=1e-3), {"gradient_tolerance": False})
+    assert w3 is not None and "gradient_tolerance" in w3["message"] and "parameter_change" not in w3["message"]
 
 
 def _run_warnings(**kw):

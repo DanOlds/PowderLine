@@ -12,11 +12,13 @@ divergence error ``EngineExecutionError``, never a result; a non-finite ESD is
 
 Rules implemented (decision log numbers in brackets):
 
-- **Stopping criteria (A162):** ``max_iterations`` is handed to the minimizer
-  (lmfit ``max_nfev``); the three tolerances are handed when the minimizer
-  exposes ``ftol``/``xtol``/``gtol``, otherwise easydiffraction 0.21.1 passes
-  fixed values (1e-8, 1e-8, 0; EB-81) and a recipe stating others gets the
-  informative warning ``easydiffraction_stopping_criteria_not_handed`` (A190).
+- **Stopping criteria (A162, A193):** ``max_iterations`` is handed to the
+  minimizer (lmfit ``max_nfev``); a tolerance the recipe **states** is handed
+  when the minimizer exposes ``ftol``/``xtol``/``gtol``, otherwise
+  easydiffraction 0.21.1 passes fixed values (1e-8, 1e-8, 0; EB-81) and a
+  stated value that differs gets the informative warning
+  ``easydiffraction_stopping_criteria_not_handed`` (A190). A tolerance left
+  out is the engine's: nothing is handed, nothing warned.
 - **Not converged (A166, A172):** lmfit stopping without success is a success
   with values and the warning ``easydiffraction_fit_not_converged``.
 - **CrysFML refinements (A175, EB-90):** every CrysFML fit carries
@@ -199,10 +201,14 @@ def reflection_rows(refln, slug: str, phase: str) -> list[dict]:
 
 
 def stopping_criteria_warning(controls, handed: dict) -> Optional[StructuredWarning]:
-    """A190: the tolerances the minimizer could not take, when the recipe states other than the engine's fixed values."""
+    """A190: the stated tolerances the minimizer could not take, when they differ from the engine's fixed values.
+
+    ``handed`` holds only the tolerances the recipe states (A193); one left out
+    is the engine's own and never warned about.
+    """
     differing = [f"{name} {getattr(controls, name)!r} (easydiffraction passes lmfit {kw}={fixed!r})"
                  for name, (kw, fixed) in TOLERANCES.items()
-                 if not handed.get(name) and float(getattr(controls, name)) != fixed]
+                 if name in handed and not handed[name] and float(getattr(controls, name)) != fixed]
     if not differing:
         return None
     return StructuredWarning(
@@ -214,19 +220,24 @@ def stopping_criteria_warning(controls, handed: dict) -> Optional[StructuredWarn
 
 
 def configure_minimizer(analysis, controls) -> dict:
-    """Select lmfit leastsq and hand the stopping criteria; return ``{tolerance field: handed?}``.
+    """Select lmfit leastsq and hand the stopping criteria; return ``{stated tolerance field: handed?}``.
 
     ``max_iterations`` is always handed (``minimizer.max_iterations`` = lmfit
-    ``max_nfev``, EB-81; mutation R-q of the review). A tolerance is handed only
-    where the minimizer object exposes the lmfit keyword as an attribute.
+    ``max_nfev``, EB-81; mutation R-q of the review). A tolerance the recipe
+    leaves out (``None``, A193) is the engine's own: not handed, not in the
+    returned dict. A stated one is handed only where the minimizer object
+    exposes the lmfit keyword as an attribute.
     """
     _set(analysis.minimizer, "type", MINIMIZER)
     minimizer = analysis.minimizer
     _set(minimizer, "max_iterations", int(controls.max_iterations))
     handed = {}
     for name, (kw, _fixed) in TOLERANCES.items():
+        stated = getattr(controls, name)
+        if stated is None:
+            continue
         if hasattr(minimizer, kw):
-            _set(minimizer, kw, float(getattr(controls, name)))
+            _set(minimizer, kw, float(stated))
             handed[name] = True
         else:
             handed[name] = False

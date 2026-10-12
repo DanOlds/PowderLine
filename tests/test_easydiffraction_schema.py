@@ -274,6 +274,33 @@ def test_refinement_controls_crysfml_tch_only():
     assert "not supported by calculator" in str(exc.value)
 
 
+def test_refinement_controls_stopping_tolerances_are_optional():
+    """A193: the tolerances default to None (the engine's own values); max_iterations keeps its default."""
+    from powderline.gateways.easydiffraction.schema import RefinementControls
+
+    controls = RefinementControls(calculator="cryspy", peak_type="tch")
+    assert controls.max_iterations == 100
+    assert (controls.chi_square_change_tolerance, controls.parameter_change_tolerance,
+            controls.gradient_tolerance) == (None, None, None)
+    stated = RefinementControls(calculator="cryspy", peak_type="tch", gradient_tolerance=1e-6)
+    assert stated.gradient_tolerance == 1e-6 and stated.chi_square_change_tolerance is None
+
+
+@pytest.mark.parametrize("name", ["chi_square_change_tolerance", "parameter_change_tolerance", "gradient_tolerance"])
+def test_refinement_controls_stated_tolerance_positive_and_never_null(name):
+    """A stated tolerance must be > 0; ``null`` is rejected (leave it out instead, A96)."""
+    from powderline.gateways.easydiffraction.schema import RefinementControls
+
+    for bad in (0.0, -1e-6):
+        with pytest.raises(ValidationError) as exc:
+            RefinementControls(calculator="cryspy", peak_type="tch", **{name: bad})
+        assert [e["loc"] for e in exc.value.errors()] == [(name,)]
+    with pytest.raises(ValidationError, match="leave it out instead"):
+        RefinementControls(calculator="cryspy", peak_type="tch", **{name: None})
+    prop = RefinementControls.model_json_schema()["properties"][name]
+    assert prop["type"] == "number" and "default" not in prop and "anyOf" not in prop
+
+
 def test_payload_crysfml_uaniso_rejected():
     """CrysFML + Uaniso raises error (A169a, EB-23)."""
     from powderline.gateways.easydiffraction.schema import (

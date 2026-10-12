@@ -260,10 +260,23 @@ class EasydiffractionPhase(Phase[BoundedRefinableParameter]):
 
 # --- refinement controls (A162) --------------------------------------------
 
+def _never_null(v: Any, info) -> Any:
+    """A field that may be left out is never ``null`` (the A96 convention)."""
+    if v is None:
+        raise ValueError(f"{info.field_name} must not be null; leave it out instead")
+    return v
+
+
 class RefinementControls(CoreModel):
     """Refinement controls for easydiffraction calculators (A162).
 
-    Calculator and peak type determine profile calculation method.
+    Calculator and peak type determine profile calculation method. The three
+    stopping tolerances are optional (A193): left out, the engine's own values
+    apply (easydiffraction 0.21.1 passes lmfit ``ftol``/``xtol``/``gtol`` as
+    fixed values, EB-81) and nothing is handed or warned about; stated, each is
+    handed where the minimizer exposes it and otherwise reported by the
+    informative warning ``easydiffraction_stopping_criteria_not_handed`` (A190).
+    ``null`` is rejected: leave the field out instead (A96).
     """
     calculator: Literal["cryspy", "crysfml"] = Field(
         ...,
@@ -280,11 +293,20 @@ class RefinementControls(CoreModel):
         description="Minimization algorithm"
     )
 
-    max_iterations: CoreInt = Field(default=100, gt=0)
-    chi_square_change_tolerance: CoreFloat = Field(default=0.001, gt=0)
-    parameter_change_tolerance: CoreFloat = Field(default=0.001, gt=0)
-    gradient_tolerance: CoreFloat = Field(default=1e-6, gt=0)
+    max_iterations: CoreInt = Field(default=100, gt=0, description="lmfit max_nfev")
+    chi_square_change_tolerance: Optional[CoreFloat] = Field(
+        default=None, gt=0, json_schema_extra=absent_not_null_schema(),
+        description="lmfit ftol; left out = the engine's own value (A193)")
+    parameter_change_tolerance: Optional[CoreFloat] = Field(
+        default=None, gt=0, json_schema_extra=absent_not_null_schema(),
+        description="lmfit xtol; left out = the engine's own value (A193)")
+    gradient_tolerance: Optional[CoreFloat] = Field(
+        default=None, gt=0, json_schema_extra=absent_not_null_schema(),
+        description="lmfit gtol; left out = the engine's own value (A193)")
     cutoff_fwhm: CoreFloat = Field(default=10.0, gt=0, description="Reflection cutoff in FWHM units")
+
+    _not_null = field_validator("chi_square_change_tolerance", "parameter_change_tolerance",
+                                "gradient_tolerance", mode="before")(_never_null)
 
     @model_validator(mode="after")
     def _validate_calculator_peak_type(self) -> "RefinementControls":
@@ -309,13 +331,6 @@ class RefinementControls(CoreModel):
 def _no_background() -> ChebyshevBackground:
     """Background left out = none: one fixed Chebyshev term 0.0 (D1, A119)."""
     return ChebyshevBackground(num_coefficients=1, coefficients=[0.0], refine_flag=False)
-
-
-def _never_null(v: Any, info) -> Any:
-    """A block that may be left out is never ``null`` (the A96 convention)."""
-    if v is None:
-        raise ValueError(f"{info.field_name} must not be null; leave it out instead")
-    return v
 
 
 class EasydiffractionPayload(CoreModel):
