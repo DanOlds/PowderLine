@@ -5,8 +5,8 @@ replace, skip or rewrite core's validation. This is the behavioural check behind
 each engine phase model must reject every core violation at the same location as core does, and must
 hold the same values as core for a valid recipe (so no engine validator rewrites it, A115).
 
-re/04-06 add each engine phase model to ``ENGINE_PHASES``, with the engine fields a valid phase needs;
-``test_every_engine_phase_model_is_covered`` fails until they do.
+Each engine (re/04-06) registers its phase model in ``ENGINE_PHASES`` with the engine fields a valid
+phase needs; ``test_every_engine_phase_model_is_covered`` fails for any new one until it is registered.
 """
 
 from __future__ import annotations
@@ -23,6 +23,8 @@ ENGINE_PHASES: list[tuple[str, str, type, dict]] = [
     ("powderline.gateways.gsasii.schema", "GsasiiPhase", RefinableParameter, {"scale": [1.0, False]}),
     ("powderline.gateways.topas.schema", "TopasPhase", BoundedRefinableParameter,
      {"scale": [1e-6, False, None, None]}),
+    ("powderline.gateways.easydiffraction.schema", "EasydiffractionPhase", BoundedRefinableParameter,
+     {"scale": [1.0, False, None, None]}),
 ]
 
 
