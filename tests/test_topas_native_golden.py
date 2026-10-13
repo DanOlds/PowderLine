@@ -18,7 +18,6 @@ import numpy as np
 import pytest
 
 from powderline.gateways.topas import native_run, native_writer, schema
-from powderline.gateways.topas.roundtrip import parse_results_csv
 
 NATIVE = Path(__file__).parent / "data" / "topas" / "native"
 GOLDEN = NATIVE / "golden"
@@ -44,7 +43,8 @@ def _base(fixture):
 
 
 def _values(fixture):
-    _, values = parse_results_csv((GOLDEN / f"{_base(fixture)}_results.csv").read_text(encoding="utf-8"))
+    """TOPAS's refined values, read with the native runner's strict reader (A154 S1; re/07 B)."""
+    _, values = native_run._read_results(GOLDEN / f"{_base(fixture)}_results.csv")
     return values
 
 

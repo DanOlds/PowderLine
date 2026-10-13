@@ -49,7 +49,7 @@ from powderline.gateways.topas.native_writer import (
     render_background,
     render_native,
 )
-from powderline.gateways.topas.roundtrip import PEAK_LIST_COLUMNS, parse_peak_list
+from powderline.gateways.topas.peak_list import PEAK_LIST_COLUMNS, parse_peak_list
 from powderline.gateways.topas.runner import discover_tc_exe
 from powderline.gateways.topas.schema import TopasRietveldRecipe
 from powderline.schema_core import collect_warnings, parameters_requested

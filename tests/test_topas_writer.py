@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from powderline.gateways.topas import render_topas, write_topas_inp
+from powderline.gateways.topas.writer import render_topas, write_topas_inp
 from powderline.gateways.topas.errors import TopasTranslationError
 from subprocess_utils import run_subprocess_utf8
 

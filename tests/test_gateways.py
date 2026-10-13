@@ -545,6 +545,30 @@ print("OK")
     assert "OK" in proc.stdout
 
 
+def test_native_package_imports_are_legacy_free():
+    """Importing the topas package and the native TOPAS runner loads no 0.26.0 module (re/07 B).
+
+    The legacy translation modules are deleted later in re/07; the native paths
+    must not depend on them at import time. The legacy branch of each gateway
+    imports them lazily, by name, where it runs.
+    """
+    script = """
+import sys
+import powderline.gateways.topas
+import powderline.gateways.topas.native_run
+legacy = [m for m in sys.modules if m in (
+    "powderline.gateways.topas.writer", "powderline.gateways.topas.roundtrip",
+    "powderline.gateways.topas.engine", "powderline.gateways.topas.kicker",
+)]
+assert not legacy, f"legacy modules loaded at package import: {legacy}"
+from powderline.gateways.topas import TopasTranslationError
+print("OK")
+"""
+    proc = run_subprocess_utf8([sys.executable, "-c", script], capture_output=True, text=True)
+    assert proc.returncode == 0, f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    assert "OK" in proc.stdout
+
+
 def test_import_block_run_raises_engine_not_available_error(tmp_path):
     """With GSASII blocked, gsasii gateway run() raises EngineNotAvailableError."""
     recipe_path = str(EXAMPLES / "example_LaB6" / "input.json")

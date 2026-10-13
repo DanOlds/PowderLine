@@ -1,11 +1,11 @@
-"""TOPAS v7 INP generation for PowderLine.
+"""TOPAS gateway for PowderLine (imports **zero** GSAS-II).
 
-This subpackage translates a validated ``GSASII_Rietveld`` recipe (schema 0.26.0)
-into a syntactically valid, semantically faithful TOPAS v7 ``.INP`` + ``.xye``
-pair. It imports **zero** GSAS-II code: TOPAS INP generation and the round-trip
-must run on Windows, where GSAS-II does not install cleanly.
-
-Public entry point: :func:`powderline.gateways.topas.writer.write_topas_inp`.
+The native ``topas.*`` path (:mod:`.schema`, :mod:`.native_writer`,
+:mod:`.native_run`, :mod:`.peak_list`, :mod:`.conversions`, :mod:`.runner`,
+:mod:`.gateway`) must run on Windows, where GSAS-II does not install cleanly.
+Importing this package loads none of the 0.26.0 translation modules
+(``writer``, ``roundtrip``, ``engine``, ``kicker``); they are imported by
+name where the legacy branch of :mod:`.gateway` still runs (re/07 B).
 
 Citation notation used throughout this subpackage: ``findings §X`` / ``plan §Y``
 / ``D-numbers`` cite the internal TOPAS design record (empirical findings and
@@ -17,6 +17,5 @@ headers, so they are stable identifiers - do not renumber them.
 from __future__ import annotations
 
 from .errors import TopasTranslationError
-from .writer import render_topas, write_topas_inp
 
-__all__ = ["write_topas_inp", "render_topas", "TopasTranslationError"]
+__all__ = ["TopasTranslationError"]

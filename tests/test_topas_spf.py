@@ -13,7 +13,8 @@ import pytest
 import powderline
 from powderline.gateways.topas import conversions as cv
 from powderline.gateways.topas import engine as te
-from powderline.gateways.topas import render_topas, roundtrip as rt
+from powderline.gateways.topas import roundtrip as rt
+from powderline.gateways.topas.writer import render_topas
 from powderline.gateways.topas import runner as tc_runner
 from powderline.gateways.topas.errors import TopasTranslationError
 
