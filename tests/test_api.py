@@ -86,10 +86,17 @@ def test_validate_schema_name_without_engine_prefix_is_a_validation_error():
 
 
 def test_validate_unknown_engine_prefix_raises_gateway_not_installed():
-    """schema_name 'bogus.rietveld' names a gateway that is not installed."""
+    """schema_name 'bogus.rietveld' names a gateway that is not installed; the message lists the installed ones.
+
+    (The "unknown engine lists easydiffraction" assertion of the deleted
+    engine= dispatcher tests, now on the schema_name path; re/07 H.)
+    """
     with pytest.raises(powderline.GatewayNotInstalledError) as exc:
         powderline.validate({"schema_name": "bogus.rietveld", "payload": {}})
     assert exc.value.gateway == "bogus"
+    assert "no PowderLine gateway named 'bogus'" in str(exc.value)
+    for name in ("gsasii", "topas", "easydiffraction"):
+        assert name in str(exc.value)
 
 
 def test_validate_native_recipes_dispatch_by_schema_name():
