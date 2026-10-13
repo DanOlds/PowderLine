@@ -59,6 +59,12 @@ dependencies = [
 # module. Entry-point metadata is written at install time -- after editing this
 # table, re-install the editable package (`pixi reinstall powderline`) or the
 # registry finds no gateways.
+# The one CLI (P-06): ``powderline <recipe.json>``; ``pixi run kicker`` runs the
+# same ``main`` (task names are re/08's). Console scripts are written at install
+# time too (``pixi reinstall powderline``).
+[project.scripts]
+powderline = "powderline.kicker:main"
+
 [project.entry-points."powderline.gateways"]
 gsasii = "powderline.gateways.gsasii.gateway:get_gateway"
 topas = "powderline.gateways.topas.gateway:get_gateway"
