@@ -20,6 +20,7 @@ fresh clone to a finished refinement, on Linux or Windows.
    quickstart
    getting-started
    integration-guide
+   cross-engine-comparison
    mp-simulation
    TROUBLESHOOTING
    SCHEMA_HISTORY

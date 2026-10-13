@@ -57,7 +57,8 @@ intersphinx_mapping = {
 }
 
 templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'dev']  # dev/ = in-repo development dossiers, not user-facing docs
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'dev',  # dev/ = in-repo development dossiers, not user-facing docs
+                    '_generated']  # script-generated fragments pulled in with MyST {include}, not pages of their own
 
 # Treat missing cross-reference targets as warnings (not silently ignored)
 nitpicky = True
