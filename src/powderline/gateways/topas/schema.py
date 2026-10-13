@@ -754,7 +754,8 @@ class _Payload(CoreModel):
         try:
             check_fit_range_within_data(self.fit_range, self.xrd_data)
         except ValueError as exc:
-            problems.append(_error("fit_range", str(exc), ("fit_range",), self.fit_range.model_dump()))
+            problems.append(_error("fit_range", str(exc), ("fit_range",),
+                                   None if self.fit_range is None else self.fit_range.model_dump()))
         if self.background is not None and self.background.peaks is not None:
             problems += self._outside_window([p.xo for p in self.background.peaks],
                                              lambda i: ("background", "peaks", i, "xo"), "background peak")

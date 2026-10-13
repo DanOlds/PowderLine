@@ -203,8 +203,8 @@ def test_check_fit_range_within_data_none_passes():
 
 
 def test_check_fit_range_within_data_inside_passes():
-    data = XRDData(tth=[10.0, 20.0, 30.0], Itth=[100.0, 200.0, 150.0], Itth_weights=[1.0, 1.0, 1.0])
-    fr = FitRange.model_validate([15.0, 25.0])
+    data = XRDData(tth=[10.0, 15.0, 20.0, 25.0, 30.0], Itth=[100.0] * 5, Itth_weights=[1.0] * 5)
+    fr = FitRange.model_validate([12.0, 27.0])  # three weighted points inside (two is the floor, A154 N9)
     check_fit_range_within_data(fr, data)  # no error
 
 
@@ -2589,5 +2589,33 @@ def test_fit_limits_on_data_open_ends_skip_zero_weight_edges():
 def test_fit_range_without_a_weighted_point_rejected():
     from powderline.schema_core import FitRange, XRDData, check_fit_range_within_data
     xrd = XRDData(tth=[1.0, 1.5, 2.0], Itth=[1.0] * 3, Itth_weights=[1, 0, 1])
-    with pytest.raises(ValueError, match="no data point with a positive weight"):
+    with pytest.raises(ValueError, match=r"fit_range \[1.2, 1.8\] holds 0 data point\(s\) with a positive weight"):
         check_fit_range_within_data(FitRange.model_validate([1.2, 1.8]), xrd)
+
+
+def test_fit_limits_on_data_one_weighted_point_rejected():
+    """A154 N9 (P-04): a one-point window is refused; the message names the count and the window."""
+    from powderline.schema_core import FitRange, XRDData, fit_limits_on_data
+    xrd = XRDData(tth=[1.0, 1.5, 2.0, 2.5], Itth=[1.0] * 4, Itth_weights=[1, 1, 0, 1])
+    with pytest.raises(ValueError, match=r"fit_range \[1.4, 2.2\] holds 1 data point\(s\) with a positive weight; "
+                                         r"at least 2 are required"):
+        fit_limits_on_data(FitRange.model_validate([1.4, 2.2]), xrd)  # 1.5 only: 2.0 has zero weight
+    with pytest.raises(ValueError, match=r"fit_range \[None, None\] holds 1 data point"):
+        fit_limits_on_data(None, XRDData(tth=[1.0], Itth=[1.0], Itth_weights=[1.0]))  # a one-point pattern
+
+
+def test_fit_limits_on_data_two_weighted_points_ok():
+    """A154 N9: two weighted points are the floor; the limits land on them."""
+    from powderline.schema_core import FitRange, XRDData, fit_limits_on_data
+    xrd = XRDData(tth=[1.0, 1.5, 2.0, 2.5], Itth=[1.0] * 4, Itth_weights=[1, 1, 0, 1])
+    assert fit_limits_on_data(FitRange.model_validate([1.4, 2.6]), xrd) == (1.5, 2.5)
+    assert fit_limits_on_data(FitRange.model_validate([None, 1.5]), xrd) == (1.0, 1.5)
+    assert fit_limits_on_data(None, XRDData(tth=[1.0, 2.0], Itth=[1.0, 1.0], Itth_weights=[1.0, 1.0])) == (1.0, 2.0)
+
+
+def test_check_fit_range_within_data_open_window_needs_two_weighted_points():
+    """A154 N9: the two-point rule holds for the open window too (no fit_range), so validation refuses it."""
+    from powderline.schema_core import XRDData, check_fit_range_within_data
+    with pytest.raises(ValueError, match=r"holds 1 data point\(s\)"):
+        check_fit_range_within_data(None, XRDData(tth=[1.0, 2.0], Itth=[1.0, 1.0], Itth_weights=[0.0, 1.0]))
+    check_fit_range_within_data(None, XRDData(tth=[1.0, 2.0], Itth=[1.0, 1.0], Itth_weights=[1.0, 1.0]))  # ok

@@ -1106,7 +1106,8 @@ def test_json_schema_shows_no_null_for_blocks_that_are_never_null(model, pointer
 
 def test_spf_peak_position_outside_fit_window_rejected():
     recipe = copy.deepcopy(_spf_recipe())
-    recipe["payload"]["fit_range"] = [3.0, 15.0]
+    recipe["payload"]["xrd_data"] = {"tth": [1.0, 2.0, 10.0, 15.0], "Itth": [1.0] * 4, "Itth_weights": [1.0] * 4}
+    recipe["payload"]["fit_range"] = [3.0, 15.0]  # two weighted points inside (A154 N9); the peak at 2.29 is not
     with pytest.raises(ValidationError) as exc:
         validate_recipe(recipe)
     assert _errors(exc) == [(("payload", "single_peaks", "positions", 0), "outside_fit_window")]

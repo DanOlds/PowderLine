@@ -523,8 +523,8 @@ class _Payload(CoreModel):
         try:
             check_fit_range_within_data(self.fit_range, self.xrd_data)
         except ValueError as exc:
-            problems.append(InitErrorDetails(type=PydanticCustomError("fit_range", str(exc)),
-                                             loc=("fit_range",), input=self.fit_range.model_dump()))
+            problems.append(InitErrorDetails(type=PydanticCustomError("fit_range", str(exc)), loc=("fit_range",),
+                                             input=None if self.fit_range is None else self.fit_range.model_dump()))
         if self.background.single_peaks is not None:
             problems += self._outside_fit_window(self.background.single_peaks, ("background", "single_peaks"),
                                                  "background peak")
