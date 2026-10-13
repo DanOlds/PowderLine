@@ -54,6 +54,7 @@ from powderline.exceptions import EngineExecutionError, StructuredWarning
 from powderline.fitstats import compute_fit_statistics
 from powderline.gateways.easydiffraction.native_builder import Build, build_project, structure_name
 from powderline.gateways.easydiffraction.schema import profile_negative_widths, width_check_points
+from powderline.registry import validate_only_summary
 from powderline.schema_core import collect_warnings, parameters_requested
 from powderline.symmetry import cell_tie_groups
 
@@ -344,14 +345,12 @@ def _cell_rows(model, build: Build, name: str) -> list[dict]:
 
 
 def validate_only_result(model, validated_warnings: list) -> dict:
-    """The ``validate_only`` summary (the keys every gateway reports, plus the easydiffraction ones)."""
+    """The ``validate_only`` summary (:func:`powderline.registry.validate_only_summary`, P-28); ``engine`` holds
+    ``calculator``."""
     p = model.payload
-    return {
-        "success": True, "rwp": None, "elapsed_time": 0.0, "method": "validate_only",
-        "schema_name": model.schema_name, "engine_schema_version": model.engine_schema_version,
-        "phases": len(p.phases), "calculator": p.refinement_controls.calculator,
-        "simulation_mode": p.simulation_mode(), "warnings": validated_warnings,
-    }
+    return validate_only_summary(
+        model, validated_warnings, phases=len(p.phases), simulation_mode=p.simulation_mode(),
+        engine={"calculator": p.refinement_controls.calculator})
 
 
 def run_native_validate(model, warnings_from=None) -> dict:

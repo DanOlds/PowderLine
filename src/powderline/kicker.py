@@ -157,25 +157,24 @@ Examples:
     return parser
 
 
+#: Labels of the engine-specific ``validate_only`` items (``engine`` sub-dict, P-28); other keys are title-cased.
+_ENGINE_ITEM_LABELS = {'refinement_cycles': 'Refinement cycles', 'iters': 'Iterations',
+                       'engine_version': 'Engine version', 'calculator': 'Calculator'}
+
+
 def _print_validate_only(result: dict, input_path: Path) -> None:
+    """Print the uniform ``validate_only`` summary (``powderline.registry.validate_only_summary``, P-28)."""
     print(f"{CHECK} Recipe validation successful: {input_path}")
-    print(f"   Schema name: {result.get('schema_name')}")
-    if result.get('core_schema_version') is not None:
-        print(f"   Core schema version: {result['core_schema_version']}")
-    if result.get('engine_schema_version') is not None:
-        print(f"   Engine schema version: {result['engine_schema_version']}")
-    if result.get('engine_version') is not None:
-        print(f"   Engine version: {result['engine_version']}")
-    print(f"   Phases: {result.get('phases', 0)}")
-    if 'refinement_cycles' in result:
-        print(f"   Refinement cycles: {result['refinement_cycles']}")
-    if 'iters' in result:
-        print(f"   Iterations: {result['iters']}")
-    if result.get('calculator') is not None:
-        print(f"   Calculator: {result['calculator']}")
-    if result.get('simulation_mode'):
-        print(f"   Mode: Simulation (all parameters locked)")
-    _print_warnings(result.get('warnings'))
+    print(f"   Schema name: {result['schema_name']}")
+    print(f"   Core schema version: {result['core_schema_version']}")
+    print(f"   Engine schema version: {result['engine_schema_version']}")
+    print(f"   Phases: {result['phases']}")
+    print(f"   Parameters requested: {result['parameters_requested']}")
+    for key, value in result['engine'].items():
+        print(f"   {_ENGINE_ITEM_LABELS.get(key, key.replace('_', ' ').capitalize())}: {value}")
+    if result['simulation_mode']:
+        print("   Mode: Simulation (all parameters locked)")
+    _print_warnings(result['warnings'])
 
 
 def _print_warnings(warnings) -> None:

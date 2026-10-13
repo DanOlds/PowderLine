@@ -52,6 +52,7 @@ from powderline.gateways.topas.native_writer import (
 from powderline.gateways.topas.peak_list import PEAK_LIST_COLUMNS, parse_peak_list
 from powderline.gateways.topas.runner import discover_tc_exe
 from powderline.gateways.topas.schema import TopasRietveldRecipe
+from powderline.registry import validate_only_summary
 from powderline.schema_core import collect_warnings, parameters_requested
 
 #: Columns of ``spf_peaks`` for ``topas.spf`` (A147 D13): core's shared columns, then TOPAS's.
@@ -356,16 +357,13 @@ def _empty_result(out: Path, *, success: bool, method: str, elapsed: float, simu
 
 
 def validate_only_result(model, validated_warnings: list) -> dict:
-    """The ``validate_only`` summary (the keys every gateway reports, plus the TOPAS ones)."""
+    """The ``validate_only`` summary (:func:`powderline.registry.validate_only_summary`, P-28); ``engine`` holds
+    ``iters`` and the recipe's ``engine_version``."""
     p = model.payload
-    return {
-        "success": True, "rwp": None, "elapsed_time": 0.0, "method": "validate_only",
-        "schema_name": model.schema_name, "engine_schema_version": model.engine_schema_version,
-        "engine_version": model.engine_version,
-        "phases": len(p.phases) if isinstance(model, TopasRietveldRecipe) else 0,
-        "iters": p.refinement_controls.iters, "simulation_mode": p.refinement_controls.iters == 0,
-        "warnings": validated_warnings,
-    }
+    return validate_only_summary(
+        model, validated_warnings, phases=len(p.phases) if isinstance(model, TopasRietveldRecipe) else 0,
+        simulation_mode=p.refinement_controls.iters == 0,
+        engine={"iters": p.refinement_controls.iters, "engine_version": model.engine_version})
 
 
 # --- result pieces ------------------------------------------------------------------------

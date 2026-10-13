@@ -191,6 +191,7 @@ def test_run_validate_only_returns_summary(recipe_LaB6_dict, tmp_path):
     assert result["schema_name"] == "gsasii.rietveld"
     assert isinstance(result["phases"], int)
     assert result["rwp"] is None
+    assert isinstance(result["engine"], dict) and isinstance(result["parameters_requested"], int)
 
     # No run was executed, so no run_id should be present.
     assert "run_id" not in result, (
@@ -593,3 +594,30 @@ def test_run_spf_returns_rwp_directly(recipe_LaB6_singlepeakfit_dict, tmp_path):
     assert 1.6 < result["rwp"] < 2.0, (
         f"SPF Rwp ({result['rwp']:.3f}%) outside expected range [1.6, 2.0]"
     )
+
+
+def test_run_validate_only_summary_is_uniform_across_gateways(tmp_path):
+    """P-28 (G2 review S6): every gateway's validate_only summary has the same keys and types; the
+    engine-specific items live under ``engine``. Engine-free: the three example recipes, no engine imported."""
+    import json
+    from powderline.registry import VALIDATE_ONLY_KEYS
+    examples = Path(__file__).resolve().parent.parent / "examples"
+    recipes = {
+        "gsasii": examples / "example_LaB6" / "input.json",
+        "topas": examples / "example_LaB6" / "topas" / "input.json",
+        "easydiffraction": examples / "example_LaB6" / "easydiffraction" / "input.json",
+    }
+    summaries = {name: powderline.run(json.loads(path.read_text(encoding="utf-8")), tmp_path / name,
+                                      validate_only=True) for name, path in recipes.items()}
+    for name, s in summaries.items():
+        assert tuple(s) == VALIDATE_ONLY_KEYS, name
+        assert s["success"] is True and s["rwp"] is None and s["elapsed_time"] == 0.0, name
+        assert s["method"] == "validate_only" and s["schema_name"].startswith(name + "."), name
+        assert s["core_schema_version"] == "1.0.0" and s["engine_schema_version"] == "1.0.0", name
+        assert s["phases"] == 1 and isinstance(s["simulation_mode"], bool), name
+        assert isinstance(s["parameters_requested"], int) and s["parameters_requested"] > 0, name
+        assert isinstance(s["warnings"], list) and isinstance(s["engine"], dict), name
+        assert not (tmp_path / name).exists(), name  # nothing written (P-14)
+    assert set(summaries["gsasii"]["engine"]) == {"refinement_cycles"}
+    assert set(summaries["topas"]["engine"]) == {"iters", "engine_version"}
+    assert set(summaries["easydiffraction"]["engine"]) == {"calculator"}

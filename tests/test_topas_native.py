@@ -819,11 +819,21 @@ def test_gateway_check_native_engine_version_allow_unsupported():
 
 def test_gateway_run_validate_only(tmp_path):
     """gateway.run(native_dict, tmp, validate_only=True) returns method validate_only."""
+    from powderline.registry import VALIDATE_ONLY_KEYS
     result = gateway.run(_rietveld(), tmp_path, validate_only=True)
 
     assert result["method"] == "validate_only"
     assert result["simulation_mode"] is False
     assert "warnings" in result
+    # the uniform summary (P-28): the TOPAS items under "engine", core_schema_version present
+    assert tuple(result) == VALIDATE_ONLY_KEYS
+    assert result["core_schema_version"] == "1.0.0"
+    assert result["engine"] == {"iters": _rietveld()["payload"]["refinement_controls"]["iters"], "engine_version": "6"}
+    assert "iters" not in result and "engine_version" not in result
+    from powderline.schema_core import parameters_requested
+    spf = gateway.run(_spf(), tmp_path, validate_only=True)
+    assert spf["phases"] == 0  # a peak-fit workflow
+    assert spf["parameters_requested"] == parameters_requested(schema.validate_recipe(_spf())) >= 6  # 2 peaks + zero
 
 
 def test_runner_stated_limit_hit_named_stated(tmp_path, monkeypatch):
