@@ -30,6 +30,7 @@ fresh clone to a finished refinement, on Linux or Windows.
    migration-0.26-to-1.0
    support-matrix
    SCHEMA_HISTORY
+   policies
    changelog
    api
 

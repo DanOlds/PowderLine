@@ -10,7 +10,8 @@ recipe's meaning, the result carries a structured warning. This page lists
 every verified engine behaviour that reaches a user, grouped by topic, with
 PowderLine's policy toward it. The identifiers in brackets (`EB-nn`) are the
 entries of the maintainers' engine-behaviour register; the decisions behind
-the policies are cited as `A-nnn` (the maintainers' decision log).
+the policies are cited as `A-nnn` (the maintainers' decision log; see the
+[policies page](policies.md)).
 
 Versions: GSAS-II 5.7.9, TOPAS-64 Version 6 (TOPAS 7 noted where known),
 easydiffraction 0.21.1 (CrysPy 0.13.0, CrysFML 0.8.0). An item marked

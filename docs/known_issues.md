@@ -471,8 +471,8 @@ in-repo gateways use exactly the plugin mechanism a third-party engine will
 use, and a hard-coded fallback would add a second discovery path and hide a
 stale install. The registry's error already names the fix. re/08 added the
 install-health guidance above; the re-install step is documented for users in
-the [migration guide](migration-0.26-to-1.0.md) and for contributors in
-`CLAUDE.md`.
+the [migration guide](migration-0.26-to-1.0.md) and for contributors on the
+[policies page](policies.md) and in `CLAUDE.md`.
 
 **Disposition (0.2.0, proposed: stays `watch`, A58; maintainer to
 confirm).**
