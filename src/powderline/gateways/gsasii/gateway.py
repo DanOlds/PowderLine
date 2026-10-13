@@ -161,7 +161,7 @@ def run(
           A129, A115)
 
         **Validate-only** (``validate_only=True``) — the summary every gateway
-        returns (:func:`powderline.registry.validate_only_summary`, P-28): no
+        returns (``powderline.registry.validate_only_summary``, P-28): no
         refinement executed, no output files written, no ``run_id``;
         ``engine`` holds ``refinement_cycles``.
 

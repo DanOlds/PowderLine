@@ -47,7 +47,7 @@ class Gateway:
       gateway (A59); new options are added to the contract deliberately.
     - ``run(recipe, output_dir, **opts)``: runtime layer; imports the engine
       lazily; returns the standardized result dict. With ``validate_only=True``
-      it returns :func:`validate_only_summary` (the same keys on every gateway).
+      it returns the ``validate_only_summary`` dict (the same keys on every gateway).
     """
 
     name: str

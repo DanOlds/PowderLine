@@ -121,10 +121,13 @@ tables are dicts keyed by phase name.
 | `refined_parameters` | 9 columns: `parameter_name, descriptive_name, phase_name, phase_idx, atom_name, atom_idx, value, esd, category` |
 | `spf_peaks`, `spf_convergence_diagnostics` | single peak fitting only (empty otherwise; the gsasii and topas column sets differ) |
 
-With `validate_only=True` the result is a slim summary (`success`,
-`schema_name`, `core_schema_version`, `engine_schema_version`, `phases`,
-`simulation_mode`, `warnings`, and the engine's controls such as
-`refinement_cycles`, `iters` or `calculator`); nothing is written.
+With `validate_only=True` the result is a slim summary with the same keys on
+every gateway: `success`, `rwp` (`None`), `elapsed_time` (`0.0`), `method`
+(`"validate_only"`), `schema_name`, `core_schema_version`,
+`engine_schema_version`, `phases`, `simulation_mode`, `parameters_requested`,
+`warnings`, and `engine` — a dict of the engine's own controls
+(`refinement_cycles` for gsasii; `iters` and `engine_version` for topas;
+`calculator` for easydiffraction). Nothing is written.
 
 ### Standardized report files
 
