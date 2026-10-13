@@ -2,7 +2,7 @@
 
 Pure: a validated model in, INP and ``.xye`` text out (no I/O, no TOPAS). Every
 value comes from the validated model, never from recipe text (A39, A115,
-A121). The 0.26.0 writer (:mod:`.writer`) is separate and unchanged (A146).
+A121).
 
 Emission rules:
 

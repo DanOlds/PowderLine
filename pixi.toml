@@ -8,7 +8,6 @@ preview = ["pixi-build"]
 
 [tasks]
 kicker = "PYTHONPATH=$PWD/src:$PYTHONPATH python src/powderline/kicker.py"
-topas-kicker = "PYTHONPATH=$PWD/src:$PYTHONPATH python -m powderline.gateways.topas.kicker"
 # Cross-platform (task-level env avoids Unix-only shell syntax; see
 # docs/cross-platform-guide.md Issue B for the remaining tasks)
 mp-simulate = { cmd = "python -m powderline.gateways.gsasii.mp_simulate", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }

@@ -1,22 +1,13 @@
-"""Shared exception type for the TOPAS translation path.
+"""The TOPAS gateway's exception type (re-exported from ``powderline.gateways.topas``).
 
-Kept in its own module so ``writer`` and the TOPAS engine can share it without
-a circular import. Re-exported from ``powderline.gateways.topas`` for convenience. Core
-:class:`~powderline.exceptions.SymmetryError` is converted to it by the writer
-(A61).
+The ``topas.*`` schema refuses what TOPAS cannot express at validation
+(pydantic errors), so nothing raises this today; it stays as the package's
+exception export (callers of the deleted translation path caught it) and for
+a future translation error that is not a schema rule.
 """
 
 from __future__ import annotations
 
 
 class TopasTranslationError(ValueError):
-    """A recipe cannot be faithfully translated to a TOPAS v7 INP.
-
-    Raised only for genuinely untranslatable input: an unsupported
-    ``schema_name``, an unrecognised or unresolved space-group symbol, a
-    rhombohedral ``:R`` setting, or SPF ``use_instrument_profile=true``.
-    Symmetry-breaking refine flags (refined ``Uaniso``, symmetry-fixed or
-    symmetry-coupled coordinates, symmetry-fixed angles) instead **warn + emit**
-    -- the engine is permissive and does not arbitrate recipe correctness
-    (design-options ``D3-update``).
-    """
+    """A recipe cannot be faithfully translated to a TOPAS INP."""

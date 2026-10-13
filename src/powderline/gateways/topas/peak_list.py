@@ -1,10 +1,8 @@
-"""TOPAS reflection list -> PowderLine peak-list rows (native-owned; re/07).
+"""TOPAS reflection list -> PowderLine peak-list rows (re/07).
 
-Moved verbatim from ``roundtrip.py`` so that the native ``topas.*`` runner
-(:mod:`.native_run`) owns the peak-list parsing it uses and imports nothing
-from the 0.26.0 translation path (``writer``/``roundtrip``). ``roundtrip``
-re-imports these names until the legacy path is deleted. TOPAS code may only
-be moved here, not changed (P-08: no TOPAS run available to re-verify).
+Moved verbatim from the deleted ``roundtrip.py`` so that the ``topas.*``
+runner (:mod:`.native_run`) owns the peak-list parsing it uses. TOPAS code may
+only be moved here, not changed (P-08: no TOPAS run available to re-verify).
 """
 
 from __future__ import annotations

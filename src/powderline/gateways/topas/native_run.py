@@ -22,7 +22,7 @@ TOPAS 6 facts this module is built on (devkit ``re05-topas6-compat.md``):
   (A147 Q-Z1);
 - any non-finite number TOPAS writes (Python or MSVC spelling: ``nan``,
   ``1.#QNAN``, ``-nan(ind)``) is a divergence (A130, A154). The files are read
-  strictly here; the 0.26.0 round-trip parser stays as it is (A146).
+  strictly here.
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ _NON_FINITE = re.compile(r"[+-]?(?:nan(?:\(\w*\))?|inf(?:inity)?|1\.#(?:qnan|sna
 
 
 def default_base_name(output_dir) -> str:
-    """``examples/<name>/output`` -> ``<name>``; otherwise ``topas`` (as the 0.26.0 path)."""
+    """``examples/<name>/output`` -> ``<name>``; otherwise ``topas``."""
     out = Path(output_dir)
     return out.parent.name if out.name == "output" and out.parent.name else "topas"
 
@@ -97,7 +97,7 @@ def run_native(model, output_dir, *, base_name: str | None = None, topas_dir=Non
     ``warnings_from`` is the model validated from the user's recipe (A115); by
     default ``model`` itself. ``engine_version_check(tc_path)`` is called only
     when TOPAS will actually run (A145); without ``tc.exe`` the run is
-    generate-only, as on the 0.26.0 path.
+    generate-only.
     """
     started = time.time()
     out = Path(output_dir)
@@ -339,7 +339,7 @@ def _empty_result(out: Path, *, success: bool, method: str, elapsed: float, simu
 
 
 def validate_only_result(model, validated_warnings: list) -> dict:
-    """The ``validate_only`` summary (the 0.26.0 shape plus native keys)."""
+    """The ``validate_only`` summary (the keys every gateway reports, plus the TOPAS ones)."""
     p = model.payload
     return {
         "success": True, "rwp": None, "elapsed_time": 0.0, "method": "validate_only",

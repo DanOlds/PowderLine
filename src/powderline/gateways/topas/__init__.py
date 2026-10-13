@@ -1,11 +1,10 @@
 """TOPAS gateway for PowderLine (imports **zero** GSAS-II).
 
-The native ``topas.*`` path (:mod:`.schema`, :mod:`.native_writer`,
-:mod:`.native_run`, :mod:`.peak_list`, :mod:`.conversions`, :mod:`.runner`,
-:mod:`.gateway`) must run on Windows, where GSAS-II does not install cleanly.
-Importing this package loads none of the 0.26.0 translation modules
-(``writer``, ``roundtrip``, ``engine``, ``kicker``); they are imported by
-name where the legacy branch of :mod:`.gateway` still runs (re/07 B).
+The ``topas.rietveld`` / ``topas.spf`` path (:mod:`.schema`,
+:mod:`.native_writer`, :mod:`.native_run`, :mod:`.peak_list`,
+:mod:`.conversions`, :mod:`.runner`, :mod:`.gateway`) must run on Windows,
+where GSAS-II does not install cleanly. ``powderline <recipe.json>`` serves
+these recipes (the one CLI, P-06).
 
 Citation notation used throughout this subpackage: ``findings §X`` / ``plan §Y``
 / ``D-numbers`` cite the internal TOPAS design record (empirical findings and
