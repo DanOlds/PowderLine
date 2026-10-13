@@ -1073,3 +1073,120 @@ def test_native_result_matches_gsasii_key_and_type_contract(tmp_path, monkeypatc
     # empty SPF frames match GSAS-II's column-less pd.DataFrame() for a Rietveld recipe
     assert result["spf_peaks"].empty and list(result["spf_peaks"].columns) == []
     assert list(result["spf_convergence_diagnostics"].columns) == []
+
+
+# ============================================================================
+# P-04 (A154 N7, N10) — reporting-only additions after the G2 review of re/07 (S1)
+# ============================================================================
+
+
+def _spf_run(tmp_path, monkeypatch, xo_values, **kwargs):
+    """Run the SPF fixture against a crafted results file; return (model, result)."""
+    model = schema.validate_recipe(_spf())
+    refined = {"spf1_xo": (xo_values[0], 0.001), "spf1_I": (10.0, 0.1), "spf1_gauss_fwhm": (0.01, 0.001),
+               "spf2_xo": (xo_values[1], 0.001), "spf2_I": (5.0, 0.1), "ze_th2_offset": (0.0, 0.001)}
+    results_csv = _make_results_csv(refined, {"r_wp": 8.5, "r_exp": 5.2, "gof": 1.6,
+                                              "number_independent_parameters": len(refined)})
+    lo, hi = model.payload.window()
+    profile_tth = [t for t in model.payload.xrd_data.tth if lo <= t <= hi]
+    profile = _make_profile(profile_tth, [100.0] * len(profile_tth), [100.0] * len(profile_tth))
+    monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe",
+                        lambda *a, **kw: tmp_path / "TOPAS6" / "tc.exe")
+    return model, native_run.run_native(model, tmp_path, runner=_fake_topas_runner(results_csv, profile), **kwargs)
+
+
+def test_writer_spf_xo_gets_the_window_as_reporting_limit():
+    """A154 N7 (P-04): an SPF peak position without a stated bound records (start_X, finish_X) as its limits with
+    source "window"; the INP token is unchanged (no min/max emitted)."""
+    from powderline.schema_core import fit_limits_on_data
+    model = schema.validate_recipe(_spf())
+    native = native_writer.render_native(model, "test")
+    start, finish = fit_limits_on_data(model.payload.fit_range, model.payload.xrd_data)  # = start_X, finish_X
+    for name in ("spf1_xo", "spf2_xo"):
+        assert native.params[name].limits == (start, finish)
+        assert native.params[name].limit_source == ("window", "window")
+    xo_lines = [ln for ln in native.inp_text.splitlines() if "xo spf1_xo" in ln or "xo spf2_xo" in ln]
+    assert len(xo_lines) == 2 and all("min" not in ln and "max" not in ln for ln in xo_lines), xo_lines
+    assert f"start_X {native_writer.fmt(start)}" in native.inp_text  # the source of the recorded limits
+    # a stated bound keeps its own source; the other side is the window's
+    recipe = _spf()
+    recipe["payload"]["single_peaks"][0]["xo"] = P(5.0, True, 4.0, None)
+    native = native_writer.render_native(schema.validate_recipe(recipe), "test")
+    assert native.params["spf1_xo"].limits == (4.0, finish)
+    assert native.params["spf1_xo"].limit_source == ("stated", "window")
+    assert native.params["spf1_I"].limit_source[1] is None  # only xo gets the window
+
+
+@pytest.mark.parametrize("edge", ["min", "max"])
+def test_runner_spf_xo_on_window_edge_is_a_limit_hit_with_window_source(tmp_path, monkeypatch, edge):
+    """A154 N7 (P-04): a peak position ending on start_X / finish_X is reported as topas_parameter_at_limit naming
+    the window edge, and the peak enters spf_convergence_diagnostics as at_limit."""
+    start, finish = schema.validate_recipe(_spf()).payload.window()
+    at_edge = start if edge == "min" else finish
+    _, result = _spf_run(tmp_path, monkeypatch, (at_edge, 7.0))
+    hits = [w for w in result["warnings"] if w["code"] == "topas_parameter_at_limit"]
+    assert len(hits) == 1
+    assert hits[0]["field_path"] == "payload.single_peaks.0.xo"
+    assert f"fit window's {edge} edge" in hits[0]["message"]
+    assert ("start_X" if edge == "min" else "finish_X") in hits[0]["message"]
+    diag = result["spf_convergence_diagnostics"]
+    assert list(diag["peak_index"]) == [0] and list(diag["status"]) == ["at_limit"]
+    assert "fit window" in diag["notes"].iloc[0]
+
+
+def test_runner_spf_xo_beyond_window_edge_is_a_limit_hit(tmp_path, monkeypatch):
+    """A154 N7: unlike a TOPAS limit, the window edge can be crossed; a peak that left the window is flagged too,
+    and one that stayed inside is not."""
+    start, finish = schema.validate_recipe(_spf()).payload.window()
+    _, result = _spf_run(tmp_path, monkeypatch, (start - 0.5, finish + 0.25))
+    hits = sorted(w["field_path"] for w in result["warnings"] if w["code"] == "topas_parameter_at_limit")
+    assert hits == ["payload.single_peaks.0.xo", "payload.single_peaks.1.xo"]
+    _, result = _spf_run(tmp_path, monkeypatch, (5.0, 7.0))
+    assert not [w for w in result["warnings"] if w["code"] == "topas_parameter_at_limit"]
+    assert result["spf_convergence_diagnostics"].empty
+
+
+def test_safe_base_name():
+    """A154 N10 (P-04): ASCII base names pass through; anything else becomes 'topas' with a structured warning."""
+    assert native_run.safe_base_name("example_LaB6") == ("example_LaB6", None)
+    base, warning = native_run.safe_base_name("Ünïcødé")
+    assert base == "topas"
+    assert warning["code"] == "topas_base_name_sanitized" and warning["field_path"] is None
+    assert "Ünïcødé" in warning["message"] and "topas.*" in warning["message"]
+
+
+def test_runner_non_ascii_base_name_is_sanitized(tmp_path, monkeypatch):
+    """A154 N10 (P-04): a non-ASCII base name (here derived from examples/<name>/output) writes topas.* files,
+    the result carries topas_base_name_sanitized once, and the INP equals the one rendered for base 'topas'."""
+    model = schema.validate_recipe(_rietveld())
+    out = tmp_path / "Ünïcødé" / "output"
+    out.mkdir(parents=True)
+    assert native_run.default_base_name(out) == "Ünïcødé"
+
+    # generate-only (no tc.exe)
+    monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe", lambda *a, **kw: None)
+    result = native_run.run_native(model, out)
+    assert result["method"] == "topas_generate_only"
+    assert (out / "topas.inp").is_file() and (out / "topas.xye").is_file()
+    assert not [p for p in out.iterdir() if not p.name.isascii()]
+    assert [w["code"] for w in result["warnings"]].count("topas_base_name_sanitized") == 1
+    assert (out / "topas.inp").read_text(encoding="utf-8") == native_writer.render_native(model, "topas").inp_text
+
+    # a full (fake) run reads its results back from the topas_* files
+    refined = {"p1_cell_a": (4.1580, 0.0002), "p1_volume": (71.85, 0.01)}
+    results_csv = _make_results_csv(refined, {"r_wp": 8.5, "r_exp": 5.2, "gof": 1.6, "number_independent_parameters": 1})
+    lo, hi = model.payload.window()
+    profile_tth = [t for t in model.payload.xrd_data.tth if lo <= t <= hi]
+    profile = _make_profile(profile_tth, [100.0] * len(profile_tth), [100.0] * len(profile_tth))
+    monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe",
+                        lambda *a, **kw: tmp_path / "TOPAS6" / "tc.exe")
+    result = native_run.run_native(model, out, base_name="Ünïcødé",
+                                   runner=_fake_topas_runner(results_csv, profile, {"LaB6": _make_peak_list()}))
+    assert result["success"] is True
+    assert (out / "topas_results.csv").is_file()
+    assert [w["code"] for w in result["warnings"]].count("topas_base_name_sanitized") == 1
+    # an ASCII name is untouched and raises no warning
+    result = native_run.run_native(model, tmp_path / "plain", base_name="example_LaB6",
+                                   runner=_fake_topas_runner(results_csv, profile, {"LaB6": _make_peak_list()}))
+    assert (tmp_path / "plain" / "example_LaB6.inp").is_file()
+    assert "topas_base_name_sanitized" not in [w["code"] for w in result["warnings"]]

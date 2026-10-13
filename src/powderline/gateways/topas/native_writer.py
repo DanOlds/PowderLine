@@ -107,7 +107,8 @@ class ParamInfo:
     atom: Optional[str] = None
     scale: float = 1.0           # recipe value = TOPAS value / scale (beq: scale 8 pi^2)
     limits: tuple = (None, None)  # fixed limits after the run: stated bound, else TOPAS's fixed default
-    limit_source: tuple = (None, None)  # per side: "stated", "TOPAS" or None (no fixed limit)
+    limit_source: tuple = (None, None)  # per side: "stated", "TOPAS", "window" (SPF xo: the fit window's
+    #                                     edge, reporting only, A154 N7 / P-04) or None (no fixed limit)
 
 
 @dataclass
@@ -158,6 +159,7 @@ class _Writer:
         self.data_base = base_name
         self.bkg_values = background_values  # TOPAS name -> refined value: the background run (A152)
         self.p = model.payload
+        self.window: tuple = (None, None)  # (start_X, finish_X) once rendered
         self.out = NativeInput(inp_text="", xye_text="", dropped_points=0,
                                results_file=f"{base_name}{RESULTS_SUFFIX}",
                                profile_file=f"{base_name}{PROFILE_SUFFIX}",
@@ -236,6 +238,7 @@ class _Writer:
         self.lines.append(f'xdd "{self.data_base}.xye" xye_format')
         self.lines.append(f"   x_calculation_step {fmt(c.x_calculation_step)}")
         start, finish = fit_limits_on_data(p.fit_range, p.xrd_data)  # on weighted data points (A149, A154, EB-59)
+        self.window = (start, finish)
         self.lines += [f"   start_X {fmt(start)}", f"   finish_X {fmt(finish)}"]
         self._geometry_and_corrections()
         self._emission()
@@ -537,6 +540,7 @@ class _Writer:
         base = f"payload.single_peaks.{i - 1}"
         self.lines.append("   xo_Is")
         xo = self._kw(f"{pfx}_xo", peak.xo, f"{base}.xo", "spf_peak", f"spf_peak_{i}_xo")
+        self._window_as_limit(self.out.params[f"{pfx}_xo"])
         itok = self._kw(f"{pfx}_I", peak.I, f"{base}.I", "spf_peak", f"spf_peak_{i}_I", default=KEYWORD_LIMITS["I"])
         self.lines.append(f"      xo {xo} I {itok}")
         self.lines.append(f"      {self._peak_type_call()}")
@@ -546,6 +550,14 @@ class _Writer:
                 self.lines.append(f"      {kw} " + self._kw(f"{pfx}_{kw}", v, f"{base}.{kw}", "spf_peak",
                                                            f"spf_peak_{i}_{kw}"))
         self._spf_totals(pfx, i, peak)
+
+    def _window_as_limit(self, info: ParamInfo) -> None:
+        """A peak position without a stated bound gets the fit window's edge as its limit, source ``"window"``
+        (A154 N7, P-04): TOPAS does not hold ``xo`` inside ``start_X``..``finish_X``, so the runner's at-limit
+        check reports a peak that ended on or beyond the window's edge. Reporting only: the INP is unchanged."""
+        info.limits = tuple(w if lim is None else lim for lim, w in zip(info.limits, self.window))
+        info.limit_source = tuple("window" if src is None and w is not None else src
+                                  for src, w in zip(info.limit_source, self.window))
 
     def _spf_totals(self, pfx: str, i: int, peak) -> None:
         """The whole peak's FWHM and integral breadth at its position (TCHZ only: G and L parts are explicit; D13)."""
