@@ -2,8 +2,11 @@
 
 ``validate`` and ``validate_simulation_mode_parameters`` moved here verbatim from
 ``powderline.kicker`` (multi-engine refactor, re/02, A51) so the gateway's schema
-layer can validate a recipe without GSAS-II installed. ``powderline.kicker``
-re-exports both, so existing imports keep working.
+layer can validate a recipe without GSAS-II installed. The gateway's ``validate``
+is this ``validate``; the public ``powderline.validate`` (re/07, P-06) dispatches
+to it for ``gsasii.*`` and 0.26.0 recipes and wraps the model in a
+``ValidationResult``. Both names go with the 0.26.0 schema (the native rule is in
+the schema, A88).
 
 This module must never import GSAS-II (enforced by an import-block test).
 """
