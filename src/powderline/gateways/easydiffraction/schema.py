@@ -602,14 +602,6 @@ class EasydiffractionRietveldRecipe(CoreRecipe):
 _RECIPE_MODELS = {"easydiffraction.rietveld": EasydiffractionRietveldRecipe}
 
 
-def is_native_recipe(recipe) -> bool:
-    """True for an ``easydiffraction.*`` recipe (dict or model); any such name counts, so a typo is reported natively."""
-    if isinstance(recipe, EasydiffractionRietveldRecipe):
-        return True
-    name = recipe.get("schema_name") if isinstance(recipe, dict) else None
-    return isinstance(name, str) and name.startswith("easydiffraction.")
-
-
 def validate_recipe(recipe) -> EasydiffractionRietveldRecipe:
     """Validate an ``easydiffraction.*`` recipe (dict or model); return the model (idempotent, A50)."""
     if isinstance(recipe, EasydiffractionRietveldRecipe):

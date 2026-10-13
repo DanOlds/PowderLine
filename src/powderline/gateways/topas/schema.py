@@ -874,14 +874,6 @@ _RECIPE = TypeAdapter(TopasRecipe, config={"title": "TopasRecipe"})
 _RECIPE_MODELS = {"topas.rietveld": TopasRietveldRecipe, "topas.spf": TopasSpfRecipe}
 
 
-def is_native_recipe(recipe) -> bool:
-    """True for a ``topas.*`` recipe (dict or model); any ``topas.`` name counts, so a typo is reported natively."""
-    if isinstance(recipe, (TopasRietveldRecipe, TopasSpfRecipe)):
-        return True
-    name = recipe.get("schema_name") if isinstance(recipe, dict) else None
-    return isinstance(name, str) and name.startswith("topas.")
-
-
 def validate_recipe(recipe) -> TopasRietveldRecipe | TopasSpfRecipe:
     """Validate a ``topas.*`` recipe (dict or model); return the model (idempotent, A50)."""
     if isinstance(recipe, (TopasRietveldRecipe, TopasSpfRecipe)):

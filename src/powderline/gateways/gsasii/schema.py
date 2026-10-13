@@ -666,18 +666,6 @@ _RECIPE = TypeAdapter(GsasiiRecipe, config={"title": "GsasiiRecipe"})
 _RECIPE_MODELS = {"gsasii.rietveld": GsasiiRietveldRecipe, "gsasii.spf": GsasiiSpfRecipe}
 
 
-def is_native_recipe(recipe) -> bool:
-    """True for a ``gsasii.*`` recipe (dict or model); False for anything else.
-
-    Any ``gsasii.`` name counts, so a mistyped one (``gsasii.reitveld``) is
-    reported against the gsasii schema names.
-    """
-    if isinstance(recipe, (GsasiiRietveldRecipe, GsasiiSpfRecipe)):
-        return True
-    name = recipe.get("schema_name") if isinstance(recipe, dict) else None
-    return isinstance(name, str) and name.startswith("gsasii.")
-
-
 def validate_recipe(recipe) -> GsasiiRietveldRecipe | GsasiiSpfRecipe:
     """Validate a ``gsasii.*`` recipe (dict or model); return the model (idempotent, A50).
 
