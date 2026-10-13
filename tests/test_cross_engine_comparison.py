@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.core  # reads committed goldens in --no-run mode; imports no engine
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "cross_engine_comparison.py"
 RECORD = ROOT / "docs" / "_generated" / "cross_engine_comparison.json"
