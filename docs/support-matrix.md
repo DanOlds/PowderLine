@@ -1,13 +1,12 @@
 # Schema and engine support matrix
 
-<!-- DRAFT (re/10 workstream D). Model: master plan A40 (compatibility is
-     declared, never inferred from version arithmetic), A65 (declarations as
-     capabilities() keys; support_matrix() in powderline.compat), A44 (engine
-     versions pinned and checked at run time), A144/A145 (TOPAS declares its
-     version in the recipe; the installed version is declared by the user),
-     A157 B2 (easydiffraction recipes carry no engine version), A110 (gemmi
-     pinned exactly). Source code: src/powderline/compat.py (module docstring,
-     support_matrix()). -->
+<!-- Model: master plan A40 (compatibility is declared, never inferred from
+     version arithmetic), A65 (declarations as capabilities() keys;
+     support_matrix() in powderline.compat), A44 (engine versions pinned and
+     checked at run time), A144/A145 (TOPAS declares its version in the recipe;
+     the installed version is declared by the user), A157 B2 (easydiffraction
+     recipes carry no engine version), A110 (gemmi pinned exactly). The table
+     below is generated: scripts/gen_schema_field_tables.py. -->
 
 ## How compatibility is decided
 
@@ -50,76 +49,33 @@ tests and regenerating `tests/data/canonical_space_groups.txt` (A110).
 
 ## The matrix
 
-Regenerate with (from the repository root, in an environment where the
-gateways are installed; the call imports no engine):
+The table is **generated from the declarations** by
+`scripts/gen_schema_field_tables.py` (the same script that writes the
+[field tables](fields.md)), into `docs/_generated/support_matrix.md`, so it
+cannot drift from the code. Regenerate it after changing a declaration, in
+any environment where the gateways are installed (the call imports no
+engine):
+
+```bash
+PYTHONPATH=src python scripts/gen_schema_field_tables.py
+```
+
+The raw rows are `powderline.support_matrix()` (one dict per gateway with
+the keys `gateway`, `powderline_version`, `core_schema_version`,
+`supported_core_schemas`, `engine_schema_version`, `supported_engine_schemas`,
+`requires_core_schema`, `engine_version_spec`, `workflows`, `declared`):
 
 ```bash
 python -c "import powderline, json; print(json.dumps(powderline.support_matrix(), indent=1))"
 ```
 
-<!-- TODO re/10: replace the snapshot below with the output at the release
-     commit (after re/07 removes the GSASII_* workflow names and re/08 sets
-     the package version), via a build-time script so the table cannot drift. -->
-
-**Snapshot** at commit `f87575d` (branch `refactor/multi-engine`, package
-version still `0.1.1`), run 2026-10-13. Two things in it are transitional and
-disappear in re/07: the 0.26.0 workflow names (`GSASII_Rietveld`,
-`GSASII_SPF`) still served by every gateway, and the TOPAS
-`engine_version_spec` `>=7,<8`, which belongs to the 0.26.0 translation path
-(the native `topas.*` schema's TOPAS 6 declaration is a schema-module
-constant, not yet a matrix column).
-
-| Gateway | PowderLine | Core schema (current / accepted) | Engine schema (current / accepted) | Requires core | Engine version | Workflows |
-|---|---|---|---|---|---|---|
-| `gsasii` | 0.1.1 | 1.0.0 / `==1.0.0` | 1.0.0 / `==1.0.0` | `==1.0.0` | `==5.7.9` | `gsasii.rietveld`, `gsasii.spf` (+ `GSASII_Rietveld`, `GSASII_SPF` until re/07) |
-| `topas` | 0.1.1 | 1.0.0 / `==1.0.0` | 1.0.0 / `==1.0.0` | `==1.0.0` | `>=7,<8` (0.26.0 path; native: TOPAS `==6`) | `topas.rietveld`, `topas.spf` (+ `GSASII_Rietveld`, `GSASII_SPF` until re/07) |
-| `easydiffraction` | 0.1.1 | 1.0.0 / `==1.0.0` | 1.0.0 / `==1.0.0` | `==1.0.0` | `==0.21.1` | `easydiffraction.rietveld` (+ `GSASII_Rietveld` until re/07) |
-
-All three gateways are `declared: true`.
-
-Raw output of the command above (the fields of each row are exactly the
-`support_matrix()` keys):
-
-```json
-[
- {
-  "gateway": "easydiffraction",
-  "powderline_version": "0.1.1",
-  "core_schema_version": "1.0.0",
-  "supported_core_schemas": "==1.0.0",
-  "workflows": ["easydiffraction.rietveld", "GSASII_Rietveld"],
-  "engine_version_spec": "==0.21.1",
-  "declared": true,
-  "engine_schema_version": "1.0.0",
-  "supported_engine_schemas": "==1.0.0",
-  "requires_core_schema": "==1.0.0"
- },
- {
-  "gateway": "gsasii",
-  "powderline_version": "0.1.1",
-  "core_schema_version": "1.0.0",
-  "supported_core_schemas": "==1.0.0",
-  "workflows": ["gsasii.rietveld", "gsasii.spf", "GSASII_Rietveld", "GSASII_SPF"],
-  "engine_version_spec": "==5.7.9",
-  "declared": true,
-  "engine_schema_version": "1.0.0",
-  "supported_engine_schemas": "==1.0.0",
-  "requires_core_schema": "==1.0.0"
- },
- {
-  "gateway": "topas",
-  "powderline_version": "0.1.1",
-  "core_schema_version": "1.0.0",
-  "supported_core_schemas": "==1.0.0",
-  "workflows": ["topas.rietveld", "topas.spf", "GSASII_Rietveld", "GSASII_SPF"],
-  "engine_version_spec": ">=7,<8",
-  "declared": true,
-  "engine_schema_version": "1.0.0",
-  "supported_engine_schemas": "==1.0.0",
-  "requires_core_schema": "==1.0.0"
- }
-]
+```{include} _generated/support_matrix.md
 ```
+
+The PowderLine version in the table is the package's `__version__` at
+generation time; it reads `0.2.0` once the release step bumps the version.
+The TOPAS `engine_version_spec` is the native declaration (`==6`, TOPAS 6
+only, A143): the `topas.*` 1.0.0 recipes state `engine_version: "6"`.
 
 ## Reading the matrix
 

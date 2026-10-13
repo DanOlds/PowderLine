@@ -12,10 +12,10 @@ one schema per engine) and have their own changelog,
 (row N) and decision-log entry (A…); "(P-NN)" is a provisional decision taken
 while the maintainer was away, to be confirmed.
 
-<!-- DRAFT (re/10 workstream D). Sections marked "TODO re/07 P-06" are
-     placeholders for the public API / CLI, which is still being finalised. -->
-
 ## 0.2.0 — unreleased
+
+<!-- The version in src/powderline/__init__.py, CITATION.cff and pixi.toml is
+     set to 0.2.0 at the release step (G4), together with the date below. -->
 
 PowderLine 0.2.0 is a **clean break** from the unified recipe schema 0.26.0
 (A4, A14): one recipe now targets one engine, in that engine's own
@@ -100,9 +100,23 @@ recipes do not validate; see the
   anisotropic ADPs with CrysPy, physical limits as bounds (row 26, A157–A162,
   A169).
 
+**Examples**
+- Per-engine recipes for the two reference cases, `examples/<case>/topas/input.json`
+  and `examples/<case>/easydiffraction/input.json` (LaB6, LaB6 single peak
+  fitting, DRX_33), byte-for-byte copies of the native fixtures, each with a
+  README; per-engine templates `examples/example_template/{topas,easydiffraction}/input.json`
+  (P-02, P-20, provisional).
+
 **Project**
-- This `CHANGELOG.md` (A12/A16) and the migration guide
-  [`docs/migration-0.26-to-1.0.md`](docs/migration-0.26-to-1.0.md).
+- This `CHANGELOG.md` (A12/A16), the migration guide
+  [`docs/migration-0.26-to-1.0.md`](docs/migration-0.26-to-1.0.md), and the
+  new documentation pages: recipe schemas, fields and features (tables
+  generated from the schemas by `scripts/gen_schema_field_tables.py`, P-27),
+  input guidance, engine behaviour notes (from the engine-behaviour register,
+  A79), cross-engine comparison (A173; `scripts/cross_engine_comparison.py`),
+  support matrix (generated from `powderline.support_matrix()`), policies.
+- The `powderline` console script (`[project.scripts]`), installed with the
+  package (`pixi reinstall powderline`).
 
 ### Changed
 
@@ -133,8 +147,19 @@ recipes do not validate; see the
   single background peak at the example migration: its γ = 1e-5 is below
   GSAS-II's floor and no variant of it converges; the regression references
   lose the four `background_peak_0_*` rows (P-01, provisional).
-- **`mp-simulate`** writes SH/L 0.002 (the gsasii floor) instead of 0.0 (P-05,
-  provisional).
+- **`mp-simulate`** writes SH/L 0.002 (the gsasii floor) instead of 0.001
+  (P-05, provisional), emits a `gsasii.rietveld` 1.0.0 recipe and ships with
+  the GSAS-II gateway (`powderline.gateways.gsasii.mp_simulate`; pixi task
+  `pixi run -e gsasii mp-simulate`). Its structures are now reduced to the
+  symmetry-unique sites (v0.1.1 handed GSAS-II every atom of the conventional
+  cell, so a site was counted *multiplicity* times) and two-origin groups are
+  moved to origin choice 2; the simulated grid includes `max_2theta` (row 31,
+  P-17, provisional).
+- **The regression references** under `examples/*/output/` were regenerated
+  once, on the native path, after the legacy and native paths were shown to
+  agree exactly on every example once the deliberate changes above are pinned
+  (row 30). The four DRX_33 refinements now report `converged: false` after
+  their five cycles (they always ran that way; now it is said).
 
 **easydiffraction**
 - **Native results differ from the v0.1.1 easydiffraction path**: data reach
@@ -161,24 +186,54 @@ recipes do not validate; see the
   `powderline.gateways.easydiffraction`, **no shims**; an existing checkout
   needs `pixi reinstall powderline` for the entry points (rows 22 and 25,
   A136).
-- <!-- TODO re/08: pixi environment names (`easydiff` → `easydiffraction`,
-  `pixi install -e gsasii`, core-only default env) — state the final names
-  once re/08 lands. -->
+- **pixi environments** (A31, A42; P-21, provisional): the **default
+  environment is core-only** (schema layer, registry, the engine-free CLI; no
+  engine). Engines live in named environments: `gsasii` (GSAS-II via
+  pixi-build, the server, `mp-simulate`), `easydiffraction` (renamed from
+  `easydiff`; Python ≥ 3.12, no GSAS-II), `all` (every engine) and `dev` (all
+  plus docs/test tooling). `pixi install -e gsasii` installs an engine;
+  `pixi run -e gsasii kicker <recipe>` runs in it; engine-bound tasks
+  (`gsas-server`, `mp-simulate`, `ui`) live in their engine's feature, so
+  pixi asks for `-e` when the task is ambiguous; `pixi run test` and
+  `pixi run docs` resolve to `dev`. A `gsasii.*` recipe validates in the
+  default environment but a run there raises `EngineNotAvailableError`
+  naming the environment and the install command. After the re-lock, every
+  environment needs its own editable install (`pixi reinstall powderline
+  --all`; KI-13).
 
-**Public API and CLI**
-- <!-- TODO re/07 P-06: final API/CLI -->
-  *Placeholder.* The public namespace (`powderline.__all__`), the `run()`
-  signature, the single CLI entry point and the location of `GSASClient` are
-  being finalised in re/07 (P-06). This bullet is rewritten when that work
-  lands.
+**Public API and CLI** (P-06, P-11–P-15, provisional)
+- `powderline.__all__` is `run`, `validate`, `ValidationResult`,
+  `load_recipe_asset`, `support_matrix`, and the exceptions `PowderLineError`,
+  `GatewayNotInstalledError`, `EngineNotAvailableError`, `EngineVersionError`,
+  `EngineExecutionError`. `import powderline` imports no engine.
+- `run(recipe, output_dir, *, verbose=False, validate_only=False,
+  **engine_options)` dispatches on the recipe's `schema_name`; engine options
+  are the gateway's explicit keywords (gsasii `execution_mode`; topas
+  `topas_dir`, `topas_version`; easydiffraction none), an unknown one is a
+  `TypeError`. There is no `engine=` keyword.
+- `validate(recipe, *, verbose=False)` is engine-free and returns a frozen
+  `ValidationResult(recipe=<the gateway's validated model>, warnings=[...])`;
+  an invalid recipe raises pydantic's `ValidationError` listing every problem
+  at its field path.
+- One CLI, `powderline <recipe.json> [--output DIR] [--validate-only]
+  [--verbose] [--use-server | --no-server] [--topas-dir DIR]
+  [--topas-version V]`, serving every schema; an engine flag given for a
+  recipe of another engine exits 1; `--validate-only` writes nothing. The
+  pixi task `kicker` runs the same `main`.
+- `GSASClient` lives at `powderline.gateways.gsasii.client`; the GSAS-II
+  `run` body is `powderline.gateways.gsasii.gateway.run`.
 
 ### Removed
 
 - **The unified 0.26.0 schema** (`schema_name` `GSASII_Rietveld` /
-  `GSASII_SPF`, `schema_version`) and the cross-engine translation layer: a
-  0.26.0 recipe is no longer accepted by any engine (A4, A14).
-  <!-- TODO re/07: confirm the exact removal commit and whether any error
-  message points 0.26.0 recipes at the converter. -->
+  `GSASII_SPF`, `schema_version`) and the cross-engine translation layer
+  (`powderline.schema`, the legacy GSAS-II executor, the TOPAS writer /
+  round-trip / `topas-kicker`, the easydiffraction builder / policy): a 0.26.0
+  recipe is no longer accepted by any engine (A4, A14; row 32). From
+  `powderline.validate()`, `powderline.run()` and the CLI it fails at
+  `schema_name` with "does not name an engine: expected `<engine>.<workflow>`";
+  the message names the expected form, not the converter — the
+  [migration guide](docs/migration-0.26-to-1.0.md) does.
 - `refinement_controls.refinement_algorithm` (v0.1.1 accepted and ignored it)
   and the `null`-valued `broadening` / `corrections` / phase
   `parameterization` forms that crashed v0.1.1 at run time: the gsasii
@@ -191,9 +246,19 @@ recipes do not validate; see the
   converter.
 - The legacy TOPAS 7.25 goldens `examples/*/output/topas/` (P-02,
   provisional; TOPAS 6 goldens live in `tests/data/topas/native/golden/`).
-- <!-- TODO re/07 P-06: final API/CLI --> *Placeholder:* `engine=` argument of
-  `run()`, `validate_simulation_mode_parameters`, `RecipeModel` and
-  `GSASClient` in the `powderline` namespace, the `topas-kicker` entry point.
+- From the public namespace (P-06, row 32): the `engine=` argument of
+  `run()` (the recipe names its engine); `validate_simulation_mode_parameters`
+  (the rule is in the gsasii schema: a refine flag in a one-cycle recipe is a
+  validation error); `RecipeModel` and `powderline.schema` (the gateways'
+  models come back from `validate().recipe`); `GSASClient` (now
+  `powderline.gateways.gsasii.client.GSASClient`); the `powderline.engine`
+  dispatcher module; the re/01 shims `powderline.constraints`,
+  `powderline.gsas_client`, `powderline.gsas_server` (import
+  `powderline.gateways.gsasii.{constraints,client,server}`); the
+  `topas-kicker` console script and pixi task (the one CLI serves `topas.*`
+  recipes).
+- The `easydiff` pixi environment name (now `easydiffraction`) and GSAS-II
+  from the default environment (now the `gsasii` environment).
 
 ### Fixed
 

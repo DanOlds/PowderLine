@@ -1,11 +1,9 @@
 # Migrating recipes from schema 0.26.0 to 1.0.0
 
-<!-- DRAFT (re/10 workstream D). Every statement below is traceable to
-     docs/SCHEMA_HISTORY.md, scripts/convert_recipe_026.py, the maintainers'
-     deliberate-changes table (rows cited as "row N") or a decision-log entry
-     ("A…"). "P-NN" marks a provisional decision awaiting the maintainer.
-     Sections marked "TODO re/07 P-06" are placeholders for the public API/CLI,
-     still being finalised. -->
+<!-- Every statement below is traceable to docs/SCHEMA_HISTORY.md,
+     scripts/convert_recipe_026.py, the maintainers' deliberate-changes table
+     (rows cited as "row N") or a decision-log entry ("A…"). "P-NN" marks a
+     provisional decision awaiting the maintainer (docs/policies.md). -->
 
 This guide is for anyone holding recipes written for **PowderLine 0.1.1**
 (unified recipe schema **0.26.0**, `schema_name` `GSASII_Rietveld` or
@@ -176,24 +174,28 @@ listed. The converter never guesses.
 | `peak_broadening.*.model` is not `isotropic` | gsasii 1.0.0 supports isotropic only | drop the block (default applies) or state an isotropic value |
 | the converted recipe fails gsasii 1.0.0 validation | the recipe states something GSAS-II silently replaced or could not do | see the message: it names the field and the value to write |
 
-The last row is where the committed LaB6 examples stop. Their background peak
-has `pv_lorentzian_gamma = 1e-05`, below GSAS-II's floor of 0.1 (row 9, EB-35):
+The last row is where the 0.26.0 LaB6 recipes stopped (the pre-conversion
+recipes are kept as the converter's test fixtures in `tests/data/convert_026/`).
+Their background peak has `pv_lorentzian_gamma = 1e-05`, below GSAS-II's floor
+of 0.1 (row 9, EB-35):
 
 ```text
 cannot convert the recipe:
   - payload.background.single_peaks.pv_lorentzian_gamma.0: pv_lorentzian_gamma[0] = 1e-05 is below 0.1,
     the smallest value GSAS-II computes with; it would silently use 0.1 (GSAS-II quirk EB-35)
 ```
-<!-- output of `python scripts/convert_recipe_026.py examples/example_LaB6/input.json`
-     at f87575d (run 2026-10-13), reflowed -->
+<!-- output of `python scripts/convert_recipe_026.py tests/data/convert_026/example_LaB6/input.json`
+     (run 2026-10-13), reflowed -->
 
 Nothing can be inferred here: 0.1.1 computed with γ = 0.1, so "write 0.1" is
 the faithful conversion, but whether that peak belongs in the model is a
 modelling decision. For the shipped examples the maintainers' provisional
-decision is to **remove the peak** (P-01): no γ rescues it, the only
-converging variant degrades Rwp, and the data show no feature there. The
-regression references lose the four `background_peak_0_*` rows. Your own
-recipe may warrant the other choice (state the peak at the floor).
+decision was to **remove the peak** before converting (P-01): no γ rescues
+it, the only converging variant degrades Rwp, and the data show no feature
+there. The committed `examples/example_LaB6/input.json` therefore has no
+`single_peaks`, and the regression references lost the four
+`background_peak_0_*` rows. Your own recipe may warrant the other choice
+(state the peak at the floor).
 
 Other validation errors you may meet at this step, and what they mean:
 a `scale` < 0 (row 14); a wavelength ≤ 0 or crystallite size ≤ 0 (row 19); a
@@ -372,15 +374,37 @@ from a GSAS-II recipe:
   (rows 22, 25; A136). Code importing the old paths must be updated. An
   existing checkout needs **`pixi reinstall powderline`** so the gateway
   entry points are re-registered (KI-13).
-- <!-- TODO re/08: pixi environment names and `pixi install -e gsasii` -->
-  *Placeholder:* the pixi environment names change in re/08 (the default
-  environment becomes core-only; the engines move to named environments).
-- <!-- TODO re/07 P-06: final API/CLI --> *Placeholder — public API and CLI.*
-  The following are being finalised (P-06) and will be stated here once
-  landed: the removal of `run(..., engine=)` (the engine is named by
-  `schema_name`); the retirement of `validate_simulation_mode_parameters`; the
-  new home of `GSASClient` and `RecipeModel`; the single CLI entry point
-  replacing `kicker` / `topas-kicker`.
+- **pixi environments** (P-21, provisional): the default environment is
+  **core-only** — it validates every recipe but runs no engine. Install the
+  engine you use (`pixi install -e gsasii`, `pixi install -e easydiffraction`,
+  or `-e all`) and run in it: `pixi run -e gsasii kicker <recipe>`. The
+  `easydiff` environment is now `easydiffraction` (remove the stale
+  `.pixi/envs/easydiff`); `pixi run gsas-server …` and `pixi run mp-simulate …`
+  need `-e gsasii`. A `gsasii.*` run in the default environment raises
+  `EngineNotAvailableError` with the install and run commands in the message.
+- **Public API and CLI** (P-06, provisional):
+  - `powderline.run(recipe, output_dir, engine=...)` → `powderline.run(recipe,
+    output_dir)`; the engine is the one `schema_name` names. Engine options
+    are keywords (`execution_mode=` for gsasii; `topas_dir=`, `topas_version=`
+    for topas).
+  - `powderline.validate(recipe)` returns a `ValidationResult`: the validated
+    model is `result.recipe`, the structured warnings `result.warnings`
+    (0.1.1 returned the `RecipeModel` itself).
+  - `validate_simulation_mode_parameters()` is gone: the gsasii schema rejects
+    any refine flag in a `refinement_cycles: 1` recipe at validation.
+  - `from powderline import RecipeModel` / `from powderline.schema import
+    RecipeModel` have no replacement: the model classes are the gateways'
+    (`powderline.gateways.gsasii.schema.GsasiiRietveldRecipe`, …), and you
+    normally get an instance from `validate()`.
+  - `from powderline import GSASClient` / `from powderline.gsas_client import
+    GSASClient` → `from powderline.gateways.gsasii.client import GSASClient`
+    (also `powderline.gateways.gsasii.server` for the server module).
+  - One CLI for every engine: `powderline <recipe.json>` (installed console
+    script) or `pixi run [-e <env>] kicker <recipe.json>`; `topas-kicker` is
+    gone, a `topas.*` recipe goes through the same command with
+    `--topas-version 6` (and `--topas-dir` if `tc.exe` is not on the path).
+    The validate-only report prints the core and engine schema versions
+    instead of `Schema version:`.
 
 ## 6. Checklist
 
@@ -394,4 +418,8 @@ from a GSAS-II recipe:
    if you need GSAS-II's own statistics.
 4. For TOPAS or easydiffraction, write a native recipe from the fixtures
    (§3).
-5. `pixi reinstall powderline` on an existing checkout (§5).
+5. On an existing checkout: `pixi install -e gsasii` (or the engine you use),
+   then `pixi reinstall powderline --all` so every environment has the
+   entry points (§5); run with `pixi run -e gsasii kicker <recipe>`.
+6. In code: drop `engine=`, read `validate(...).recipe`, import `GSASClient`
+   from `powderline.gateways.gsasii.client` (§5).
