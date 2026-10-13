@@ -56,7 +56,8 @@ table on the [support matrix](support-matrix.md) page.
 The recipe frame and the structural models PowderLine owns: `xrd_data`, the
 fit window, the Chebyshev background and the phase block (`space_group`,
 `unit_cell`, `atoms`). The rules behind them (canonical space-group names,
-symmetry-determined values, tie groups and flags, the name rule) are in
+symmetry-determined values, tie groups and flags, the name rule) are on the
+[input guidance page](input-guidance.md) and in
 [SCHEMA_HISTORY](SCHEMA_HISTORY.md#core-schema).
 
 ```{include} _generated/fields_core.md
