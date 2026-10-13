@@ -23,9 +23,19 @@ preview = ["pixi-build"]
 # `pixi run kicker <recipe>` runs in the default env unless you say where:
 # `pixi run -e gsasii kicker <recipe>`. Engine-bound tasks live in their
 # engine's feature, so without `-e` pixi reports them as ambiguous and prints
-# the `--environment` form to use. Tasks only the dev env has (`test`, `docs`)
-# resolve to it automatically. All tasks use the task-level `env` dict for
-# PYTHONPATH (cross-platform; docs/cross-platform-guide.md Issue B).
+# the `--environment` form to use. Tasks only the dev env has (`test-all`,
+# `docs`) resolve to it automatically. All tasks use the task-level `env` dict
+# for PYTHONPATH (cross-platform; docs/cross-platform-guide.md Issue B).
+#
+# Test suites (re/09; markers declared in pyproject.toml, one per test):
+#   pixi run test                              core + topas_gen, engine-free, any env;
+#                                              installs the core guard (tests/conftest.py)
+#   pixi run -e gsasii test-gsasii             GSAS-II suite incl. the slow regressions
+#   pixi run -e easydiffraction test-easydiffraction
+#   pixi run test-topas                        topas_gen + topas_exec; topas_exec needs
+#                                              tc.exe (the TOPAS machine), none exists yet
+#   pixi run test-all                          every marker, in `dev` (the pre-merge gauntlet)
+# Each takes extra pytest arguments: `pixi run test -x -k schema`.
 # ---------------------------------------------------------------------------
 
 [tasks]
@@ -35,6 +45,13 @@ kicker = { cmd = "python -m powderline.kicker", env = { PYTHONPATH = "$PIXI_PROJ
 # Regenerate src/powderline/_code_hash.json after editing the frozen GSAS-II
 # gateway modules (stdlib only; guarded by tests/test_code_hash.py).
 update-code-hash = "python scripts/update_code_hash.py"
+# The engine-free suites: what every env must pass without importing an engine
+# (the core guard makes an engine import fail). TOPAS input generation needs
+# only gemmi, so it belongs here and runs on every CI push.
+test = { cmd = 'pytest -m "core or topas_gen"', env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
+# The TOPAS suite: generation everywhere; topas_exec tests (none yet) skip with
+# a reason where tc.exe is absent and run only on the TOPAS Windows machine.
+test-topas = { cmd = 'pytest -m "topas_gen or topas_exec"', env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
 
 [dependencies]
 # Core = the pyproject runtime dependencies + what the editable install and the
@@ -112,6 +129,10 @@ emmet-core = ">=0.87.1,<0.88"
 gsas-server = { cmd = "python -m powderline.gateways.gsasii.server", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
 mp-simulate = { cmd = "python -m powderline.gateways.gsasii.mp_simulate", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
 ui = { cmd = "python -m GSASII", env = { GSASII_NOPATHHACKING = "true" } } # the GSAS-II GUI
+# The GSAS-II suite, slow regressions included (they are its point); the
+# regression tests spawn `pixi run -e <this env> kicker` via
+# tests/subprocess_utils.kicker_command. `pixi run -e gsasii test-gsasii`.
+test-gsasii = { cmd = 'pytest -m "gsasii"', env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
 
 # ---------------------------------------------------------------------------
 # easydiffraction (renamed from `easydiff`, A42). No GSAS-II: its suite mocks
@@ -126,6 +147,11 @@ python = ">=3.12"                 # easydiffraction floor; default env stays >=3
 # A116); tests/test_gateways.py asserts the pin lies inside the specifier.
 easydiffraction = "==0.21.1"
 
+[feature.easydiffraction.tasks]
+# The easydiffraction suite (the native runs and goldens are slow, ~18 min).
+# `pixi run -e easydiffraction test-easydiffraction`.
+test-easydiffraction = { cmd = 'pytest -m "easydiffraction"', env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
+
 # ---------------------------------------------------------------------------
 # dev: docs/test tooling on top of every engine.
 # ---------------------------------------------------------------------------
@@ -136,9 +162,10 @@ myst-parser = ">=4.0.0,<5"
 gitpython = ">=3.1.44,<4"
 
 [feature.dev.tasks]
-# Full suite (every engine). Per-env suites: `pixi run -e gsasii pytest tests/...`
-# (pytest is a core dependency). Marker-aware selection is re/09's.
-test = { cmd = "pytest -v", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
+# The full gauntlet: every marker, every engine, before a merge (`pixi run
+# test-all`; only `dev` has it, so no `-e` is needed). The core guard is off
+# here: the engines are legitimately importable.
+test-all = { cmd = "pytest", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
 docs = "sphinx-build -W --keep-going -b html docs docs/_build/html"
 docs-clean = "python -c \"import shutil; shutil.rmtree('docs/_build', ignore_errors=True)\""
 
