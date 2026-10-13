@@ -8,6 +8,8 @@ from powderline.exceptions import SymmetryError
 from powderline.symmetry import check_cell, check_uij, analyze_site, SiteAnalysis
 from fractions import Fraction
 
+pytestmark = pytest.mark.core
+
 
 # --- check_cell -------------------------------------------------------------
 

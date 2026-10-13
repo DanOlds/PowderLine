@@ -12,14 +12,18 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
 from pydantic import ValidationError
 
 from powderline.gateways.easydiffraction.schema import (
+
     easydiffraction_space_group,
     is_native_recipe,
     validate_recipe,
 )
 from powderline.schema_core import parameters_requested
+
+pytestmark = pytest.mark.core
 
 DATA = Path(__file__).resolve().parent / "data"
 

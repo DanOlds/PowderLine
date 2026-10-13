@@ -3,9 +3,11 @@
 Pure tests: no engine, no network.
 """
 import pytest
+
 from pydantic import BaseModel, ValidationError
 
 from powderline.exceptions import (
+
     EngineExecutionError,
     EngineNotAvailableError,
     EngineVersionError,
@@ -14,6 +16,8 @@ from powderline.exceptions import (
     StructuredWarning,
     SymmetryError,
 )
+
+pytestmark = pytest.mark.core
 
 
 @pytest.mark.parametrize("cls", [

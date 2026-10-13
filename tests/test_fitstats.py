@@ -13,6 +13,8 @@ import pytest
 
 from powderline.fitstats import FitStatistics, compute_fit_statistics
 
+pytestmark = pytest.mark.core
+
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
 

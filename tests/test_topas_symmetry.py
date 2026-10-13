@@ -7,6 +7,8 @@ import pytest
 from powderline import symmetry as sym
 from powderline.exceptions import PowderLineError, SymmetryError
 
+pytestmark = pytest.mark.core
+
 
 # --- (a) cell rules ---------------------------------------------------------
 

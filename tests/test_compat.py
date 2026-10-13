@@ -6,12 +6,15 @@ import pytest
 
 from powderline import registry
 from powderline.compat import (
+
     check_engine_schema_version,
     declarations,
     required_core_schemas,
     support_matrix,
 )
 from powderline.schema_core import CORE_SCHEMA_VERSION
+
+pytestmark = pytest.mark.core
 
 
 # --- declarations -----------------------------------------------------------

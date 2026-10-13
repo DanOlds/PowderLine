@@ -23,6 +23,8 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
+pytestmark = [pytest.mark.gsasii, pytest.mark.slow]
+
 from subprocess_utils import extract_rwp_from_lst, kicker_command, run_subprocess_utf8
 from test_example_LaB6_regression import UNIFORM_RWP_REFERENCE, UNIFORM_RWP_TOLERANCE, extract_rwp_from_stdout
 

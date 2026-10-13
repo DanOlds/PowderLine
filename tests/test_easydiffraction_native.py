@@ -20,9 +20,11 @@ import pytest
 easydiffraction = pytest.importorskip("easydiffraction")
 from importlib.metadata import version
 
-pytestmark = pytest.mark.skipif(
-    version("easydiffraction") != "0.21.1", reason="native path is built for easydiffraction 0.21.1"
-)
+pytestmark = [
+    pytest.mark.easydiffraction,
+    pytest.mark.slow,  # the module-scoped fixtures run the engine; the goldens take ~18 min
+    pytest.mark.skipif(version("easydiffraction") != "0.21.1", reason="native path is built for easydiffraction 0.21.1"),
+]
 
 from powderline.exceptions import EngineExecutionError
 from powderline.gateways.easydiffraction import gateway, native_builder, native_run, schema

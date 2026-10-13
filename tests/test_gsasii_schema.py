@@ -10,11 +10,13 @@ import copy
 import json
 
 import pytest
+
 from pydantic import ValidationError
 
 import powderline
 from powderline.gateways.gsasii import gateway
 from powderline.gateways.gsasii.schema import (
+
     GsasiiRietveldRecipe,
     GsasiiSpfRecipe,
     gsasii_space_group,
@@ -23,6 +25,8 @@ from powderline.gateways.gsasii.schema import (
     validate_recipe,
 )
 from powderline.schema_core import collect_warnings
+
+pytestmark = pytest.mark.core
 
 
 # --- fixtures -----------------------------------------------------------------

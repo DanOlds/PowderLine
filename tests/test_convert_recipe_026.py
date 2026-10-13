@@ -20,6 +20,8 @@ import pytest
 
 from powderline.gateways.gsasii.schema import gsasii_iparm1, gsasii_space_group, validate_recipe
 
+pytestmark = pytest.mark.core
+
 ROOT = Path(__file__).resolve().parents[1]
 _spec = importlib.util.spec_from_file_location("convert_recipe_026", ROOT / "scripts" / "convert_recipe_026.py")
 conv = importlib.util.module_from_spec(_spec)
@@ -168,61 +170,6 @@ def test_space_group_origin_choice_1_stops(old):
     """v0.1.1 ran origin-1 coordinates as origin 2 (EB-03): neither structure is known, so stop (A132)."""
     with pytest.raises(ValueError, match="origin choice 1"):
         conv.canonical_space_group(old)
-
-
-def test_space_group_every_spelling_gsasii_read_converts_to_the_same_setting():
-    """Every gemmi spelling v0.1.1's GSAS-II read (incl. its StandardizeSpcName fallback) converts to that
-    setting, or stops (origin choice 1, or a setting gsasii 1.0.0 refuses); never another setting (A132)."""
-    G2spc = pytest.importorskip("GSASII.GSASIIspc")
-    import gemmi
-    xyz = (0.1234, 0.2345, 0.3456)
-
-    def read(symbol):
-        err, sgdata = G2spc.SpcGroup(symbol)
-        if err and symbol:
-            normalized = G2spc.StandardizeSpcName(symbol)
-            if normalized and normalized != symbol:
-                err, sgdata = G2spc.SpcGroup(normalized)
-        return None if err else sorted(tuple(np.round(np.mod(r[0], 1.0), 5) % 1.0) for r in G2spc.GenAtom(xyz, sgdata))
-
-    spellings = {s for sg in gemmi.spacegroup_table()
-                 for s in (sg.hm, sg.xhm(), sg.short_name(), sg.hm.replace(" ", ""), sg.xhm().replace(" ", ""))}
-    differ = []
-    for old in sorted(spellings | {"R -3 m R", "R 3 m R", "R -3 c R"}):
-        before = read(old)
-        if before is None:
-            continue
-        try:
-            after = read(gsasii_space_group(conv.canonical_space_group(old)))
-        except ValueError:
-            continue
-        if after != before:
-            differ.append(old)
-    assert differ == []
-
-
-def test_space_group_as_gsasii_read_it_matches_gsasii():
-    """GSAS-II's reading of each old symbol is the converted setting (general-position orbit)."""
-    G2spc = pytest.importorskip("GSASII.GSASIIspc")
-    xyz = (0.1234, 0.2718, 0.3141)
-    symbols = {"P m -3 m", "R -3 m", "R -3 m R", "F d -3 m", "C 2/m", "P 21/c"}
-    for f in EXAMPLES:
-        for ph in (json.loads(f.read_text(encoding="utf-8"))["payload"].get("phases") or {}).values():
-            symbols.add(ph["structure"]["space_group"])
-
-    def orbit(sgdata):
-        return [np.array(r[0]) % 1.0 for r in G2spc.GenAtom(xyz, sgdata)]
-
-    def same(a, b):
-        return len(a) == len(b) and all(any(np.allclose(((p - q + 0.5) % 1) - 0.5, 0, atol=1e-6) for q in b)
-                                        for p in a)
-    for old in sorted(symbols):
-        err_old, sg_old = G2spc.SpcGroup(old)
-        if err_old:
-            err_old, sg_old = G2spc.SpcGroup(G2spc.StandardizeSpcName(old))  # the v0.1.1 reader's fallback
-        err_new, sg_new = G2spc.SpcGroup(gsasii_space_group(conv.canonical_space_group(old)))
-        assert not err_old and not err_new, old
-        assert same(orbit(sg_old), orbit(sg_new)), old
 
 
 def test_values_merge_and_cell_flags_expand():

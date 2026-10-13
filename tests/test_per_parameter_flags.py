@@ -14,9 +14,11 @@ every value is stated with its flag.
 import numpy as np
 import pytest
 
-from GSASII import GSASIIscriptable as G2
-from powderline.gateways.gsasii.routing import run_refinement
-from powderline.gateways.gsasii.schema import validate_recipe
+pytestmark = [pytest.mark.gsasii, pytest.mark.slow]
+
+G2 = pytest.importorskip("GSASII.GSASIIscriptable")
+from powderline.gateways.gsasii.routing import run_refinement  # noqa: E402
+from powderline.gateways.gsasii.schema import validate_recipe  # noqa: E402
 
 
 def P(value, flag=False):

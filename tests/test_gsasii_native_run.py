@@ -18,6 +18,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+pytestmark = [pytest.mark.gsasii, pytest.mark.slow]
+
 pytest.importorskip("GSASII.GSASIIscriptable")
 
 import powderline  # noqa: E402

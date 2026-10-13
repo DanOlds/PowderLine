@@ -11,9 +11,11 @@ from pathlib import Path
 
 import gemmi
 import pytest
+
 from pydantic import ValidationError
 
 from powderline.gateways.topas.schema import (
+
     EIGHT_PI_SQ,
     TOPAS_UNREADABLE_SETTINGS,
     TopasRietveldRecipe,
@@ -24,6 +26,8 @@ from powderline.gateways.topas.schema import (
     validate_recipe,
 )
 from powderline.schema_core import collect_warnings, parameters_requested
+
+pytestmark = pytest.mark.topas_gen
 
 DATA = Path(__file__).resolve().parent / "data"
 

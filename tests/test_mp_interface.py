@@ -12,6 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.gsasii
+
 pymatgen_core = pytest.importorskip("pymatgen.core")
 from pymatgen.core import Lattice, Structure  # noqa: E402
 

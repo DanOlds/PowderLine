@@ -16,6 +16,8 @@ import pytest
 from powderline.gateways.gsasii.report_rows import pandas_csv_rows
 from powderline.reports import _write_table
 
+pytestmark = pytest.mark.core
+
 
 def _frame() -> pd.DataFrame:
     return pd.DataFrame({

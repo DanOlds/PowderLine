@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from powderline.gateways.topas import runner
+
+pytestmark = pytest.mark.topas_gen
 
 
 def _make_tc(directory: Path) -> Path:

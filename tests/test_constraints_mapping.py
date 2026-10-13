@@ -9,7 +9,9 @@ coupling, Uij holds).
 """
 import pytest
 
-from GSASII import GSASIIspc as G2spc
+pytestmark = pytest.mark.gsasii
+
+G2spc = pytest.importorskip("GSASII.GSASIIspc")
 from powderline.gateways.gsasii.constraints import (
     AtomPlan,
     CellPlan,

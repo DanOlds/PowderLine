@@ -13,8 +13,11 @@ same tests also ran the pre-refactor copy of the executor, since deleted.)
 
 import numpy as np
 import pytest
+
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+pytestmark = pytest.mark.gsasii
 
 
 def _make_mock_hist(hist_name, residuals=None, has_reflection_lists=True,

@@ -26,6 +26,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.gsasii
+
 G2spc = pytest.importorskip("GSASII.GSASIIspc")
 gemmi = pytest.importorskip("gemmi")
 

@@ -10,6 +10,8 @@ import pytest
 
 from powderline.gateways.gsasii.pattern_exporter import PatternExporter
 
+pytestmark = pytest.mark.core
+
 
 def _write_fit_profile(path):
     """Write a minimal tab-separated fit_profile.txt with the required columns."""

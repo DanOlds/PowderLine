@@ -23,6 +23,8 @@ from powderline.gateways.topas import gateway, native_run, native_writer, peak_l
 from subprocess_utils import run_subprocess_utf8
 from test_topas_schema import P, _rietveld, _spf
 
+pytestmark = pytest.mark.topas_gen
+
 
 # ============================================================================
 # A. Writer tests (render_native on validated models)

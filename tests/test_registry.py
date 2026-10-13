@@ -15,11 +15,14 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+
 from packaging.specifiers import SpecifierSet
 
 from powderline import registry
 from powderline.exceptions import EngineVersionError, GatewayNotInstalledError
 from subprocess_utils import run_subprocess_utf8
+
+pytestmark = pytest.mark.core
 
 REPO = Path(__file__).resolve().parent.parent
 

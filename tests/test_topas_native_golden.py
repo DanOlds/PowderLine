@@ -19,6 +19,8 @@ import pytest
 
 from powderline.gateways.topas import native_run, native_writer, schema
 
+pytestmark = pytest.mark.topas_gen
+
 NATIVE = Path(__file__).parent / "data" / "topas" / "native"
 GOLDEN = NATIVE / "golden"
 FIXTURES = ("drx33_rietveld", "lab6_corrections", "lab6_pv_full_axial", "lab6_rietveld", "lab6_spf",

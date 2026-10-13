@@ -14,9 +14,12 @@ from __future__ import annotations
 import importlib
 
 import pytest
+
 from pydantic import ValidationError
 
 from powderline.schema_core import BoundedRefinableParameter, Phase, RefinableParameter
+
+pytestmark = pytest.mark.core
 
 #: ``(module, class name, parameter type, engine fields of a valid phase)`` of every engine phase model.
 ENGINE_PHASES: list[tuple[str, str, type, dict]] = [

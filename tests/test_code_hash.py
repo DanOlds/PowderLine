@@ -25,6 +25,8 @@ import json
 from pathlib import Path
 import pytest
 
+pytestmark = pytest.mark.core
+
 
 SRC_DIR = Path(__file__).parent.parent / "src" / "powderline"
 GATEWAY_DIR = SRC_DIR / "gateways" / "gsasii"

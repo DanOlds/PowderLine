@@ -7,6 +7,35 @@ import tempfile
 import shutil
 
 
+# ─── Suite markers (re/09, A13.6) ─────────────────────────────────────────────
+
+#: The engine-class markers declared in pyproject.toml. Every test carries
+#: exactly one of them (module-level ``pytestmark`` as a rule; per-test marks
+#: only in a module that mixes classes), plus the optional ``slow``.
+SUITE_MARKERS = ("core", "gsasii", "topas_gen", "topas_exec", "easydiffraction")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Refuse a collection in which any test has zero or several suite markers.
+
+    The suite tasks (``pixi run test`` / ``test-gsasii`` / ...) select on these
+    markers, so an unmarked test would run in no suite and a doubly marked one
+    in two (and under the core guard). ``--strict-markers`` catches misspelt
+    names; this catches missing or duplicated ones.
+    """
+    bad = []
+    for item in items:
+        found = sorted({m.name for m in item.iter_markers() if m.name in SUITE_MARKERS})
+        if len(found) != 1:
+            bad.append(f"{item.nodeid}: {found or 'no suite marker'}")
+    if bad:
+        shown = "\n  ".join(bad[:20])
+        more = f"\n  ... and {len(bad) - 20} more" if len(bad) > 20 else ""
+        raise pytest.UsageError(
+            f"{len(bad)} test(s) without exactly one suite marker {SUITE_MARKERS}:\n  {shown}{more}"
+        )
+
+
 @pytest.fixture
 def example_LaB6_dir():
     """Path to example_LaB6 directory."""

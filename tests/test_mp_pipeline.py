@@ -10,20 +10,23 @@ fallbacks (Uiso/occupancy defaults + warnings, occupancy passthrough), the
 reduction of the conventional cell to symmetry-unique sites and the
 origin-choice handling for two-origin groups. GSASClient behavior lives in
 test_gsas_client_visibility.py; the mp_simulate CLI in test_mp_simulate_cli.py.
-Unit tests need no GSAS-II; the final end-to-end test (build recipe → run
-simulation → check output files) does.
+Unit tests need no GSAS-II; the end-to-end test (build recipe → run
+simulation → check output files) is ``test_mp_pipeline_gsasii.py`` (re/09 split).
 """
 
 import pytest
 
 import powderline
 from powderline.gateways.gsasii.simulation_builder import (
+
     SimulationRecipeBuilder,
     space_group_setting,
     unique_sites,
 )
 from powderline.gateways.gsasii.schema import GsasiiRietveldRecipe
 from powderline.symmetry import orbit
+
+pytestmark = pytest.mark.core
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -420,27 +423,3 @@ def test_builder_two_origin_group_written_in_origin_2(capsys):
     assert any(all(abs(a - b) < 1e-9 for a, b in zip(img, (0.125, 0.125, 0.125)))
                for img in orbit("F d -3 m:2", (0.875, 0.875, 0.875)))
     assert _validate(recipe).warnings == []
-
-
-# ─── Integration test ─────────────────────────────────────────────────────────
-
-def test_mp_pipeline_end_to_end(mp_lab6_structure_data, tmp_output_dir):
-    """Full stack: build recipe → validate → run simulation → check outputs.
-
-    Uses subprocess execution mode to bypass the server requirement.
-    Requires GSAS-II to be installed (part of the standard pixi environment).
-    """
-    pytest.importorskip("GSASII.GSASIIscriptable")
-
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(mp_lab6_structure_data)
-    model = _validate(recipe).recipe
-
-    result = powderline.run(model, output_dir=tmp_output_dir, execution_mode="subprocess")
-
-    assert result["success"], result.get("error")
-    assert result["simulation_mode"] is True  # A129
-    assert result["engine_details"]["parameters_varied"] == 0
-    assert (tmp_output_dir / "fit_profile.txt").exists(), (
-        "fit_profile.txt not found — simulation did not complete successfully"
-    )
-    assert (tmp_output_dir / "LaB6_peak_list_report.csv").exists()

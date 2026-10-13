@@ -30,9 +30,11 @@ def _installed() -> str | None:
         return None
 
 
-pytestmark = pytest.mark.skipif(
-    _installed() != _table_version(),
-    reason=f"table generated from easydiffraction {_table_version()}, installed: {_installed()}")
+pytestmark = [
+    pytest.mark.easydiffraction,
+    pytest.mark.skipif(_installed() != _table_version(),
+                       reason=f"table generated from easydiffraction {_table_version()}, installed: {_installed()}"),
+]
 
 
 def _generator():

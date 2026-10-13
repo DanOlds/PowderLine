@@ -91,3 +91,18 @@ only-include = ["src/powderline", "LICENSE", "README.md", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Suite markers (re/09, master plan A13.6 / invariant 4.4). Every test carries
+# exactly ONE suite marker -- tests/conftest.py refuses to run otherwise -- plus
+# the optional `slow`. The pixi tasks select on them (`test`, `test-gsasii`,
+# `test-easydiffraction`, `test-topas`, `test-all`; see pixi.toml), and a run
+# restricted to core/topas_gen installs the core guard (conftest.py, P-26) that
+# blocks every engine import.
+addopts = "--strict-markers"
+markers = [
+    "core: imports no engine and runs no engine subprocess; the no-plugin suite of the default env",
+    "gsasii: imports GSAS-II or runs `pixi run kicker` / a GSAS-II refinement; needs the gsasii env (also the Materials Project deps, which live there)",
+    "topas_gen: TOPAS input generation, goldens, schema -- engine-free (gemmi only); runs in the default env",
+    "topas_exec: executes tc.exe -- the TOPAS Windows machine only; skips with a reason when tc.exe is absent (no test today)",
+    "easydiffraction: imports easydiffraction/cryspy/CrysFML; needs the easydiffraction env",
+    "slow: a full refinement runs (kicker subprocess, execution_mode='subprocess', the GSAS-II server, the easydiffraction goldens)",
+]

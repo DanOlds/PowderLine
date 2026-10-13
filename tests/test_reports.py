@@ -16,6 +16,8 @@ import pytest
 
 from powderline import reports
 
+pytestmark = pytest.mark.core
+
 
 # Discover all reference files in examples/*/output/ (excluding topas/ subdirs)
 _EXAMPLES_ROOT = Path(__file__).parent.parent / "examples"

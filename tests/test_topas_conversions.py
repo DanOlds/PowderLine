@@ -13,6 +13,8 @@ import pytest
 
 from powderline.gateways.topas import conversions as cv
 
+pytestmark = pytest.mark.topas_gen
+
 
 # --- constants --------------------------------------------------------------
 

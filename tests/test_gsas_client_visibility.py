@@ -20,6 +20,8 @@ import pytest
 
 from powderline.gateways.gsasii.client import GSASClient
 
+pytestmark = pytest.mark.core
+
 #: Never validated on these paths (the submit methods are monkeypatched); the shape is enough.
 RECIPE = {"schema_name": "gsasii.rietveld", "payload": {}}
 

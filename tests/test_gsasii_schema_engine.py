@@ -19,6 +19,8 @@ import gemmi
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.gsasii
+
 G2spc = pytest.importorskip("GSASII.GSASIIspc")
 
 from powderline.gateways.gsasii.constraints import cell_dof_groups  # noqa: E402

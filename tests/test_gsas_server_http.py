@@ -18,6 +18,8 @@ They can be run in two ways:
 """
 
 import pytest
+
+pytestmark = [pytest.mark.gsasii, pytest.mark.slow]
 import time
 import subprocess
 import sys

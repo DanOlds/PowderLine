@@ -20,6 +20,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+pytestmark = [pytest.mark.gsasii, pytest.mark.slow]
+
 from subprocess_utils import (
     kicker_command,
     run_subprocess_utf8,

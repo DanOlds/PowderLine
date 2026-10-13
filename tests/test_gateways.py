@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+
 from packaging.specifiers import SpecifierSet
 from pydantic import ValidationError
 
@@ -31,6 +32,8 @@ from powderline.gateways.easydiffraction import gateway as easydiff_gateway
 from powderline.gateways.easydiffraction import schema as easydiff_schema
 from powderline.schema_core import CoreRecipe
 from subprocess_utils import run_subprocess_utf8
+
+pytestmark = pytest.mark.core
 
 REPO = Path(__file__).resolve().parent.parent
 EXAMPLES = REPO / "examples"
@@ -178,19 +181,10 @@ def test_pixi_env_names_match_gateway_constants():
 
 
 # The runtime counterpart (GSASII.__version__ in ENGINE_VERSION_SPEC) is
-# test_gsasii_installed_engine_version_satisfies_spec below, run in the gsasii env.
+# test_gateways_installed_engines.test_gsasii_installed_engine_version_satisfies_spec,
+# run in the gsasii env.
 
 # --- gsasii version checking ---
-
-
-@pytest.mark.skipif(
-    importlib.util.find_spec("GSASII") is None, reason="GSAS-II not installed"
-)
-def test_gsasii_installed_engine_version_satisfies_spec():
-    """When GSAS-II is installed, installed_engine_version() satisfies ENGINE_VERSION_SPEC."""
-    version = gsasii_gateway.installed_engine_version()
-    spec = SpecifierSet(gsasii_gateway.ENGINE_VERSION_SPEC)
-    assert version in spec, f"installed {version} not in {spec}"
 
 
 def test_gsasii_version_check_raises_when_version_out_of_range(tmp_path, monkeypatch):
@@ -331,24 +325,6 @@ def test_easydiff_not_installed_validate_only_does_not_raise(tmp_path):
     """When easydiffraction is not installed, validate_only=True returns the summary without the engine."""
     result = easydiff_gateway.run(_load(EASY_LAB6), str(tmp_path), validate_only=True)
     assert result["method"] == "validate_only" and result["schema_name"] == "easydiffraction.rietveld"
-
-
-@pytest.mark.skipif(
-    importlib.util.find_spec("easydiffraction") is None,
-    reason="easydiffraction not installed",
-)
-def test_easydiff_installed_version_satisfies_spec():
-    """When easydiffraction is installed, its version satisfies ENGINE_VERSION_SPEC.
-
-    easydiffraction (0.20.1, 0.21.1) has no ``__version__``; its own runtime version source
-    is ``utils.package_version`` (distribution metadata), which must agree.
-    """
-    from easydiffraction.utils.utils import package_version
-
-    version = easydiff_gateway.installed_engine_version()
-    assert version == package_version("easydiffraction")
-    spec = SpecifierSet(easydiff_gateway.ENGINE_VERSION_SPEC)
-    assert version in spec
 
 
 # --- Dispatcher routing (powderline.run dispatches on schema_name, P-06) ---

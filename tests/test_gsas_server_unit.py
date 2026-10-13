@@ -16,6 +16,8 @@ import sys
 
 import pytest
 
+pytestmark = pytest.mark.core
+
 pytest.importorskip("pydantic")
 
 from powderline.gateways.gsasii import server as gsas_server

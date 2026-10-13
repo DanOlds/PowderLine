@@ -19,6 +19,8 @@ import pytest
 from powderline import kicker
 from subprocess_utils import run_subprocess_utf8
 
+pytestmark = pytest.mark.core
+
 REPO = Path(__file__).resolve().parent.parent
 LAB6 = REPO / "examples" / "example_LaB6" / "input.json"  # gsasii.rietveld
 TOPAS_LAB6 = REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json"

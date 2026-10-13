@@ -7,9 +7,11 @@ import json
 from pathlib import Path
 
 import pytest
+
 from pydantic import ConfigDict, PrivateAttr, ValidationError, field_validator, model_validator
 
 from powderline.schema_core import (
+
     CORE_SCHEMA_VERSION,
     METADATA_MAX_BYTES,
     SUPPORTED_CORE_SCHEMAS,
@@ -21,6 +23,8 @@ from powderline.schema_core import (
     check_core_schema_version,
     check_fit_range_within_data,
 )
+
+pytestmark = pytest.mark.core
 
 
 # --- XRDData ----------------------------------------------------------------
