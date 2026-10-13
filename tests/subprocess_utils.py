@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -17,6 +19,55 @@ REFINED_PARAM_COLUMNS = [
     "parameter_name", "descriptive_name", "phase_name", "phase_idx",
     "atom_name", "atom_idx", "value", "esd", "category",
 ]
+
+
+# ---------------------------------------------------------------------------
+# `pixi run kicker` in the env that has GSAS-II (re/08 §3, spike P-21)
+# ---------------------------------------------------------------------------
+
+#: Override the env the GSAS-II regression tests run `kicker` in (e.g. "all").
+PIXI_ENV_OVERRIDE_VAR = "POWDERLINE_TEST_PIXI_ENV"
+
+
+def gsasii_pixi_env(repo_root: Path | None = None) -> str | None:
+    """Name of the pixi environment to pass as ``-e`` for a GSAS-II `kicker` run.
+
+    Since re/08 the default env has no engine, so the regression suites run
+    ``pixi run -e gsasii kicker ...``. Resolution order:
+
+    1. ``POWDERLINE_TEST_PIXI_ENV`` if set.
+    2. The env this test process already runs in (``PIXI_ENVIRONMENT_NAME``)
+       when GSAS-II is importable here -- ``pixi run test`` in the dev/all/gsasii
+       env re-uses itself instead of needing a second installed env.
+    3. ``"gsasii"`` when ``.pixi/envs/gsasii`` is installed.
+    4. ``None`` (no ``-e``): TEMPORARY fallback for checkouts whose installed envs
+       predate the re/08 re-lock (GSAS-II still in the default env). Remove once
+       the maintainer has re-locked and every checkout has a ``gsasii`` env.
+    """
+    override = os.environ.get(PIXI_ENV_OVERRIDE_VAR)
+    if override:
+        return override
+    current = os.environ.get("PIXI_ENVIRONMENT_NAME")
+    if current and importlib.util.find_spec("GSASII") is not None:
+        return current
+    root = repo_root or Path.cwd()
+    if (root / ".pixi" / "envs" / "gsasii").is_dir():
+        return "gsasii"
+    return None
+
+
+def kicker_command(*args: str, repo_root: Path | None = None) -> list[str]:
+    """``["pixi", "run", ("-e", <env>,) "kicker", "--no-server", *args]``.
+
+    The GSAS-II CLI invocation the regression suites share; ``--no-server`` keeps
+    the refinement in-process (no stale server state).
+    """
+    cmd = ["pixi", "run"]
+    env = gsasii_pixi_env(repo_root)
+    if env is not None:
+        cmd += ["-e", env]
+    cmd += ["kicker", "--no-server", *args]
+    return cmd
 
 
 def extract_rwp_from_lst(lst_file: Path) -> float:

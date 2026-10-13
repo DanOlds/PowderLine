@@ -23,7 +23,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from subprocess_utils import extract_rwp_from_lst, run_subprocess_utf8
+from subprocess_utils import extract_rwp_from_lst, kicker_command, run_subprocess_utf8
 from test_example_LaB6_regression import UNIFORM_RWP_REFERENCE, UNIFORM_RWP_TOLERANCE, extract_rwp_from_stdout
 
 
@@ -31,7 +31,7 @@ from test_example_LaB6_regression import UNIFORM_RWP_REFERENCE, UNIFORM_RWP_TOLE
 
 def _run_kicker(input_json: Path, output_dir: Path) -> subprocess.CompletedProcess:
     result = run_subprocess_utf8(
-        ["pixi", "run", "kicker", "--no-server", str(input_json), "--output", str(output_dir)],
+        kicker_command(str(input_json), "--output", str(output_dir)),
         capture_output=True,
         text=True,
         cwd=Path.cwd(),

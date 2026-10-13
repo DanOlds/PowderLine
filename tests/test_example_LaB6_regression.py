@@ -1,8 +1,9 @@
 """Regression tests for example_LaB6 (and sibling examples) to ensure code changes
 don't affect refinement results.
 
-Refinements run via ``pixi run kicker --no-server`` (subprocess) on the native
-``gsasii.*`` example recipes and outputs are compared to committed references
+Refinements run via ``pixi run [-e gsasii] kicker --no-server`` (subprocess,
+``subprocess_utils.kicker_command``) on the native ``gsasii.*`` example
+recipes and outputs are compared to committed references
 under ``examples/<name>/output/`` (regenerated on the native path at re/07)
 using helpers in ``subprocess_utils``. Two Rwp assertions per refinement:
 GSAS-II's own wR from ``dummy.lst`` (the freeze tripwire, independent of
@@ -20,6 +21,7 @@ import pandas as pd
 import pytest
 
 from subprocess_utils import (
+    kicker_command,
     run_subprocess_utf8,
     refined_params_match,
     unit_cell_match,
@@ -67,11 +69,10 @@ _VALIDATE_ONLY_CASES = [
 def test_validate_only_example(request, input_fixture, expected_marker):
     """--validate-only succeeds and reports the expected schema/example marker."""
     recipe_input = request.getfixturevalue(input_fixture)
-    cmd = [
-        "pixi", "run", "kicker", "--no-server",
+    cmd = kicker_command(
         str(recipe_input),
-        "--validate-only"
-    ]
+        "--validate-only",
+    )
 
     result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
 
@@ -90,7 +91,7 @@ def test_cli_reports_recipe_validation_errors(example_LaB6_input, tmp_path):
     bad_recipe = tmp_path / "invalid_cycles.json"
     bad_recipe.write_text(json.dumps(recipe))
 
-    cmd = ["pixi", "run", "kicker", "--no-server", str(bad_recipe), "--validate-only"]
+    cmd = kicker_command(str(bad_recipe), "--validate-only")
     result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
 
     assert result.returncode == 1
@@ -174,11 +175,10 @@ def test_example_regression(request, tmp_output_dir, case_id, input_fixture, lst
     unit_cell_map = unit_cell_ref if isinstance(unit_cell_ref, dict) else {phases[0]: unit_cell_ref}
     peak_map = peak_ref if isinstance(peak_ref, dict) else {phases[0]: peak_ref}
 
-    cmd = [
-        "pixi", "run", "kicker", "--no-server",
+    cmd = kicker_command(
         str(recipe_input),
-        "--output", str(tmp_output_dir)
-    ]
+        "--output", str(tmp_output_dir),
+    )
 
     result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
 
@@ -287,11 +287,10 @@ def test_example_simulation_regression(request, tmp_output_dir, case_id, input_f
     unit_cell_map = unit_cell_ref if isinstance(unit_cell_ref, dict) else {phases[0]: unit_cell_ref}
     peak_map = peak_ref if isinstance(peak_ref, dict) else {phases[0]: peak_ref}
 
-    cmd = [
-        "pixi", "run", "kicker", "--no-server",
+    cmd = kicker_command(
         str(recipe_input),
-        "--output", str(tmp_output_dir)
-    ]
+        "--output", str(tmp_output_dir),
+    )
 
     result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
 
@@ -369,11 +368,10 @@ def test_simulation_determinism(request, tmp_path, input_fixture, obj_label):
     output_dir2.mkdir()
 
     for output_dir in [output_dir1, output_dir2]:
-        cmd = [
-            "pixi", "run", "kicker", "--no-server",
+        cmd = kicker_command(
             str(recipe_input),
-            "--output", str(output_dir)
-        ]
+            "--output", str(output_dir),
+        )
         result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
         assert result.returncode == 0, f"Simulation failed:\n{result.stderr}"
 
@@ -443,11 +441,10 @@ def test_simulation_validation_catches_refine_violation(
     bad_recipe_path.write_text(json.dumps(recipe_dict, indent=2))
 
     # Run validation on the bad recipe
-    cmd = [
-        "pixi", "run", "kicker", "--no-server",
+    cmd = kicker_command(
         str(bad_recipe_path),
-        "--validate-only"
-    ]
+        "--validate-only",
+    )
 
     result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
 
@@ -490,11 +487,10 @@ def test_refined_parameters_csv_structure(tmp_output_dir, example_LaB6_input):
     - Column order is correct
     """
     # Run refinement on LaB6 (single phase, simple structure)
-    cmd = [
-        "pixi", "run", "kicker", "--no-server",
+    cmd = kicker_command(
         str(example_LaB6_input),
-        "--output", str(tmp_output_dir)
-    ]
+        "--output", str(tmp_output_dir),
+    )
 
     result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
     assert result.returncode == 0, f"Refinement failed: {result.stderr}"
@@ -545,11 +541,10 @@ def test_refined_parameters_csv_multiphase(tmp_output_dir, example_DRX_33_atomre
     - Atom names match expected labels (Li, Mg, Mn1, O1, W for phase 0)
     """
     # Run refinement on DRX_33_atomrefine (2 phases, 5 and 7 atoms respectively)
-    cmd = [
-        "pixi", "run", "kicker", "--no-server",
+    cmd = kicker_command(
         str(example_DRX_33_atomrefine_input),
-        "--output", str(tmp_output_dir)
-    ]
+        "--output", str(tmp_output_dir),
+    )
 
     result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
     assert result.returncode == 0, f"Refinement failed: {result.stderr}"
@@ -621,11 +616,10 @@ def test_example_LaB6_singlepeakfit_regression(example_LaB6_singlepeakfit_input,
     uniform rwp; for a peak fit it equals GSAS-II's own, ledger R17).
     """
     # Run kicker on example_LaB6_singlepeakfit with temporary output directory
-    cmd = [
-        "pixi", "run", "kicker", "--no-server",
+    cmd = kicker_command(
         str(example_LaB6_singlepeakfit_input),
-        "--output", str(tmp_output_dir)
-    ]
+        "--output", str(tmp_output_dir),
+    )
 
     result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
 
