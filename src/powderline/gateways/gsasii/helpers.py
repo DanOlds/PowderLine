@@ -21,7 +21,6 @@ from GSASII import GSASIIobj as G2obj
 from GSASII import GSASIIspc as G2spc
 from GSASII import GSASIIElem as G2elem
 from GSASII import GSASIIpwd as G2pwd
-from powderline.schema import RecipeModel, RefinementControls
 from powderline.gateways.gsasii.constraints import atom_refinement_plan, cell_refinement_plan
 from powderline._status import CHECK, CROSS, INFO, WARN, emoji
 from dataclasses import dataclass

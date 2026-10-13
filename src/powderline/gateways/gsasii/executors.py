@@ -21,7 +21,6 @@ from GSASII import GSASIIobj as G2obj
 from GSASII import GSASIIspc as G2spc
 from GSASII import GSASIIElem as G2elem
 from GSASII import GSASIIpwd as G2pwd
-from powderline.schema import RecipeModel, RefinementControls
 from powderline.gateways.gsasii.constraints import atom_refinement_plan, cell_refinement_plan
 from powderline._status import CHECK, CROSS, INFO, WARN, emoji
 from dataclasses import dataclass
@@ -98,7 +97,7 @@ def _refine_with_message(proj) -> tuple[bool, str]:
 def execute_rietveld_refinement(
     proj: Any,
     hist: Any,
-    recipe: RecipeModel,
+    recipe: Any,
     verbose: bool
 ) -> dict:
     """
@@ -154,7 +153,7 @@ def execute_rietveld_refinement(
 def execute_spf_refinement(
     proj: Any,
     hist: Any,
-    recipe: RecipeModel,
+    recipe: GsasiiSpfRecipe,
     verbose: bool
 ) -> dict:
     """
@@ -242,8 +241,7 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
 
     Args:
         recipe: Validated ``gsasii.rietveld`` / ``gsasii.spf`` recipe model (call
-            ``powderline.validate()`` first if starting from a raw dict). 0.26.0
-            ``RecipeModel`` recipes run through ``_legacy_executor.run_refinement``.
+            ``powderline.validate()`` first if starting from a raw dict).
         output_dir: Directory where output files are written (``dummy.gpx``,
             ``dummy.lst``, CSV reports, ``fit_profile.txt``). Must exist or be
             creatable.

@@ -21,7 +21,7 @@ from GSASII import GSASIIobj as G2obj
 from GSASII import GSASIIspc as G2spc
 from GSASII import GSASIIElem as G2elem
 from GSASII import GSASIIpwd as G2pwd
-from powderline.schema import RecipeModel, RefinementControls
+from powderline.gateways.gsasii.schema import GsasiiRietveldRecipe, GsasiiSpfRecipe
 from powderline.gateways.gsasii.constraints import atom_refinement_plan, cell_refinement_plan
 from powderline._status import CHECK, CROSS, INFO, WARN, emoji
 from dataclasses import dataclass
@@ -760,7 +760,7 @@ def _extract_fit_profile(hist: Any, output_dir: Path) -> dict:
 
 
 def _extract_spf_peak_report(
-    proj: Any, hist: Any, recipe: RecipeModel, output_dir: Path, verbose: bool
+    proj: Any, hist: Any, recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: Path, verbose: bool
 ) -> tuple[dict, dict]:
     """Extract single peak fitting results and save report files.
 
@@ -775,7 +775,7 @@ def _extract_spf_peak_report(
     Args:
         proj: GSAS-II project object after refinement.
         hist: GSAS-II histogram object.
-        recipe: Validated RecipeModel.
+        recipe: Validated ``gsasii.spf`` recipe model.
         output_dir: Directory to write report files.
         verbose: If True, print convergence warnings to stdout.
 
@@ -904,7 +904,7 @@ def _extract_spf_peak_report(
 
 
 def _extract_phase_reports(
-    proj: Any, hist: Any, recipe: RecipeModel, param_dict: dict, output_dir: Path
+    proj: Any, hist: Any, recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, param_dict: dict, output_dir: Path
 ) -> tuple[dict, dict]:
     """Extract unit cell and peak list reports for all phases.
 
@@ -914,7 +914,7 @@ def _extract_phase_reports(
     Args:
         proj: GSAS-II project object after refinement.
         hist: GSAS-II histogram object.
-        recipe: Validated RecipeModel (used to check if phases exist).
+        recipe: Validated ``gsasii.rietveld`` / ``gsasii.spf`` recipe model (used to check if phases exist).
         param_dict: Refined parameter dict from
             ``extract_refined_params_from_project()`` (needed for cell ESDs).
         output_dir: Directory to write CSV files.
