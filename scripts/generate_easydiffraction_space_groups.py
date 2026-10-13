@@ -6,10 +6,10 @@ operations equal gemmi's (as sets; translations mod 1). The table is written to
 ``src/powderline/gateways/easydiffraction/space_group_table.py`` so the schema
 validates in environments without easydiffraction.
 
-Needs easydiffraction (the ``easydiff`` env). ``--check`` compares instead of
+Needs easydiffraction (the ``easydiffraction`` env). ``--check`` compares instead of
 writing (the test ``tests/test_easydiffraction_space_groups.py`` runs it).
 
-Usage: pixi run -e easydiff python scripts/generate_easydiffraction_space_groups.py [--check]
+Usage: pixi run -e easydiffraction python scripts/generate_easydiffraction_space_groups.py [--check]
 """
 
 from __future__ import annotations

@@ -512,7 +512,7 @@ The established pattern:
    is dropped with a recorded warning). Never silently ignore a refine flag.
 5. **Optional pixi feature/environment** if the engine needs dependencies the
    default environment shouldn't carry (e.g. easydiffraction needs Python ≥3.12,
-   so it lives in the optional `easydiff` environment).
+   so it lives in the optional `easydiffraction` environment).
 6. **Keep it GSAS-II-free** if it can be — the alternate engines import zero
    GSAS-II, a property enforced by subprocess import-block tests.
 

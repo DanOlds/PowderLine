@@ -374,6 +374,16 @@ dev environment has to be re-installed once (`pixi reinstall powderline`).
 During re/02 the maintainer's `easydiff` env was left half-installed with no
 error shown, and it failed this way.
 
+**Install health (re/08).** Every pixi environment carries its own editable
+install, so the entry-point metadata is per env: after editing
+`[project.entry-points]` or `[project.scripts]`, run `pixi reinstall
+powderline -e <env>` for each env you use (or `pixi reinstall --all`). If pixi
+cannot rebuild the editable install (offline, or the `hatchling.build` failure
+seen during re/02), restore it with that env's own python:
+`pip install --no-deps --no-build-isolation --no-index -e .`. Check with
+`pixi run -e <env> python -c "from powderline import registry; print(registry.available())"`
+— an empty list means the metadata is missing.
+
 **Evidence.** `src/powderline/engine.py:53` (`registry.get(...)` for all
 engines); `src/powderline/registry.py` `get` / `_not_installed_message`;
 `CLAUDE.md` (the `pixi reinstall powderline` note); the execution-log re/02

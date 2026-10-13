@@ -360,17 +360,17 @@ ModuleNotFoundError: No module named 'GSASII'
 **Error:**
 ```
 ImportError: easydiffraction is not installed. Install PowderLine's optional
-engine environment: `pixi install -e easydiff` ...
+engine environment: `pixi install -e easydiffraction` ...
 ```
 
-**Cause:** `engine="easydiffraction"` was requested but the optional `easydiff`
+**Cause:** `engine="easydiffraction"` was requested but the optional `easydiffraction`
 pixi environment is not installed (easydiffraction needs Python ≥3.12, so it
 lives in its own environment; the default environment is unaffected).
 
 **Solution:**
 ```bash
-pixi install -e easydiff
-pixi run -e easydiff python your_script.py
+pixi install -e easydiffraction
+pixi run -e easydiffraction python your_script.py
 ```
 
 ---

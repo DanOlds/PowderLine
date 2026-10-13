@@ -9,6 +9,14 @@ materials_project:
   # Alternatively, set the MP_API_KEY environment variable
   # (a real key set here takes precedence over the environment variable)
 
+# ─── TOPAS (topas.* recipes) ────────────────────────────────────────────────
+# A run that executes TOPAS needs the installed version declared here (or via
+# the CLI's --topas-version); TOPAS 6 is the supported version. `dir` is where
+# tc.exe lives (defaults to C:/TOPAS<version>). Uncomment to use.
+# topas:
+#   dir: "C:/TOPAS6"
+#   version: 6
+
 # ─── GSAS-II simulation defaults ─────────────────────────────────────────────
 # Simulations (mp-simulate) run through the GSAS-II engine: all parameters
 # below follow GSAS-II conventions and units. TOPAS is NOT used here — it has

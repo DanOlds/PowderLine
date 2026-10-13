@@ -145,11 +145,11 @@ result = powderline.run(recipe, Path("output/"), engine="topas")
 
 ### easydiffraction (optional)
 
-Open-source Rietveld engine. Requires the optional `easydiff` pixi environment
+Open-source Rietveld engine. Requires the optional `easydiffraction` pixi environment
 (easydiffraction needs Python ≥3.12; the default environment stays at ≥3.10):
 
 ```bash
-pixi install -e easydiff
+pixi install -e easydiffraction
 ```
 
 ```python

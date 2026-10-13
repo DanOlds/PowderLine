@@ -64,7 +64,7 @@ TOPAS v7 INP generation (`src/powderline/topas/`, **imports zero GSAS-II**):
   transparent pass-through to the GSAS-II `kicker.run` (imported lazily).
 
 easydiffraction engine (`src/powderline/easydiff/`, **imports zero GSAS-II**;
-requires the optional `easydiff` pixi environment — easydiffraction needs
+requires the optional `easydiffraction` pixi environment — easydiffraction needs
 Python ≥3.12):
 - `conversions.py` — GSAS-II↔easydiffraction unit/convention math (U/V/W σ²
   centideg² ↔ Caglioti FWHM² deg², X/Y/Zero centideg↔deg, Rwp fraction↔percent,
@@ -97,7 +97,7 @@ The 6-name public API is in `src/powderline/__init__.py` `__all__`:
   `--output DIR`, `--use-server`/`--no-server`).
 - `pixi run topas-kicker <recipe.json>` — generate a TOPAS v7 `.inp` + `.xye`
   (`--output DIR`, `--validate-only`, `--verbose`); no GSAS-II required.
-- `pixi install -e easydiff` then `pixi run -e easydiff python ...` — the
+- `pixi install -e easydiffraction` then `pixi run -e easydiffraction python ...` — the
   optional easydiffraction environment (Python ≥3.12 + easydiffraction + GSAS-II;
   the default env is untouched). The GSAS-II-vs-easydiffraction head-to-head demo
   is a dev artifact and lives in the private PowderLine-devkit

@@ -210,11 +210,11 @@ at your local clone.
 ## Using the easydiffraction Engine (Optional)
 
 PowderLine supports the open-source easydiffraction Rietveld engine via
-`engine="easydiffraction"`. This requires the optional `easydiff` pixi environment
+`engine="easydiffraction"`. This requires the optional `easydiffraction` pixi environment
 (easydiffraction needs Python ≥3.12; the default environment stays at ≥3.10):
 
 ```bash
-pixi install -e easydiff
+pixi install -e easydiffraction
 ```
 
 ```python

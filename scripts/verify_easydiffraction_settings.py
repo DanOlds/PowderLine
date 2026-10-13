@@ -27,7 +27,7 @@ uses so that validation needs no easydiffraction. About two hours of CPU; ``--jo
 N processes. ``--check XHM ...`` re-verifies only the named settings against the
 committed module (the test does this for a fixed sample).
 
-Usage: pixi run -e easydiff python scripts/verify_easydiffraction_settings.py [--jobs N] [--check XHM ...]
+Usage: pixi run -e easydiffraction python scripts/verify_easydiffraction_settings.py [--jobs N] [--check XHM ...]
 """
 
 from __future__ import annotations

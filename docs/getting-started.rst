@@ -52,7 +52,7 @@ From Python, select the engine with a single flag::
 A third engine, open-source `easydiffraction
 <https://easydiffraction.org>`_, is available as
 ``engine="easydiffraction"`` after installing the optional pixi environment
-(``pixi install -e easydiff``; easydiffraction needs Python ≥3.12, the default
+(``pixi install -e easydiffraction``; easydiffraction needs Python ≥3.12, the default
 environment is untouched). It consumes the same recipes and returns the same
 result dictionary — see the integration guide's easydiffraction section for
 its v1 capability list.
