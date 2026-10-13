@@ -86,21 +86,23 @@ def test_lab6_characterization_vs_gsasii():
     """Characterize (not assert equality with) GSAS-II on the committed LaB6 fit.
 
     Inputs: ``examples/example_LaB6/output/fit_profile.txt`` (4096 points, values
-    rounded to 8 decimals), fit range [1, 15]° 2θ from the recipe, P = 17 from
-    ``dummy.lst`` ("No. of parameters: 17").
+    rounded to 8 decimals; the native-path reference of re/07), fit range
+    [1, 15]° 2θ from the recipe, P = 13 from ``dummy.lst`` ("No. of parameters: 13";
+    the recipe lost its four background-peak terms, P-01).
 
     GSAS-II (``dummy.lst``): wR = 6.53 %, wRmin = 12.48 %, GOF = 0.52,
-    chi**2 = 1030.77, 3768 observations.
-    PowderLine fitstats:     Rwp = 6.527 %, Rexp = 12.450 %, GoF = 0.524,
+    chi**2 = 1033.08, 3767 observations.
+    PowderLine fitstats:     Rwp = 6.5345 %, Rexp = 12.456 %, GoF = 0.5246,
     N = 3767.
 
     How and why they differ (A23):
     - Rwp and GoF agree to the reported precision.
-    - N: GSAS-II slices the fit range by index (``x[xB:xF]``) and counts one
-      more point than the inclusive 2θ mask [1, 15] used here (3768 vs 3767).
+    - N agrees since re/05 (A149): the native path gives GSAS-II the first and
+      last weighted points inside [1, 15] as its limits, so its slice is the
+      inclusive mask used here (v0.1.1 counted one point more, EB-54).
     - Rexp vs GSAS-II ``wRmin``: GSAS-II's ``wRmin`` = sqrt(N / Σw·yobs²), i.e.
       it does **not** subtract P; fitstats uses the standard sqrt((N − P) /
-      Σw·yobs²). sqrt(3768/3751) accounts for the 12.48 vs 12.45 gap.
+      Σw·yobs²). sqrt(3767/3754) accounts for the 12.48 vs 12.456 gap.
     - GSAS-II's ``chi**2`` is the un-reduced Σw·(yobs − ycalc)²; χ²_red here is
       that sum divided by (N − P).
     """
@@ -108,12 +110,13 @@ def test_lab6_characterization_vs_gsasii():
     lo, hi = recipe["payload"]["fit_range"]
     prof = pd.read_csv(EXAMPLES / "example_LaB6" / "output" / "fit_profile.txt", sep="\t")
     tth = prof["two_theta"].to_numpy()
-    s = compute_fit_statistics(prof["y_obs"], prof["y_calc"], prof["y_weights"], 17,
+    s = compute_fit_statistics(prof["y_obs"], prof["y_calc"], prof["y_weights"], 13,
                                mask=(tth >= lo) & (tth <= hi))
     assert s.n_points == 3767
-    assert s.rwp == pytest.approx(6.53, abs=0.005)
-    assert s.gof == pytest.approx(0.52, abs=0.005)
-    assert s.rexp == pytest.approx(12.45, abs=0.005)
+    assert s.rwp == pytest.approx(6.5345, abs=0.0005)
+    assert s.gof == pytest.approx(0.5246, abs=0.0005)
+    assert s.rexp == pytest.approx(12.456, abs=0.0005)
+    assert s.chi2_red * (3767 - 13) == pytest.approx(1033.08, abs=0.01)  # GSAS-II's un-reduced chi**2
     # GSAS-II's wRmin omits P: reproduce it from the same sums to prove the claim.
-    gsas_wrmin = s.rexp * math.sqrt(3768 / (3767 - 17))
+    gsas_wrmin = s.rexp * math.sqrt(3767 / (3767 - 13))
     assert gsas_wrmin == pytest.approx(12.48, abs=0.005)

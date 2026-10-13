@@ -61,8 +61,8 @@ Concretely, each phase's `peak_broadening.size_broadening` is set to
   are fully correlated and GSAS-II reports a soft (SVD) singularity — see
   *Known Issues*. The reported equatorial microstrain (which combines them) is
   stable regardless.
-- **Fit quality**: **Rwp = 8.46%, GOF = 0.86** (chi**2 = 2782.24 on 3768
-  observations). This is an improvement over the base example (Rwp = 10.83%,
+- **Fit quality**: **Rwp = 8.46%, GOF = 0.86** (chi**2 = 2781.62 on 3767
+  observations: the native path fits exactly 1 ≤ 2θ ≤ 15, deliberate change 23). This is an improvement over the base example (Rwp = 10.83%,
   GOF = 1.10): removing the ill-conditioned size parameters yields a cleaner fit.
   GOF < 1 indicates the profile ESDs are mildly overestimated.
 - **Refined values (with ESDs)**:

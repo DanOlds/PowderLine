@@ -60,8 +60,9 @@ This example validates PowderLine's ability to refine structural parameters in m
 - Coordinate refinement is sensitive to starting values
 
 ### Fit Quality:
-- **Expected Rwp**: ~19.35% (39 refined parameters)
+- **Expected Rwp**: 15.06% (39 refined parameters; GSAS-II's own wR in `dummy.lst`, PowderLine's uniform `rwp` 15.059)
 - Higher Rwp than base example_DRX_33 (10.83%) due to increased parameter count and model complexity
+- This 39-parameter refinement is sensitive to the fit window: with v0.1.1's window (one data point more at the high end, EB-54) it converged to another minimum at Rwp 19.35%; the native path fits exactly 1 ≤ 2θ ≤ 15 (deliberate change 23)
 - χ² should still be reasonable given the added structural freedom
 
 ### Typical Runtime:

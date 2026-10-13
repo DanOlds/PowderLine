@@ -62,7 +62,7 @@ The refinement uses the same disordered rocksalt battery material (DRX_33 + Li4M
 - Off-diagonal terms (U12, U13, U23) may be small or near zero depending on symmetry
 
 ### Fit Quality:
-- **Expected Rwp**: 12.58%
+- **Expected Rwp**: 15.53% (27 refined parameters; GSAS-II's own wR in `dummy.lst`, PowderLine's uniform `rwp` 15.530)
 - Anisotropic ADPs increase parameter count but improve model flexibility
 - Fit improvement over isotropic ADPs may be modest for powder data (anisotropy is often better resolved in single-crystal data)
 

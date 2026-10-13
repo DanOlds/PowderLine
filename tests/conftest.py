@@ -275,12 +275,6 @@ def example_LaB6_singlepeakfit_reference_single_peaks_txt(example_LaB6_singlepea
     """Path to example_LaB6_singlepeakfit reference single_peaks_report.txt file."""
     return example_LaB6_singlepeakfit_dir / "output" / "single_peaks_report.txt"
 
-
-@pytest.fixture
-def example_LaB6_singlepeakfit_reference_convergence_txt(example_LaB6_singlepeakfit_dir):
-    """Path to example_LaB6_singlepeakfit reference peak_convergence_diagnostics.txt file."""
-    return example_LaB6_singlepeakfit_dir / "output" / "peak_convergence_diagnostics.txt"
-
 # ============================================================================
 # example_DRX_33_atomrefine fixtures
 # ============================================================================
