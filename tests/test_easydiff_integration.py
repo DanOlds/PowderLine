@@ -13,8 +13,8 @@ ed = pytest.importorskip("easydiffraction")
 from powderline.gateways.easydiffraction.errors import EasyDiffractionTranslationError
 from powderline.engine import run
 
-EXAMPLE = Path("examples/example_LaB6_easydiff/input.json")
-STOCK = Path("examples/example_LaB6/input.json")
+EXAMPLE = Path("tests/data/legacy_026/example_LaB6_easydiff/input.json")  # 0.26.0 snapshot (re/07, P-16)
+STOCK = Path("tests/data/legacy_026/example_LaB6/input.json")
 
 
 @pytest.fixture(scope="module")

@@ -1,7 +1,9 @@
 """Native ``gsasii.*`` recipes run end to end (re/04): results, warnings, GSAS-II site check, SPF failure message.
 
-Recipes come from the committed examples through the 0.26.0 converter
-(``scripts/convert_recipe_026.py``). The runs use GSAS-II in-process
+Recipes come from the 0.26.0 snapshots of the examples
+(``tests/data/legacy_026/``, re/07 P-16) through the converter
+(``scripts/convert_recipe_026.py``), so the background-peak assertions (EB-33)
+keep their subject after the examples lost that peak (P-01). The runs use GSAS-II in-process
 (``execution_mode='subprocess'``); skipped where GSAS-II is not installed.
 """
 
@@ -34,7 +36,7 @@ _spec.loader.exec_module(conv)
 
 def _lab6() -> dict:
     """The converted LaB6 example (its background peak raised to GSAS-II's floor first)."""
-    old = json.loads((ROOT / "examples" / "example_LaB6" / "input.json").read_text(encoding="utf-8"))
+    old = json.loads((ROOT / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json").read_text(encoding="utf-8"))
     old["payload"]["background"]["single_peaks"]["pv_lorentzian_gamma"][0][0] = 0.1
     return conv.convert(old)[0]
 
@@ -167,7 +169,7 @@ def test_spf_peak_fit_failure_is_a_clear_engine_error():
 
 
 def test_spf_runs_with_standard_statistics(tmp_path):
-    old = json.loads((ROOT / "examples" / "example_LaB6_singlepeakfit" / "input.json").read_text(encoding="utf-8"))
+    old = json.loads((ROOT / "tests" / "data" / "legacy_026" / "example_LaB6_singlepeakfit" / "input.json").read_text(encoding="utf-8"))
     r = powderline.run(conv.convert(old)[0], tmp_path, execution_mode="subprocess")
     assert r["success"], r.get("error")
     assert r["engine_details"]["parameters_varied"] > 0 and isinstance(r["r_exp"], float)
@@ -252,7 +254,7 @@ def test_undefined_statistic_is_none_not_nan():
 
 def test_simulation_reports_statistics_and_says_it_is_one(tmp_path):
     """A simulation gets the standard statistics, like a refinement, and simulation_mode True (A129)."""
-    old = json.loads((ROOT / "examples" / "example_DRX_33_simulation" / "input.json").read_text(encoding="utf-8"))
+    old = json.loads((ROOT / "tests" / "data" / "legacy_026" / "example_DRX_33_simulation" / "input.json").read_text(encoding="utf-8"))
     r = powderline.run(conv.convert(old)[0], tmp_path, execution_mode="subprocess")
     assert r["success"], r.get("error")
     assert r["simulation_mode"] is True and isinstance(r["rwp"], float)

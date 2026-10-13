@@ -25,7 +25,8 @@ from subprocess_utils import run_subprocess_utf8
 REPO = Path(__file__).resolve().parent.parent
 
 pytestmark = pytest.mark.filterwarnings("ignore:powderline.run\\(engine=:DeprecationWarning")
-EXAMPLES = REPO / "examples"
+EXAMPLES = REPO / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
+LEGACY_TOPAS_OUT = REPO / "examples"  # the TOPAS 7.25 goldens under examples/*/output/topas/ (go with P-02)
 
 # run() dict keys locked by tests/test_api.py (must match across engines)
 _STRUCTURED = ("fit_profile", "unit_cell_data", "peak_list_data", "refined_parameters")
@@ -42,7 +43,7 @@ def _recipe(name="example_LaB6"):
 def _mock_topas_run(name):
     """A fake runner that drops the committed TOPAS outputs into the run dir,
     renamed to the INP's <base> (which run_topas_recipe derives from output_dir)."""
-    committed = EXAMPLES / name / "output" / "topas"
+    committed = LEGACY_TOPAS_OUT / name / "output" / "topas"
 
     def fake_run(inp_path, topas_dir=None, topas_version=None):
         base = Path(inp_path).stem
@@ -154,7 +155,7 @@ def test_topas_run_tc_absent_generate_only(tmp_path, monkeypatch):
 def _mock_simulation_run(name):
     """Fake runner for a simulation: drops the committed profile + peaks but NO
     _results.csv (a calculate-only TOPAS run produces none)."""
-    committed = EXAMPLES / name / "output" / "topas"
+    committed = LEGACY_TOPAS_OUT / name / "output" / "topas"
 
     def fake_run(inp_path, topas_dir=None, topas_version=None):
         base = Path(inp_path).stem

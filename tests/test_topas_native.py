@@ -778,7 +778,7 @@ def test_gateway_validate_legacy_recipe():
     from powderline.schema import RecipeModel
 
     # Load the 0.26.0 example
-    example_path = Path(__file__).parent.parent / "examples" / "example_LaB6" / "input.json"
+    example_path = Path(__file__).parent.parent / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json"
     if example_path.exists():
         legacy_recipe = json.loads(example_path.read_text(encoding="utf-8"))
         result = gateway.validate(legacy_recipe)

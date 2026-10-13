@@ -19,7 +19,8 @@ from powderline.gateways.topas import runner as tc_runner
 from powderline.gateways.topas.errors import TopasTranslationError
 
 REPO = Path(__file__).resolve().parent.parent
-EXAMPLES = REPO / "examples"
+EXAMPLES = REPO / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
+LEGACY_TOPAS_OUT = REPO / "examples"  # the TOPAS 7.25 goldens under examples/*/output/topas/ (go with P-02)
 GOLDEN = REPO / "tests" / "data" / "topas"
 SPF = "example_LaB6_singlepeakfit"
 
@@ -92,7 +93,7 @@ def test_spf_committed_reports_reproduce():
         recipe = json.loads((EXAMPLES / ex / "input.json").read_text())
         results = (GOLDEN / f"{ex}_results.csv").read_text()
         spf_rows, _ = rt.parse_spf_peaks(recipe, results)
-        committed = (EXAMPLES / ex / "output" / "topas" / "single_peaks_report.csv").read_text()
+        committed = (LEGACY_TOPAS_OUT / ex / "output" / "topas" / "single_peaks_report.csv").read_text()
         assert rt.spf_peaks_report_csv(spf_rows) == committed
 
 

@@ -1,8 +1,10 @@
 """The 0.26.0 -> gsasii 1.0.0 converter (``scripts/convert_recipe_026.py``; re/04 subplan §3, A95, A101, A124).
 
 One test per rule, a synthetic ADP switch in both directions (no committed
-example has one), and every committed example converted: the result validates,
-or the conversion stops for a stated reason.
+example has one), and every 0.26.0 example converted: the result validates,
+or the conversion stops for a stated reason. The 0.26.0 inputs are the
+snapshots in ``tests/data/legacy_026/`` (the committed examples are native
+``gsasii.*`` recipes since re/07; P-16).
 """
 
 from __future__ import annotations
@@ -22,11 +24,12 @@ _spec = importlib.util.spec_from_file_location("convert_recipe_026", ROOT / "scr
 conv = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(conv)
 
-EXAMPLES = sorted((ROOT / "examples").glob("*/input.json"))
+LEGACY = ROOT / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
+EXAMPLES = sorted(LEGACY.glob("*/input.json"))
 
 
 def _load(name: str) -> dict:
-    return json.loads((ROOT / "examples" / name / "input.json").read_text(encoding="utf-8"))
+    return json.loads((LEGACY / name / "input.json").read_text(encoding="utf-8"))
 
 
 def _lab6() -> dict:
@@ -436,4 +439,4 @@ def test_cli_writes_utf8_lf(tmp_path):
     data = out.read_bytes()
     assert b"\r\n" not in data and data.endswith(b"\n")
     validate_recipe(json.loads(data.decode("utf-8")))
-    assert conv.main([str(ROOT / "examples" / "example_template" / "input.json")]) == 1
+    assert conv.main([str(LEGACY / "example_template" / "input.json")]) == 1

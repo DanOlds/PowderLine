@@ -21,7 +21,7 @@ from powderline.gateways.topas.errors import TopasTranslationError
 from subprocess_utils import run_subprocess_utf8
 
 REPO = Path(__file__).resolve().parent.parent
-EXAMPLES = REPO / "examples"
+EXAMPLES = REPO / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
 GOLDEN = REPO / "tests" / "data" / "topas"
 
 # Refined-name sets derived directly from each recipe's refine=true flags.

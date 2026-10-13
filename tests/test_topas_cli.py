@@ -11,7 +11,8 @@ from powderline.gateways.topas import kicker
 from powderline.gateways.topas import runner as tc_runner
 
 REPO = Path(__file__).resolve().parent.parent
-EXAMPLES = REPO / "examples"
+EXAMPLES = REPO / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
+LEGACY_TOPAS_OUT = REPO / "examples"  # the TOPAS 7.25 goldens under examples/*/output/topas/ (go with P-02)
 GOLDEN = REPO / "tests" / "data" / "topas"
 CASES = ["example_LaB6", "example_DRX_33"]
 
@@ -91,7 +92,7 @@ def test_end_to_end_with_mocked_topas(name, tmp_path, monkeypatch):
     assert rc == 0
     refined = out / "refined_parameters.csv"
     assert refined.exists()
-    committed = EXAMPLES / name / "output" / "topas" / "refined_parameters.csv"
+    committed = LEGACY_TOPAS_OUT / name / "output" / "topas" / "refined_parameters.csv"
     assert refined.read_text() == committed.read_text()
 
 
@@ -175,7 +176,7 @@ def test_parse_results_writes_roundtrip_tables(name, tmp_path):
     # live in the run() dict, not a bespoke file).
     assert not (out / "fit_summary.csv").exists()
     # byte-identical to the committed round-trip artifact
-    committed = EXAMPLES / name / "output" / "topas" / "refined_parameters.csv"
+    committed = LEGACY_TOPAS_OUT / name / "output" / "topas" / "refined_parameters.csv"
     assert refined.read_text() == committed.read_text()
 
 

@@ -13,7 +13,8 @@ from powderline.gateways.topas import conversions as cv
 from powderline.gateways.topas import roundtrip as rt
 
 REPO = Path(__file__).resolve().parent.parent
-EXAMPLES = REPO / "examples"
+EXAMPLES = REPO / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
+LEGACY_TOPAS_OUT = REPO / "examples"  # the TOPAS 7.25 goldens under examples/*/output/topas/ (go with P-02)
 DATA = REPO / "tests" / "data" / "topas"
 
 
@@ -201,12 +202,12 @@ def test_committed_roundtrip_artifacts_match():
     """examples/**/output/topas/refined_parameters.csv are tracked and reproducible."""
     for name in ("example_LaB6", "example_DRX_33"):
         res = rt.build_roundtrip(_recipe(name), _results(name), name)
-        committed = (EXAMPLES / name / "output" / "topas" / "refined_parameters.csv").read_text()
+        committed = (LEGACY_TOPAS_OUT / name / "output" / "topas" / "refined_parameters.csv").read_text()
         assert rt.refined_parameters_csv(res) == committed
 
 
 def _committed_results(name):
-    return (EXAMPLES / name / "output" / "topas" / f"{name}_results.csv").read_text()
+    return (LEGACY_TOPAS_OUT / name / "output" / "topas" / f"{name}_results.csv").read_text()
 
 
 @pytest.mark.parametrize("name", ["example_DRX_33_atomrefine", "example_DRX_33_anisoADP"])
@@ -214,7 +215,7 @@ def test_declarative_examples_roundtrip_reproduce_committed(name):
     # Validate the permissive-coord / Uaniso round-trip against the maintainer's
     # real Windows TOPAS output committed under examples/**/output/topas/.
     res = rt.build_roundtrip(_recipe(name), _committed_results(name), name)
-    committed = (EXAMPLES / name / "output" / "topas" / "refined_parameters.csv").read_text()
+    committed = (LEGACY_TOPAS_OUT / name / "output" / "topas" / "refined_parameters.csv").read_text()
     assert rt.refined_parameters_csv(res) == committed
 
 
@@ -308,7 +309,7 @@ def test_parse_helpers_skip_garbage_rows():
 # re-derive each committed report from its committed intermediate and assert
 # byte-equality -- deterministic, GSAS-II-free, no TOPAS needed.
 
-_TOPAS_OUT_DIRS = sorted(EXAMPLES.glob("*/output/topas"))
+_TOPAS_OUT_DIRS = sorted(LEGACY_TOPAS_OUT.glob("*/output/topas"))
 
 
 def _fit_profile_cases():

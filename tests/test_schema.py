@@ -204,7 +204,7 @@ def test_single_peaks_matched_lengths_ok():
 # --- schema_version / schema_name guards ---
 
 def test_wrong_schema_version_raises():
-    example = REPO_ROOT / "examples" / "example_LaB6" / "input.json"
+    example = REPO_ROOT / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json"
     recipe = json.loads(example.read_text())
     recipe["schema_version"] = "0.24"
     with pytest.raises(ValidationError, match="Schema version mismatch"):
@@ -212,7 +212,7 @@ def test_wrong_schema_version_raises():
 
 
 def test_missing_schema_version_raises():
-    example = REPO_ROOT / "examples" / "example_LaB6" / "input.json"
+    example = REPO_ROOT / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json"
     recipe = json.loads(example.read_text())
     del recipe["schema_version"]
     with pytest.raises(ValidationError, match="schema_version"):
@@ -245,7 +245,7 @@ def test_spf_recipe_missing_single_peaks_raises():
 # --- positive: a real schema-0.26 recipe validates end to end ---
 
 def test_valid_example_recipe_validates():
-    example = REPO_ROOT / "examples" / "example_LaB6" / "input.json"
+    example = REPO_ROOT / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json"
     recipe = json.loads(example.read_text())
     assert recipe["schema_version"] == EXPECTED_SCHEMA_VERSION
     model = RecipeModel.model_validate(recipe)
@@ -269,7 +269,7 @@ def validate_simulation_mode_parameters():
 
 
 def _load_simulation_recipe_dict():
-    example = REPO_ROOT / "examples" / "example_LaB6_simulation" / "input.json"
+    example = REPO_ROOT / "tests" / "data" / "legacy_026" / "example_LaB6_simulation" / "input.json"
     return json.loads(example.read_text())
 
 
@@ -283,7 +283,7 @@ def test_simulation_mode_valid_recipe_passes(validate_simulation_mode_parameters
 
 def test_non_simulation_recipe_skips_simulation_checks(validate_simulation_mode_parameters):
     """refinement_cycles > 1 is not simulation mode: refine flags are allowed."""
-    example = REPO_ROOT / "examples" / "example_LaB6" / "input.json"
+    example = REPO_ROOT / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json"
     recipe = json.loads(example.read_text())
     # sanity: the standard LaB6 example really does refine parameters
     assert recipe["payload"]["refinement_controls"]["refinement_cycles"] > 1
