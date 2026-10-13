@@ -59,7 +59,7 @@ class EngineNotAvailableError(PowderLineError, ImportError):
         super().__init__(
             f"the {gateway!r} gateway needs {dependency}, which is not installed "
             f"in this environment; use the {env!r} pixi environment "
-            f"(install it with: {install_command})"
+            f"(install it with: {install_command}; run with: pixi run -e {env} ...)"
         )
         self.gateway = gateway
         self.dependency = dependency

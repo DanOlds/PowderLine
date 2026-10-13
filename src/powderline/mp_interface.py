@@ -98,7 +98,7 @@ class MPInterface:
         """
         if not MP_API_AVAILABLE:
             raise ImportError(
-                "mp-api not installed. Install with: pixi install"
+                "mp-api not installed. Install with: pixi install -e gsasii"
             )
 
         if not api_key:

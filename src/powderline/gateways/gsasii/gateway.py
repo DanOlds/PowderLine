@@ -31,13 +31,15 @@ from powderline.registry import Gateway, check_engine_version
 from powderline.schema_core import collect_warnings
 
 NAME = "gsasii"
-#: Supported GSAS-II runtime versions (A41/A44); pixi pins align in re/08.
+#: Supported GSAS-II runtime versions (A41/A44). The pixi pin is the source
+#: revision of the pixi-build fork (pixi.toml, feature ``gsasii``); this spec is
+#: the drift guard, asserted against ``GSASII.__version__`` in that env.
 ENGINE_VERSION_SPEC = "==5.7.9"
 #: Workflows served (the native schemas).
 WORKFLOWS = tuple(schema.SCHEMA_NAMES)
-#: pixi environment providing GSAS-II + how to install it (names final in re/08).
-ENV = "default"
-INSTALL_COMMAND = "pixi install"
+#: pixi environment providing GSAS-II + how to install it (re/08, A31).
+ENV = "gsasii"
+INSTALL_COMMAND = "pixi install -e gsasii"
 
 EXECUTION_MODES = ('auto', 'server', 'subprocess')
 

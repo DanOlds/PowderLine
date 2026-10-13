@@ -143,6 +143,43 @@ def test_validate_foreign_schema_name_is_reported_at_schema_name(gateway_module)
     assert [tuple(e["loc"]) for e in exc.value.errors()] == [("schema_name",)]
 
 
+# --- pixi pins mirror the gateway specifiers (A41; re/08) ---
+
+
+def _pixi_manifest() -> dict:
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        import tomli as tomllib
+    return tomllib.loads((REPO / "pixi.toml").read_text(encoding="utf-8"))
+
+
+def test_pixi_easydiffraction_pin_is_within_gateway_spec():
+    """pixi.toml pins easydiffraction to one version, and that version satisfies ENGINE_VERSION_SPEC.
+
+    The gateway specifier is the contract; the manifest must not drift from it (A41).
+    """
+    pin = _pixi_manifest()["feature"]["easydiffraction"]["pypi-dependencies"]["easydiffraction"]
+    pin_set = SpecifierSet(pin)
+    pinned = [spec for spec in pin_set if spec.operator == "=="]
+    assert len(pinned) == 1, f"easydiffraction must be pinned exactly in pixi.toml, got {pin!r}"
+    assert pinned[0].version in SpecifierSet(easydiff_gateway.ENGINE_VERSION_SPEC)
+
+
+def test_pixi_env_names_match_gateway_constants():
+    """The env a gateway names in EngineNotAvailableError exists in pixi.toml, and GSAS-II lives only there."""
+    manifest = _pixi_manifest()
+    envs = manifest["environments"]
+    for gateway in (gsasii_gateway, easydiff_gateway):
+        assert gateway.ENV in envs, f"{gateway.NAME}: pixi env {gateway.ENV!r} not in pixi.toml"
+        assert gateway.INSTALL_COMMAND == f"pixi install -e {gateway.ENV}"
+    assert "GSAS-II" not in manifest["dependencies"], "the default env must stay engine-free (A31)"
+    assert "GSAS-II" in manifest["feature"][gsasii_gateway.ENV]["dependencies"]
+
+
+# The runtime counterpart (GSASII.__version__ in ENGINE_VERSION_SPEC) is
+# test_gsasii_installed_engine_version_satisfies_spec below, run in the gsasii env.
+
 # --- gsasii version checking ---
 
 
@@ -283,7 +320,7 @@ def test_easydiff_not_installed_raises_engine_not_available_error(tmp_path):
     with pytest.raises(EngineNotAvailableError) as exc_info:
         easydiff_gateway.run(_load(EASY_LAB6), str(tmp_path), validate_only=False)
     assert isinstance(exc_info.value, ImportError)
-    assert "pixi install -e easydiff" in str(exc_info.value)
+    assert "pixi install -e easydiffraction" in str(exc_info.value)
 
 
 @pytest.mark.skipif(

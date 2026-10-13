@@ -27,19 +27,20 @@ def test_all_derive_from_powderline_error(cls):
 def test_engine_not_available_is_an_import_error():
     # A52: callers that caught the underlying ImportError keep working.
     err = EngineNotAvailableError(gateway="easydiffraction", dependency="easydiffraction",
-                                  env="easydiff", install_command="pixi install -e easydiff")
+                                  env="easydiffraction", install_command="pixi install -e easydiffraction")
     with pytest.raises(ImportError):
         raise err
 
 
 def test_engine_not_available_message_names_gateway_env_and_command():
     err = EngineNotAvailableError(gateway="easydiffraction", dependency="easydiffraction",
-                                  env="easydiff", install_command="pixi install -e easydiff")
+                                  env="easydiffraction", install_command="pixi install -e easydiffraction")
     msg = str(err)
     assert "'easydiffraction' gateway" in msg
-    assert "'easydiff' pixi environment" in msg
-    assert "pixi install -e easydiff" in msg
-    assert (err.gateway, err.env) == ("easydiffraction", "easydiff")
+    assert "'easydiffraction' pixi environment" in msg
+    assert "pixi install -e easydiffraction" in msg
+    assert "pixi run -e easydiffraction" in msg
+    assert (err.gateway, err.env) == ("easydiffraction", "easydiffraction")
 
 
 def test_engine_version_error_message():
