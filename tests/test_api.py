@@ -59,7 +59,7 @@ def test_validate_valid_recipe(recipe_LaB6_dict):
 
 
 def test_validate_returns_recipemodel_from_model(recipe_LaB6_model):
-    """validate() is idempotent — a RecipeModel passes through unchanged."""
+    """validate() is idempotent — a validated model passes through unchanged (A50)."""
     result = powderline.validate(recipe_LaB6_model)
     assert result.recipe is recipe_LaB6_model
 
@@ -80,7 +80,7 @@ def test_validate_missing_schema_name_is_a_validation_error():
 
 
 def test_validate_schema_name_without_engine_prefix_is_a_validation_error():
-    """A schema_name that is neither <engine>.<workflow> nor a 0.26.0 name is reported at schema_name."""
+    """A schema_name that is not <engine>.<workflow> is reported at schema_name (A133)."""
     with pytest.raises(ValidationError, match="does not name an engine"):
         powderline.validate({"schema_name": "Rietveld", "payload": {}})
 
@@ -121,7 +121,7 @@ def test_validate_is_engine_free():
 
     The re/08 precondition: the core-only environment validates any recipe.
     """
-    legacy = str(REPO / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json")  # 0.26.0 snapshot (P-16)
+    legacy = str(REPO / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json")  # 0.26.0 input of the converter
     gsasii_native = str(REPO / "examples" / "example_LaB6" / "input.json")
     topas_native = str(REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json")
     easy_native = str(REPO / "tests" / "data" / "easydiffraction" / "native" / "lab6_crysfml_tch.json")
@@ -144,18 +144,16 @@ assert "powderline.kicker" not in sys.modules, "import powderline must not impor
 
 r = powderline.validate(json.loads(Path(r'{gsasii_native}').read_text(encoding="utf-8")))
 assert type(r).__name__ == "ValidationResult" and type(r.recipe).__name__ == "GsasiiRietveldRecipe"
-legacy = json.loads(Path(r'{legacy}').read_text(encoding="utf-8"))
-r = powderline.validate(legacy)
-assert type(r.recipe).__name__ == "RecipeModel"
 r = powderline.validate(json.loads(Path(r'{topas_native}').read_text(encoding="utf-8")))
 assert type(r.recipe).__name__ == "TopasRietveldRecipe", type(r.recipe).__name__
 r = powderline.validate(json.loads(Path(r'{easy_native}').read_text(encoding="utf-8")))
 assert type(r.recipe).__name__ == "EasydiffractionRietveldRecipe", type(r.recipe).__name__
 assert isinstance(r.warnings, list)
-# a gsasii.* recipe converted from the 0.26.0 snapshot validates too
+# a gsasii.* recipe converted from a 0.26.0 recipe validates too (the converter is engine-free)
 import importlib.util
 spec = importlib.util.spec_from_file_location("convert_recipe_026", r'{REPO / "scripts" / "convert_recipe_026.py"}')
 conv = importlib.util.module_from_spec(spec); spec.loader.exec_module(conv)
+legacy = json.loads(Path(r'{legacy}').read_text(encoding="utf-8"))
 legacy["payload"]["background"]["single_peaks"]["pv_lorentzian_gamma"][0][0] = 0.1
 r = powderline.validate(conv.convert(legacy)[0])
 assert type(r.recipe).__name__ == "GsasiiRietveldRecipe", type(r.recipe).__name__
@@ -171,7 +169,7 @@ print("OK")
 
 def test_validate_invalid_recipe_raises():
     """validate() raises ValidationError for a recipe missing required fields."""
-    bad = {"schema_name": "GSASII_Rietveld", "schema_version": "0.26.0"}
+    bad = {"schema_name": "gsasii.rietveld", "core_schema_version": "1.0.0", "engine_schema_version": "1.0.0"}
     with pytest.raises(ValidationError):
         powderline.validate(bad)
 
@@ -207,7 +205,7 @@ def test_run_validate_only_returns_summary(recipe_LaB6_dict, tmp_path):
 def test_run_validate_only_bad_recipe_raises(tmp_path):
     """run(validate_only=True) still raises ValidationError for a bad recipe."""
     with pytest.raises(ValidationError):
-        powderline.run({"schema_name": "GSASII_Rietveld"}, tmp_path / "out", validate_only=True)
+        powderline.run({"schema_name": "gsasii.rietveld"}, tmp_path / "out", validate_only=True)
 
 
 # ─── run() subprocess mode tests ──────────────────────────────────────────────
@@ -574,7 +572,7 @@ def test_run_invalid_execution_mode_raises(recipe_LaB6_dict, tmp_path):
 # ─── SPF Rwp via programmatic API ────────────────────────────────────────────
 
 def test_run_spf_returns_rwp_directly(recipe_LaB6_singlepeakfit_dict, tmp_path):
-    """run() for GSASII_SPF returns Rwp in the result dict (not only in stdout).
+    """run() for gsasii.spf returns Rwp in the result dict (not only in stdout).
 
     This closes the gap where the CLI regression test could not assert Rwp when
     running via the server (stdout is captured server-side). The API always
@@ -587,7 +585,7 @@ def test_run_spf_returns_rwp_directly(recipe_LaB6_singlepeakfit_dict, tmp_path):
     )
     assert result["success"] is True, f"SPF refinement failed: {result.get('error')}"
     assert result.get("rwp") is not None, (
-        "GSASII_SPF run must return result['rwp'] from the programmatic API"
+        "gsasii.spf run must return result['rwp'] from the programmatic API"
     )
     # Observed Rwp 1.805% on the pinned GSAS-II (v5.7.9); band is the same
     # ~±11% convention the original DRX-based test used ([40, 50] around 45.26),

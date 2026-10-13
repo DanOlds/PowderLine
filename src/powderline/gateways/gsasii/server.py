@@ -265,7 +265,7 @@ class GSASServer:
 
         # Validate recipe
         try:
-            recipe = model_from_request(recipe_dict)  # native gsasii.* or 0.26.0 (re/04)
+            recipe = model_from_request(recipe_dict)
         except ValidationError as e:
             error_lines = [f"{' -> '.join(str(loc) for loc in err['loc'])}: {err['msg']}"
                           for err in e.errors()]

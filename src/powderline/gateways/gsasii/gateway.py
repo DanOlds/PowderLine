@@ -1,9 +1,9 @@
 """Engine-free factory for the GSAS-II gateway (entry point ``powderline.gateways:gsasii``).
 
 - **Schema layer** — ``validate`` / ``capabilities``: engine-free; runs with
-  GSAS-II not installed. ``gsasii.*`` recipes validate against the native
-  schemas (``gateways.gsasii.schema``, A39); 0.26.0 ``GSASII_*`` recipes keep
-  the legacy validation (``gateways.gsasii.validation``) until re/07 removes them.
+  GSAS-II not installed. ``gsasii.rietveld`` / ``gsasii.spf`` recipes validate
+  against the native schemas (``gateways.gsasii.schema``, A39); any other
+  ``schema_name`` is a validation error at ``schema_name``.
 - **Runtime layer** — ``run``: the GSAS-II refinement entry point (moved here
   from ``powderline.kicker.run`` in re/07, P-06, behaviour unchanged). It
   validates, enforces ``ENGINE_VERSION_SPEC`` against the installed GSAS-II,
@@ -27,15 +27,14 @@ import pandas as pd
 from powderline.exceptions import EngineNotAvailableError
 from powderline.gateways.gsasii import schema
 from powderline.gateways.gsasii.routing import run_refinement
-from powderline.gateways.gsasii.validation import validate as _validate_recipe
 from powderline.registry import Gateway, check_engine_version
 from powderline.schema_core import collect_warnings
 
 NAME = "gsasii"
 #: Supported GSAS-II runtime versions (A41/A44); pixi pins align in re/08.
 ENGINE_VERSION_SPEC = "==5.7.9"
-#: Workflows served: the native schemas, and the 0.26.0 names until re/07 removes them.
-WORKFLOWS = (*schema.SCHEMA_NAMES, "GSASII_Rietveld", "GSASII_SPF")
+#: Workflows served (the native schemas).
+WORKFLOWS = tuple(schema.SCHEMA_NAMES)
 #: pixi environment providing GSAS-II + how to install it (names final in re/08).
 ENV = "default"
 INSTALL_COMMAND = "pixi install"
@@ -57,10 +56,12 @@ def capabilities() -> dict:
 def validate(recipe, *, verbose: bool = False):
     """Validate a recipe (dict or model); return the validated model (A50, A59).
 
-    A ``gsasii.*`` recipe gives its native model (``GsasiiRietveldRecipe`` /
-    ``GsasiiSpfRecipe``); a 0.26.0 one the legacy ``RecipeModel``.
+    A ``gsasii.rietveld`` / ``gsasii.spf`` recipe gives its native model
+    (``GsasiiRietveldRecipe`` / ``GsasiiSpfRecipe``); its simulation rule is
+    part of the schema (A88). ``verbose`` is part of the uniform gateway
+    contract; this gateway prints nothing extra.
     """
-    return _validate_recipe(recipe, verbose=verbose)
+    return schema.validate_recipe(recipe)
 
 
 def installed_engine_version() -> str:
@@ -96,7 +97,7 @@ def run(
     The full pipeline: schema validation, the engine version check (A44),
     output directory creation, and refinement execution with automatic
     backend selection. Reached through ``powderline.run()`` for a ``gsasii.*``
-    (or 0.26.0 ``GSASII_*``) recipe, which forwards ``execution_mode``.
+    recipe, which forwards ``execution_mode``.
 
     Note: the CLI's template-file guard is **not** applied here. When calling
     programmatically the caller is responsible for ensuring the recipe
@@ -153,22 +154,20 @@ def run(
         - ``output_files`` (list[str]) — paths written to ``output_dir``
         - ``error`` (str | None) — error message when ``success=False``
         - ``traceback`` (str | None)
-        - native ``gsasii.*`` recipes also carry ``r_exp``, ``gof``,
-          ``chi2_red``, ``simulation_mode``, ``engine_details`` and the
-          structured ``warnings`` list (A125, A129, A115)
+        - ``r_exp``, ``gof``, ``chi2_red``, ``simulation_mode``,
+          ``engine_details`` and the structured ``warnings`` list (A125,
+          A129, A115)
 
         **Validate-only** (``validate_only=True``) — a slim summary dict, no
         refinement executed, no output files written, no ``run_id``:
         ``success``, ``rwp`` (None), ``elapsed_time`` (0.0), ``method``
         (``'validate_only'``), ``schema_name``, ``phases``,
-        ``refinement_cycles``, ``simulation_mode``; plus
-        ``core_schema_version`` / ``engine_schema_version`` / ``warnings``
-        for a native recipe, ``schema_version`` for a 0.26.0 one.
+        ``refinement_cycles``, ``simulation_mode``, ``core_schema_version``,
+        ``engine_schema_version`` and ``warnings``.
 
     Raises:
         pydantic.ValidationError: the recipe fails schema validation.
-        ValueError: an invalid ``execution_mode``, or a 0.26.0 simulation-mode
-            violation.
+        ValueError: an invalid ``execution_mode``.
         EngineNotAvailableError: GSAS-II is not importable (not for ``validate_only``).
         EngineVersionError: the installed GSAS-II is outside ``ENGINE_VERSION_SPEC``.
         OSError: ``output_dir`` cannot be created.
@@ -186,13 +185,12 @@ def run(
                              spec=ENGINE_VERSION_SPEC,
                              allow_unsupported=allow_unsupported_engine_version)
 
-    # 2. Validate (raises ValidationError / ValueError on failure)
+    # 2. Validate (raises ValidationError on failure)
     recipe = validate(recipe, verbose=verbose)
-    # A native gsasii.* recipe's structured warnings come from validating the
-    # user's recipe and are carried to the result (A115, A119): here for
-    # validate_only and the in-process run, by GSASClient on its paths
-    native = schema.is_native_recipe(recipe)
-    warnings = collect_warnings(recipe) if native else None
+    # The recipe's structured warnings come from validating the user's recipe
+    # and are carried to the result (A115, A119): here for validate_only and
+    # the in-process run, by GSASClient on its paths
+    warnings = collect_warnings(recipe)
 
     # 3. Validate_only short-circuit
     if validate_only:
@@ -207,12 +205,10 @@ def run(
             'phases': len(phases) if phases else 0,
             'refinement_cycles': controls.refinement_cycles,
             'simulation_mode': controls.refinement_cycles == 1,
+            'core_schema_version': recipe.core_schema_version,
+            'engine_schema_version': recipe.engine_schema_version,
+            'warnings': warnings,
         }
-        if native:
-            summary.update(core_schema_version=recipe.core_schema_version,
-                           engine_schema_version=recipe.engine_schema_version, warnings=warnings)
-        else:
-            summary['schema_version'] = recipe.schema_version
         return summary
 
     # 4. Ensure output directory exists
@@ -233,12 +229,8 @@ def run(
             auto_start_server=True,
         )
 
-    if native and execution_mode == 'subprocess':  # GSASClient adds them on its own paths
+    if execution_mode == 'subprocess':  # GSASClient adds them on its own paths
         result['warnings'] = warnings + list(result.get('warnings') or [])
-    elif not native:  # the server's response model carries the native-only keys as null; a 0.26.0 result never had them
-        for key in ('r_exp', 'gof', 'chi2_red', 'simulation_mode', 'engine_details', 'warnings'):
-            if key in result and result[key] is None:
-                del result[key]
 
     return _frames(result)
 

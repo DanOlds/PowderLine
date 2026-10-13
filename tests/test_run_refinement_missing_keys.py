@@ -5,22 +5,16 @@ crystal structures (e.g. missing 'wR' residual, missing 'RefList', missing
 'Cell'). These tests verify that run_refinement() handles these cases
 gracefully instead of raising KeyError.
 
-As of refactor/multi-engine re/04, `run_refinement` exists twice:
-- `_legacy_executor.run_refinement` (schema 0.26.0, "GSASII_Rietveld"/"GSASII_SPF")
-- `executors.run_refinement` (native path, "gsasii.rietveld"/"gsasii.spf")
-Every test here runs in both modes via parametrization.
+The function under test is ``powderline.gateways.gsasii.executors.run_refinement``
+(the ``gsasii.rietveld`` / ``gsasii.spf`` executor); the GSAS-II setters,
+extractors and ``G2Project`` are patched on that module. (Until re/07 the
+same tests also ran the pre-refactor copy of the executor, since deleted.)
 """
 
 import numpy as np
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-
-@pytest.fixture(params=["legacy", "native"], ids=["legacy", "native"])
-def executor_mode(request):
-    """Parametrize tests to run against both legacy and native executors."""
-    return request.param
 
 
 def _make_mock_hist(hist_name, residuals=None, has_reflection_lists=True,
@@ -91,23 +85,15 @@ def _make_mock_hist(hist_name, residuals=None, has_reflection_lists=True,
 
 
 @pytest.fixture
-def mock_recipe(executor_mode):
+def mock_recipe():
     """Minimal mock recipe for run_refinement().
 
     Updated for schema 0.25: Payload-based structure with all recipe fields under payload.
     Added schema_name field (required for SCHEMA_EXECUTORS dispatch).
-    Using 'structural_only' strategy to preserve legacy test behavior (traditional Rietveld refinement).
 
-    Parametrized to work with both legacy and native executors.
     """
     recipe = MagicMock()
-    # Set schema_name based on executor mode
-    if executor_mode == "legacy":
-        recipe.schema_name = "GSASII_Rietveld"  # Schema 0.26.0
-        recipe.schema_version = "0.26.0"
-    else:  # native
-        recipe.schema_name = "gsasii.rietveld"  # Native schema name
-        recipe.schema_version = "0.26.0"
+    recipe.schema_name = "gsasii.rietveld"
 
     # Schema 0.25: All recipe fields under payload
     recipe.payload = MagicMock()
@@ -121,9 +107,8 @@ def mock_recipe(executor_mode):
     recipe.payload.instrument.initialization = [{}]
     recipe.payload.instrument.parameterization = None
 
-    # For native mode, instrument needs to work with model_dump(mode='json')
-    if executor_mode == "native":
-        recipe.payload.instrument.model_dump = MagicMock(return_value={})
+    # instrument must work with model_dump(mode='json')
+    recipe.payload.instrument.model_dump = MagicMock(return_value={})
 
     recipe.payload.background = None
     recipe.payload.fit_range = None  # Native executor checks truthiness then .min/.max
@@ -141,42 +126,31 @@ def mock_recipe(executor_mode):
     # Phases dict under payload (required for CSV report generation)
     recipe.payload.phases = {"TestPhase": MagicMock()}
 
-    # For native mode, payload needs to work with model_dump(mode='json')
-    if executor_mode == "native":
-        recipe.payload.model_dump = MagicMock(return_value={"phases": []})
+    # payload must work with model_dump(mode='json')
+    recipe.payload.model_dump = MagicMock(return_value={"phases": []})
 
     recipe.model_dump.return_value = {"phases": []}
     return recipe
 
 
-def _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode):
+def _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist):
     """Patch GSAS-II internals and run run_refinement() with provided mocks.
 
     Args:
-        mock_recipe: Recipe mock with schema_name set appropriately for executor_mode
+        mock_recipe: Recipe mock (schema_name gsasii.rietveld)
         tmp_path: pytest tmp_path fixture
         proj: Mocked GSAS-II project
         hist: Mocked histogram
-        executor_mode: "legacy" or "native"
     """
     output_dir = tmp_path / "output"
     output_dir.mkdir()
 
-    # Determine which module to patch and which function to call
-    if executor_mode == "legacy":
-        module_path = "powderline.gateways.gsasii._legacy_executor"
-        # For legacy mode, call the router which will dispatch to _legacy_executor
-        from powderline.kicker import run_refinement
-        call_fn = lambda: run_refinement(mock_recipe, output_dir, verbose=False, method='test')
-    else:  # native
-        module_path = "powderline.gateways.gsasii.executors"
-        # For native mode, call executors.run_refinement directly
-        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-        call_fn = lambda: native_run_refinement(mock_recipe, output_dir, verbose=False, method='test')
+    module_path = "powderline.gateways.gsasii.executors"
+    from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+    call_fn = lambda: native_run_refinement(mock_recipe, output_dir, verbose=False, method='test')
 
-    # Build patch list - same names, different module path
     patches_list = [
-        patch("powderline.kicker.G2.G2Project", return_value=proj),
+        patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=proj),
         patch(f"{module_path}.add_powder_histogram_from_arrays", return_value=hist),
         patch(f"{module_path}.set_hist_scale"),
         patch(f"{module_path}.set_fit_range_hist"),
@@ -190,13 +164,11 @@ def _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode):
               return_value=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
     ]
 
-    # For native mode, also patch gsasii_iparm1
-    if executor_mode == "native":
-        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-        # the native run's site check and fit report read real GSAS-II data (tested in
-        # test_gsasii_native_run); these mocks test missing-key handling only
-        patches_list.append(patch(f"{module_path}.check_sites"))
-        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+    patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+    # the native run's site check and fit report read real GSAS-II data (tested in
+    # test_gsasii_native_run); these mocks test missing-key handling only
+    patches_list.append(patch(f"{module_path}.check_sites"))
+    patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
     # Apply all patches and call
     from contextlib import ExitStack
@@ -217,24 +189,21 @@ class TestMissingResiduals:
     to callers.
     """
 
-    def test_missing_wR_returns_failure(self, mock_recipe, tmp_path, executor_mode):
+    def test_missing_wR_returns_failure(self, mock_recipe, tmp_path):
         """Missing wR must now be reported as a refinement failure."""
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={})
-        result, _ = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode)
+        result, _ = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist)
 
         assert result["success"] is False
         assert result["rwp"] is None
         assert "run_id" in result
         assert "Rwp" in result["error"]
 
-    def test_missing_wR_executor_directly_returns_failure(self, mock_recipe, tmp_path, executor_mode):
+    def test_missing_wR_executor_directly_returns_failure(self, mock_recipe, tmp_path):
         """execute_rietveld_refinement returns success=False when wR is absent.
 
-        Note: execute_rietveld_refinement is only exposed by executors module.
-        For legacy mode, this still tests the executors version (kicker re-exports it).
         """
         from unittest.mock import MagicMock
-        # execute_rietveld_refinement is exposed by executors and re-exported by kicker
         from powderline.gateways.gsasii.executors import execute_rietveld_refinement
 
         proj = MagicMock()
@@ -248,9 +217,9 @@ class TestMissingResiduals:
         assert "error" in result
         assert result["error"]  # non-empty
 
-    def test_present_wR_returns_value(self, mock_recipe, tmp_path, executor_mode):
+    def test_present_wR_returns_value(self, mock_recipe, tmp_path):
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={"wR": 5.23})
-        result, _ = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode)
+        result, _ = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist)
 
         assert result["success"] is True
         assert result["rwp"] == 5.23
@@ -259,40 +228,40 @@ class TestMissingResiduals:
 class TestMissingReflectionLists:
     """Test that missing or incomplete Reflection Lists don't cause failure."""
 
-    def test_no_reflection_lists_key(self, mock_recipe, tmp_path, executor_mode):
+    def test_no_reflection_lists_key(self, mock_recipe, tmp_path):
         proj, hist, phase_name = _make_mock_hist(
             "PWDR test", residuals={"wR": 5.0},
             has_reflection_lists=False)
-        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode)
+        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist)
 
         assert result["success"] is True
         assert not (output_dir / f"{phase_name}_peak_list_report.csv").exists()
 
-    def test_hist_name_missing_from_proj_data(self, mock_recipe, tmp_path, executor_mode):
+    def test_hist_name_missing_from_proj_data(self, mock_recipe, tmp_path):
         proj, hist, phase_name = _make_mock_hist(
             "PWDR test", residuals={"wR": 5.0},
             has_reflection_lists=True)
         # Remove the hist entry from proj.data entirely
         del proj.data[hist.name]
-        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode)
+        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist)
 
         assert result["success"] is True
         assert not (output_dir / f"{phase_name}_peak_list_report.csv").exists()
 
-    def test_no_reflist_key(self, mock_recipe, tmp_path, executor_mode):
+    def test_no_reflist_key(self, mock_recipe, tmp_path):
         proj, hist, phase_name = _make_mock_hist(
             "PWDR test", residuals={"wR": 5.0},
             has_reflection_lists=True, has_reflist=False)
-        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode)
+        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist)
 
         assert result["success"] is True
         assert not (output_dir / f"{phase_name}_peak_list_report.csv").exists()
 
-    def test_complete_reflection_lists_produces_csv(self, mock_recipe, tmp_path, executor_mode):
+    def test_complete_reflection_lists_produces_csv(self, mock_recipe, tmp_path):
         proj, hist, phase_name = _make_mock_hist(
             "PWDR test", residuals={"wR": 5.0},
             has_reflection_lists=True, has_reflist=True)
-        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode)
+        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist)
 
         assert result["success"] is True
         assert (output_dir / f"{phase_name}_peak_list_report.csv").exists()
@@ -301,18 +270,18 @@ class TestMissingReflectionLists:
 class TestMissingUnitCell:
     """Test that missing General/Cell data doesn't cause failure."""
 
-    def test_no_cell_key(self, mock_recipe, tmp_path, executor_mode):
+    def test_no_cell_key(self, mock_recipe, tmp_path):
         proj, hist, phase_name = _make_mock_hist(
             "PWDR test", residuals={"wR": 5.0}, has_cell=False)
-        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode)
+        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist)
 
         assert result["success"] is True
         assert not (output_dir / f"{phase_name}_unit_cell_report.csv").exists()
 
-    def test_complete_cell_produces_csv(self, mock_recipe, tmp_path, executor_mode):
+    def test_complete_cell_produces_csv(self, mock_recipe, tmp_path):
         proj, hist, phase_name = _make_mock_hist(
             "PWDR test", residuals={"wR": 5.0}, has_cell=True)
-        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode)
+        result, output_dir = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist)
 
         assert result["success"] is True
         assert (output_dir / f"{phase_name}_unit_cell_report.csv").exists()
@@ -321,12 +290,12 @@ class TestMissingUnitCell:
 class TestOuterExceptTraceback:
     """Test that the outer except block includes traceback info."""
 
-    def test_unexpected_error_includes_traceback(self, mock_recipe, tmp_path, executor_mode):
+    def test_unexpected_error_includes_traceback(self, mock_recipe, tmp_path):
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={"wR": 5.0})
         # Make getdata raise to trigger the outer except
         hist.getdata = MagicMock(side_effect=RuntimeError("GSAS-II segfault"))
 
-        result, _ = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode)
+        result, _ = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist)
 
         assert result["success"] is False
         assert "GSAS-II segfault" in result["error"]
@@ -338,32 +307,25 @@ class TestHistogramLoadFailure:
     """Test that a failure inside add_powder_histogram_from_arrays returns a
     structured error dict instead of propagating an exception."""
 
-    def test_histogram_load_error_returns_failure(self, mock_recipe, tmp_path, executor_mode):
+    def test_histogram_load_error_returns_failure(self, mock_recipe, tmp_path):
         proj = MagicMock()
         output_dir = tmp_path / "output"
         output_dir.mkdir()
 
-        # Determine which module to patch and which function to call
-        if executor_mode == "legacy":
-            module_path = "powderline.gateways.gsasii._legacy_executor"
-            from powderline.kicker import run_refinement
-            call_fn = lambda: run_refinement(mock_recipe, output_dir, verbose=False, method='test')
-        else:  # native
-            module_path = "powderline.gateways.gsasii.executors"
-            from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-            call_fn = lambda: native_run_refinement(mock_recipe, output_dir, verbose=False, method='test')
+        module_path = "powderline.gateways.gsasii.executors"
+        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+        call_fn = lambda: native_run_refinement(mock_recipe, output_dir, verbose=False, method='test')
 
         patches_list = [
-            patch("powderline.kicker.G2.G2Project", return_value=proj),
+            patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=proj),
             patch(f"{module_path}.add_powder_histogram_from_arrays",
                   side_effect=ValueError("bad instrument params")),
         ]
-        if executor_mode == "native":
-            patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-            # the native run's site check and fit report read real GSAS-II data (tested in
-            # test_gsasii_native_run); these mocks test missing-key handling only
-            patches_list.append(patch(f"{module_path}.check_sites"))
-            patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+        # the native run's site check and fit report read real GSAS-II data (tested in
+        # test_gsasii_native_run); these mocks test missing-key handling only
+        patches_list.append(patch(f"{module_path}.check_sites"))
+        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
         from contextlib import ExitStack
         with ExitStack() as stack:
@@ -375,32 +337,25 @@ class TestHistogramLoadFailure:
         assert "Failed to load XRD data or instrument parameters" in result["error"]
         assert "bad instrument params" in result["error"]
 
-    def test_histogram_load_error_includes_run_id(self, mock_recipe, tmp_path, executor_mode):
+    def test_histogram_load_error_includes_run_id(self, mock_recipe, tmp_path):
         proj = MagicMock()
         output_dir = tmp_path / "output"
         output_dir.mkdir()
 
-        # Determine which module to patch and which function to call
-        if executor_mode == "legacy":
-            module_path = "powderline.gateways.gsasii._legacy_executor"
-            from powderline.kicker import run_refinement
-            call_fn = lambda: run_refinement(mock_recipe, output_dir, verbose=False, method='test')
-        else:  # native
-            module_path = "powderline.gateways.gsasii.executors"
-            from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-            call_fn = lambda: native_run_refinement(mock_recipe, output_dir, verbose=False, method='test')
+        module_path = "powderline.gateways.gsasii.executors"
+        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+        call_fn = lambda: native_run_refinement(mock_recipe, output_dir, verbose=False, method='test')
 
         patches_list = [
-            patch("powderline.kicker.G2.G2Project", return_value=proj),
+            patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=proj),
             patch(f"{module_path}.add_powder_histogram_from_arrays",
                   side_effect=IOError("file not found")),
         ]
-        if executor_mode == "native":
-            patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-            # the native run's site check and fit report read real GSAS-II data (tested in
-            # test_gsasii_native_run); these mocks test missing-key handling only
-            patches_list.append(patch(f"{module_path}.check_sites"))
-            patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+        # the native run's site check and fit report read real GSAS-II data (tested in
+        # test_gsasii_native_run); these mocks test missing-key handling only
+        patches_list.append(patch(f"{module_path}.check_sites"))
+        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
         from contextlib import ExitStack
         with ExitStack() as stack:
@@ -415,23 +370,16 @@ class TestHistogramLoadFailure:
 class TestExecutorFailure:
     """Test the two failure modes of the schema executor dispatch."""
 
-    def test_executor_raises_exception_returns_failure(self, mock_recipe, tmp_path, executor_mode):
+    def test_executor_raises_exception_returns_failure(self, mock_recipe, tmp_path):
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={"wR": 5.0})
 
-        # Determine which module to patch and which function to call
-        if executor_mode == "legacy":
-            module_path = "powderline.gateways.gsasii._legacy_executor"
-            schema_key = "GSASII_Rietveld"
-            from powderline.kicker import run_refinement
-            call_fn = lambda: run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
-        else:  # native
-            module_path = "powderline.gateways.gsasii.executors"
-            schema_key = "gsasii.rietveld"
-            from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-            call_fn = lambda: native_run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
+        module_path = "powderline.gateways.gsasii.executors"
+        schema_key = "gsasii.rietveld"
+        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+        call_fn = lambda: native_run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
 
         patches_list = [
-            patch("powderline.kicker.G2.G2Project", return_value=proj),
+            patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=proj),
             patch(f"{module_path}.add_powder_histogram_from_arrays", return_value=hist),
             patch(f"{module_path}.set_hist_scale"),
             patch(f"{module_path}.set_fit_range_hist"),
@@ -444,12 +392,11 @@ class TestExecutorFailure:
             patch(f"{module_path}.SCHEMA_EXECUTORS",
                   {schema_key: MagicMock(side_effect=RuntimeError("diverged"))}),
         ]
-        if executor_mode == "native":
-            patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-            # the native run's site check and fit report read real GSAS-II data (tested in
-            # test_gsasii_native_run); these mocks test missing-key handling only
-            patches_list.append(patch(f"{module_path}.check_sites"))
-            patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+        # the native run's site check and fit report read real GSAS-II data (tested in
+        # test_gsasii_native_run); these mocks test missing-key handling only
+        patches_list.append(patch(f"{module_path}.check_sites"))
+        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
         from contextlib import ExitStack
         with ExitStack() as stack:
@@ -461,24 +408,17 @@ class TestExecutorFailure:
         assert "Refinement failed" in result["error"]
         assert "diverged" in result["error"]
 
-    def test_executor_returns_failure_dict(self, mock_recipe, tmp_path, executor_mode):
+    def test_executor_returns_failure_dict(self, mock_recipe, tmp_path):
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={"wR": 5.0})
         failing_executor = MagicMock(return_value={"success": False, "rwp": None})
 
-        # Determine which module to patch and which function to call
-        if executor_mode == "legacy":
-            module_path = "powderline.gateways.gsasii._legacy_executor"
-            schema_key = "GSASII_Rietveld"
-            from powderline.kicker import run_refinement
-            call_fn = lambda: run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
-        else:  # native
-            module_path = "powderline.gateways.gsasii.executors"
-            schema_key = "gsasii.rietveld"
-            from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-            call_fn = lambda: native_run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
+        module_path = "powderline.gateways.gsasii.executors"
+        schema_key = "gsasii.rietveld"
+        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+        call_fn = lambda: native_run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
 
         patches_list = [
-            patch("powderline.kicker.G2.G2Project", return_value=proj),
+            patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=proj),
             patch(f"{module_path}.add_powder_histogram_from_arrays", return_value=hist),
             patch(f"{module_path}.set_hist_scale"),
             patch(f"{module_path}.set_fit_range_hist"),
@@ -490,12 +430,11 @@ class TestExecutorFailure:
             patch(f"{module_path}.set_refinement_cycles"),
             patch(f"{module_path}.SCHEMA_EXECUTORS", {schema_key: failing_executor}),
         ]
-        if executor_mode == "native":
-            patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-            # the native run's site check and fit report read real GSAS-II data (tested in
-            # test_gsasii_native_run); these mocks test missing-key handling only
-            patches_list.append(patch(f"{module_path}.check_sites"))
-            patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+        # the native run's site check and fit report read real GSAS-II data (tested in
+        # test_gsasii_native_run); these mocks test missing-key handling only
+        patches_list.append(patch(f"{module_path}.check_sites"))
+        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
         from contextlib import ExitStack
         with ExitStack() as stack:
@@ -511,25 +450,17 @@ class TestUnknownSchemaName:
     """Test that an unrecognised schema_name is caught and returned as a failure
     (the ValueError is caught by the outer except block)."""
 
-    def test_unknown_schema_name_returns_failure(self, mock_recipe, tmp_path, executor_mode):
-        # Set an unknown schema_name for the executor mode
-        if executor_mode == "legacy":
-            mock_recipe.schema_name = "GSASII_Unknown"
-            expected_in_error = ["Unknown schema_name", "GSASII_Unknown"]
-            module_path = "powderline.gateways.gsasii._legacy_executor"
-            from powderline.kicker import run_refinement
-            call_fn = lambda: run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
-        else:  # native
-            mock_recipe.schema_name = "gsasii.bogus"
-            expected_in_error = ["Unknown schema_name", "gsasii.bogus"]
-            module_path = "powderline.gateways.gsasii.executors"
-            from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-            call_fn = lambda: native_run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
+    def test_unknown_schema_name_returns_failure(self, mock_recipe, tmp_path):
+        mock_recipe.schema_name = "gsasii.bogus"
+        expected_in_error = ["Unknown schema_name", "gsasii.bogus"]
+        module_path = "powderline.gateways.gsasii.executors"
+        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+        call_fn = lambda: native_run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
 
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={"wR": 5.0})
 
         patches_list = [
-            patch("powderline.kicker.G2.G2Project", return_value=proj),
+            patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=proj),
             patch(f"{module_path}.add_powder_histogram_from_arrays", return_value=hist),
             patch(f"{module_path}.set_hist_scale"),
             patch(f"{module_path}.set_fit_range_hist"),
@@ -540,12 +471,11 @@ class TestUnknownSchemaName:
             patch(f"{module_path}.set_instrument_parameterization"),
             patch(f"{module_path}.set_refinement_cycles"),
         ]
-        if executor_mode == "native":
-            patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-            # the native run's site check and fit report read real GSAS-II data (tested in
-            # test_gsasii_native_run); these mocks test missing-key handling only
-            patches_list.append(patch(f"{module_path}.check_sites"))
-            patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+        # the native run's site check and fit report read real GSAS-II data (tested in
+        # test_gsasii_native_run); these mocks test missing-key handling only
+        patches_list.append(patch(f"{module_path}.check_sites"))
+        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
         from contextlib import ExitStack
         with ExitStack() as stack:
@@ -561,23 +491,17 @@ class TestCorruptCovariance:
     """Test that a non-empty varyList paired with empty param extraction
     raises an error instead of silently producing incorrect ESD values."""
 
-    def test_nonempty_varylist_with_empty_params_returns_failure(self, mock_recipe, tmp_path, executor_mode):
+    def test_nonempty_varylist_with_empty_params_returns_failure(self, mock_recipe, tmp_path):
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={"wR": 5.0})
         # Inject a non-empty varyList into proj.data so the covariance guard triggers
         proj.data["Covariance"]["data"]["varyList"] = [":0:Back;0"]
 
-        # Determine which module to patch and which function to call
-        if executor_mode == "legacy":
-            module_path = "powderline.gateways.gsasii._legacy_executor"
-            from powderline.kicker import run_refinement
-            call_fn = lambda: run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
-        else:  # native
-            module_path = "powderline.gateways.gsasii.executors"
-            from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-            call_fn = lambda: native_run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
+        module_path = "powderline.gateways.gsasii.executors"
+        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+        call_fn = lambda: native_run_refinement(mock_recipe, output_dir=tmp_path, verbose=False, method='test')
 
         patches_list = [
-            patch("powderline.kicker.G2.G2Project", return_value=proj),
+            patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=proj),
             patch(f"{module_path}.add_powder_histogram_from_arrays", return_value=hist),
             patch(f"{module_path}.set_hist_scale"),
             patch(f"{module_path}.set_fit_range_hist"),
@@ -591,12 +515,11 @@ class TestCorruptCovariance:
                   return_value=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
             patch(f"{module_path}.extract_refined_params_from_project", return_value={}),
         ]
-        if executor_mode == "native":
-            patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-            # the native run's site check and fit report read real GSAS-II data (tested in
-            # test_gsasii_native_run); these mocks test missing-key handling only
-            patches_list.append(patch(f"{module_path}.check_sites"))
-            patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+        # the native run's site check and fit report read real GSAS-II data (tested in
+        # test_gsasii_native_run); these mocks test missing-key handling only
+        patches_list.append(patch(f"{module_path}.check_sites"))
+        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
         from contextlib import ExitStack
         with ExitStack() as stack:
@@ -613,33 +536,26 @@ class TestTracebackConsistency:
     a non-None string so that callers have full diagnostic information without
     catching KeyError."""
 
-    def test_exit1_histogram_load_failure_has_traceback(self, mock_recipe, tmp_path, executor_mode):
+    def test_exit1_histogram_load_failure_has_traceback(self, mock_recipe, tmp_path):
         """Exit 1 — add_powder_histogram_from_arrays raises → traceback present."""
         proj = MagicMock()
         output_dir = tmp_path / "output"
         output_dir.mkdir()
 
-        # Determine which module to patch and which function to call
-        if executor_mode == "legacy":
-            module_path = "powderline.gateways.gsasii._legacy_executor"
-            from powderline.kicker import run_refinement
-            call_fn = lambda: run_refinement(mock_recipe, output_dir, verbose=False, method='test')
-        else:  # native
-            module_path = "powderline.gateways.gsasii.executors"
-            from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-            call_fn = lambda: native_run_refinement(mock_recipe, output_dir, verbose=False, method='test')
+        module_path = "powderline.gateways.gsasii.executors"
+        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+        call_fn = lambda: native_run_refinement(mock_recipe, output_dir, verbose=False, method='test')
 
         patches_list = [
-            patch("powderline.kicker.G2.G2Project", return_value=proj),
+            patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=proj),
             patch(f"{module_path}.add_powder_histogram_from_arrays",
                   side_effect=ValueError("bad instrument params")),
         ]
-        if executor_mode == "native":
-            patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-            # the native run's site check and fit report read real GSAS-II data (tested in
-            # test_gsasii_native_run); these mocks test missing-key handling only
-            patches_list.append(patch(f"{module_path}.check_sites"))
-            patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+        # the native run's site check and fit report read real GSAS-II data (tested in
+        # test_gsasii_native_run); these mocks test missing-key handling only
+        patches_list.append(patch(f"{module_path}.check_sites"))
+        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
         from contextlib import ExitStack
         with ExitStack() as stack:
@@ -653,26 +569,19 @@ class TestTracebackConsistency:
         assert "ValueError" in result["traceback"]
         assert "bad instrument params" in result["traceback"]
 
-    def test_exit3_executor_exception_has_traceback(self, mock_recipe, tmp_path, executor_mode):
+    def test_exit3_executor_exception_has_traceback(self, mock_recipe, tmp_path):
         """Exit 3 — executor raises → traceback present with full exception info."""
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={"wR": 5.0})
         output_dir = tmp_path / "output"
         output_dir.mkdir()
 
-        # Determine which module to patch and which function to call
-        if executor_mode == "legacy":
-            module_path = "powderline.gateways.gsasii._legacy_executor"
-            schema_key = "GSASII_Rietveld"
-            from powderline.kicker import run_refinement
-            call_fn = lambda: run_refinement(mock_recipe, output_dir=output_dir, verbose=False, method='test')
-        else:  # native
-            module_path = "powderline.gateways.gsasii.executors"
-            schema_key = "gsasii.rietveld"
-            from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-            call_fn = lambda: native_run_refinement(mock_recipe, output_dir=output_dir, verbose=False, method='test')
+        module_path = "powderline.gateways.gsasii.executors"
+        schema_key = "gsasii.rietveld"
+        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+        call_fn = lambda: native_run_refinement(mock_recipe, output_dir=output_dir, verbose=False, method='test')
 
         patches_list = [
-            patch("powderline.kicker.G2.G2Project", return_value=proj),
+            patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=proj),
             patch(f"{module_path}.add_powder_histogram_from_arrays", return_value=hist),
             patch(f"{module_path}.set_hist_scale"),
             patch(f"{module_path}.set_fit_range_hist"),
@@ -685,12 +594,11 @@ class TestTracebackConsistency:
             patch(f"{module_path}.SCHEMA_EXECUTORS",
                   {schema_key: MagicMock(side_effect=RuntimeError("diverged"))}),
         ]
-        if executor_mode == "native":
-            patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-            # the native run's site check and fit report read real GSAS-II data (tested in
-            # test_gsasii_native_run); these mocks test missing-key handling only
-            patches_list.append(patch(f"{module_path}.check_sites"))
-            patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+        # the native run's site check and fit report read real GSAS-II data (tested in
+        # test_gsasii_native_run); these mocks test missing-key handling only
+        patches_list.append(patch(f"{module_path}.check_sites"))
+        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
         from contextlib import ExitStack
         with ExitStack() as stack:
@@ -704,7 +612,7 @@ class TestTracebackConsistency:
         assert "RuntimeError" in result["traceback"]
         assert "diverged" in result["traceback"]
 
-    def test_exit2_executor_failure_dict_with_traceback_forwards_it(self, mock_recipe, tmp_path, executor_mode):
+    def test_exit2_executor_failure_dict_with_traceback_forwards_it(self, mock_recipe, tmp_path):
         """Exit 2 — executor returns success=False with traceback → forwarded."""
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={"wR": 5.0})
         sentinel_tb = "Traceback (most recent call last):\n  File ...\nValueError: something"
@@ -717,20 +625,13 @@ class TestTracebackConsistency:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
 
-        # Determine which module to patch and which function to call
-        if executor_mode == "legacy":
-            module_path = "powderline.gateways.gsasii._legacy_executor"
-            schema_key = "GSASII_Rietveld"
-            from powderline.kicker import run_refinement
-            call_fn = lambda: run_refinement(mock_recipe, output_dir=output_dir, verbose=False, method='test')
-        else:  # native
-            module_path = "powderline.gateways.gsasii.executors"
-            schema_key = "gsasii.rietveld"
-            from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-            call_fn = lambda: native_run_refinement(mock_recipe, output_dir=output_dir, verbose=False, method='test')
+        module_path = "powderline.gateways.gsasii.executors"
+        schema_key = "gsasii.rietveld"
+        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+        call_fn = lambda: native_run_refinement(mock_recipe, output_dir=output_dir, verbose=False, method='test')
 
         patches_list = [
-            patch("powderline.kicker.G2.G2Project", return_value=MagicMock()),
+            patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=MagicMock()),
             patch(f"{module_path}.add_powder_histogram_from_arrays", return_value=hist),
             patch(f"{module_path}.set_hist_scale"),
             patch(f"{module_path}.set_fit_range_hist"),
@@ -742,12 +643,11 @@ class TestTracebackConsistency:
             patch(f"{module_path}.set_refinement_cycles"),
             patch(f"{module_path}.SCHEMA_EXECUTORS", {schema_key: failing_executor}),
         ]
-        if executor_mode == "native":
-            patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-            # the native run's site check and fit report read real GSAS-II data (tested in
-            # test_gsasii_native_run); these mocks test missing-key handling only
-            patches_list.append(patch(f"{module_path}.check_sites"))
-            patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+        # the native run's site check and fit report read real GSAS-II data (tested in
+        # test_gsasii_native_run); these mocks test missing-key handling only
+        patches_list.append(patch(f"{module_path}.check_sites"))
+        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
         from contextlib import ExitStack
         with ExitStack() as stack:
@@ -758,27 +658,20 @@ class TestTracebackConsistency:
         assert result["success"] is False
         assert result["traceback"] == sentinel_tb
 
-    def test_exit2_executor_failure_dict_without_traceback_gives_none(self, mock_recipe, tmp_path, executor_mode):
+    def test_exit2_executor_failure_dict_without_traceback_gives_none(self, mock_recipe, tmp_path):
         """Exit 2 — executor returns success=False with no traceback key → None."""
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={"wR": 5.0})
         failing_executor = MagicMock(return_value={"success": False, "rwp": None})
         output_dir = tmp_path / "output"
         output_dir.mkdir()
 
-        # Determine which module to patch and which function to call
-        if executor_mode == "legacy":
-            module_path = "powderline.gateways.gsasii._legacy_executor"
-            schema_key = "GSASII_Rietveld"
-            from powderline.kicker import run_refinement
-            call_fn = lambda: run_refinement(mock_recipe, output_dir=output_dir, verbose=False, method='test')
-        else:  # native
-            module_path = "powderline.gateways.gsasii.executors"
-            schema_key = "gsasii.rietveld"
-            from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
-            call_fn = lambda: native_run_refinement(mock_recipe, output_dir=output_dir, verbose=False, method='test')
+        module_path = "powderline.gateways.gsasii.executors"
+        schema_key = "gsasii.rietveld"
+        from powderline.gateways.gsasii.executors import run_refinement as native_run_refinement
+        call_fn = lambda: native_run_refinement(mock_recipe, output_dir=output_dir, verbose=False, method='test')
 
         patches_list = [
-            patch("powderline.kicker.G2.G2Project", return_value=MagicMock()),
+            patch("powderline.gateways.gsasii.executors.G2.G2Project", return_value=MagicMock()),
             patch(f"{module_path}.add_powder_histogram_from_arrays", return_value=hist),
             patch(f"{module_path}.set_hist_scale"),
             patch(f"{module_path}.set_fit_range_hist"),
@@ -790,12 +683,11 @@ class TestTracebackConsistency:
             patch(f"{module_path}.set_refinement_cycles"),
             patch(f"{module_path}.SCHEMA_EXECUTORS", {schema_key: failing_executor}),
         ]
-        if executor_mode == "native":
-            patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
-            # the native run's site check and fit report read real GSAS-II data (tested in
-            # test_gsasii_native_run); these mocks test missing-key handling only
-            patches_list.append(patch(f"{module_path}.check_sites"))
-            patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
+        patches_list.append(patch(f"{module_path}.gsasii_iparm1", return_value={}))
+        # the native run's site check and fit report read real GSAS-II data (tested in
+        # test_gsasii_native_run); these mocks test missing-key handling only
+        patches_list.append(patch(f"{module_path}.check_sites"))
+        patches_list.append(patch(f"{module_path}.fit_report", return_value={}))
 
         from contextlib import ExitStack
         with ExitStack() as stack:
@@ -807,10 +699,10 @@ class TestTracebackConsistency:
         assert "traceback" in result
         assert result["traceback"] is None
 
-    def test_success_result_has_traceback_key_as_none(self, mock_recipe, tmp_path, executor_mode):
+    def test_success_result_has_traceback_key_as_none(self, mock_recipe, tmp_path):
         """Successful run_refinement() result always has traceback=None after run() normalises it."""
         proj, hist, _ = _make_mock_hist("PWDR test", residuals={"wR": 5.23})
-        result, _ = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist, executor_mode)
+        result, _ = _run_with_mocked_gsas(mock_recipe, tmp_path, proj, hist)
 
         # run() calls result.setdefault('traceback', None) before returning.
         # run_refinement() itself may not include the key, but run() guarantees it.

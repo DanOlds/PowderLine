@@ -21,20 +21,39 @@ from packaging.specifiers import SpecifierSet
 from pydantic import ValidationError
 
 import powderline
-from powderline import registry, schema
+from powderline import registry
 from powderline.exceptions import EngineNotAvailableError, EngineVersionError
 from powderline.gateways.gsasii import gateway as gsasii_gateway
+from powderline.gateways.gsasii import schema as gsasii_schema
 from powderline.gateways.topas import gateway as topas_gateway
+from powderline.gateways.topas import schema as topas_schema
 from powderline.gateways.easydiffraction import gateway as easydiff_gateway
+from powderline.gateways.easydiffraction import schema as easydiff_schema
+from powderline.schema_core import CoreRecipe
 from subprocess_utils import run_subprocess_utf8
 
 REPO = Path(__file__).resolve().parent.parent
-EXAMPLES = REPO / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
+EXAMPLES = REPO / "examples"
+LAB6 = EXAMPLES / "example_LaB6" / "input.json"  # gsasii.rietveld
+TOPAS_LAB6 = REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json"  # topas.rietveld
+EASY_LAB6 = REPO / "tests" / "data" / "easydiffraction" / "native" / "lab6_crysfml_tch.json"  # easydiffraction.rietveld
+
+
+def _load(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 def _lab6_recipe():
-    """Load the LaB6 example recipe as a dict."""
-    return json.loads((EXAMPLES / "example_LaB6" / "input.json").read_text(encoding="utf-8"))
+    """Load the LaB6 example recipe (gsasii.rietveld) as a dict."""
+    return _load(LAB6)
+
+
+#: Each gateway with its native LaB6 recipe and the model it validates to.
+NATIVE_CASES = [
+    pytest.param(gsasii_gateway, LAB6, gsasii_schema.GsasiiRietveldRecipe, id="gsasii"),
+    pytest.param(topas_gateway, TOPAS_LAB6, topas_schema.TopasRietveldRecipe, id="topas"),
+    pytest.param(easydiff_gateway, EASY_LAB6, easydiff_schema.EasydiffractionRietveldRecipe, id="easydiffraction"),
+]
 
 
 @pytest.fixture
@@ -56,7 +75,7 @@ def isolated_registry():
     "gateway_module,expected_spec",
     [
         (gsasii_gateway, "==5.7.9"),
-        (topas_gateway, ">=7,<8"),
+        (topas_gateway, "==6"),  # the native declaration (A143, A144); the 0.26.0 path's >=7,<8 went with it (A146)
         (easydiff_gateway, "==0.21.1"),
     ],
 )
@@ -83,61 +102,45 @@ def test_get_gateway_returns_gateway_with_correct_name(gateway_module):
 # --- validate() ---
 
 
-@pytest.mark.parametrize(
-    "gateway_module",
-    [gsasii_gateway, topas_gateway],
-)
-def test_validate_lab6_recipe_dict_returns_recipe_model(gateway_module):
-    """Validating the LaB6 recipe dict returns a RecipeModel.
-
-    Note: easydiffraction is excluded because the LaB6 recipe has a Z broadening
-    parameter flagged for refinement, which easydiffraction does not support.
-    """
-    recipe = _lab6_recipe()
-    result = gateway_module.validate(recipe)
-    assert isinstance(result, schema.RecipeModel)
+@pytest.mark.parametrize("gateway_module,path,model_type", NATIVE_CASES)
+def test_validate_lab6_recipe_dict_returns_the_native_model(gateway_module, path, model_type):
+    """Validating each engine's LaB6 recipe dict returns that engine's model (a CoreRecipe)."""
+    result = gateway_module.validate(_load(path))
+    assert isinstance(result, model_type)
+    assert isinstance(result, CoreRecipe)
 
 
-@pytest.mark.parametrize(
-    "gateway_module",
-    [gsasii_gateway, topas_gateway],
-)
-def test_validate_recipe_model_is_idempotent(gateway_module):
-    """Passing a RecipeModel to validate() returns a RecipeModel (idempotent).
-
-    Note: easydiffraction is excluded because the LaB6 recipe has a Z broadening
-    parameter flagged for refinement, which easydiffraction does not support.
-    """
-    recipe = _lab6_recipe()
-    model = schema.RecipeModel.model_validate(recipe)
-    result = gateway_module.validate(model)
-    assert isinstance(result, schema.RecipeModel)
+@pytest.mark.parametrize("gateway_module,path,model_type", NATIVE_CASES)
+def test_validate_recipe_model_is_idempotent(gateway_module, path, model_type):
+    """Passing a validated model to validate() returns it unchanged (A50)."""
+    model = gateway_module.validate(_load(path))
+    assert gateway_module.validate(model) is model
 
 
 @pytest.mark.parametrize(
     "gateway_module,invalid_recipe",
     [
-        (gsasii_gateway, {"schema_name": "GSASII_Rietveld"}),
-        (topas_gateway, {"schema_name": "GSASII_Rietveld"}),
-        (easydiff_gateway, {"schema_name": "GSASII_Rietveld"}),
+        (gsasii_gateway, {"schema_name": "gsasii.rietveld"}),
+        (topas_gateway, {"schema_name": "topas.rietveld"}),
+        (easydiff_gateway, {"schema_name": "easydiffraction.rietveld"}),
         (gsasii_gateway, {}),
         (topas_gateway, {}),
         (easydiff_gateway, {}),
     ],
 )
 def test_validate_invalid_recipe_raises(gateway_module, invalid_recipe):
-    """An invalid recipe raises ValidationError (from pydantic or wrapped)."""
-    with pytest.raises((ValidationError, Exception)):  # may be wrapped
+    """An invalid recipe raises pydantic's ValidationError."""
+    with pytest.raises(ValidationError):
         gateway_module.validate(invalid_recipe)
 
 
-def test_easydiff_validate_lab6_raises_translation_error():
-    """Easydiffraction validate raises on the LaB6 recipe due to unsupported Z parameter."""
-    from powderline.gateways.easydiffraction.errors import EasyDiffractionTranslationError
-
-    recipe = _lab6_recipe()
-    with pytest.raises(EasyDiffractionTranslationError, match="Z is flagged for refinement"):
-        easydiff_gateway.validate(recipe)
+@pytest.mark.parametrize("gateway_module", [gsasii_gateway, topas_gateway, easydiff_gateway],
+                         ids=["gsasii", "topas", "easydiffraction"])
+def test_validate_foreign_schema_name_is_reported_at_schema_name(gateway_module):
+    """A gateway given another engine's (or an unknown) schema_name reports it at schema_name (A133)."""
+    with pytest.raises(ValidationError) as exc:
+        gateway_module.validate({"schema_name": "other.workflow", "payload": {}})
+    assert [tuple(e["loc"]) for e in exc.value.errors()] == [("schema_name",)]
 
 
 # --- gsasii version checking ---
@@ -181,7 +184,7 @@ def test_gsasii_version_check_bypassed_with_allow_unsupported(tmp_path, monkeypa
     )
     assert fake_run.called
     recipe_arg, output_arg = fake_run.call_args[0]
-    assert isinstance(recipe_arg, schema.RecipeModel)  # the gateway validated the dict first
+    assert isinstance(recipe_arg, gsasii_schema.GsasiiRietveldRecipe)  # the gateway validated the dict first
     assert Path(output_arg) == tmp_path
     call_kwargs = fake_run.call_args[1]
     assert call_kwargs["verbose"] is True
@@ -206,86 +209,38 @@ def test_gsasii_validate_only_skips_version_check(tmp_path, monkeypatch):
     result = gsasii_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=True)
     assert not called, "installed_engine_version should not be called for validate_only=True"
     assert not fake_run.called
-    assert result["method"] == "validate_only" and result["schema_name"] == "GSASII_Rietveld"
+    assert result["method"] == "validate_only" and result["schema_name"] == "gsasii.rietveld"
 
 
-# --- topas version checking ---
+# --- topas version checking (the A145 rule itself is tested in test_topas_native) ---
 
 
-def test_topas_no_version_configured_skips_check(tmp_path, monkeypatch):
-    """When no version is configured, the version check is skipped."""
-    from powderline.gateways.topas import runner, engine
-
-    monkeypatch.setattr(runner, "_read_topas_config", lambda: {})
-    fake_run = Mock(return_value={})
-    monkeypatch.setattr(engine, "run_topas_recipe", fake_run)
-
-    topas_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=False)
-    assert fake_run.called
-
-
-def test_topas_version_kwarg_out_of_range_raises(tmp_path, monkeypatch):
-    """topas_version=6 (out of range) raises EngineVersionError."""
-    from powderline.gateways.topas import engine
-
-    fake_run = Mock()
-    monkeypatch.setattr(engine, "run_topas_recipe", fake_run)
-
-    with pytest.raises(EngineVersionError):
-        topas_gateway.run(_lab6_recipe(), str(tmp_path), topas_version=6, validate_only=False)
-    assert not fake_run.called
-
-
-def test_topas_version_kwarg_in_range_calls_engine(tmp_path, monkeypatch):
-    """topas_version=7 (in range) calls run_topas_recipe."""
-    from powderline.gateways.topas import engine
+def test_topas_run_forwards_the_recipe_and_options_to_run_native(tmp_path, monkeypatch):
+    """gateway.run(topas recipe) validates, then hands the model, topas_dir and topas_version to run_native."""
+    from powderline.gateways.topas import native_run
 
     fake_run = Mock(return_value={})
-    monkeypatch.setattr(engine, "run_topas_recipe", fake_run)
+    monkeypatch.setattr(native_run, "run_native", fake_run)
 
-    topas_gateway.run(_lab6_recipe(), str(tmp_path), topas_version=7, validate_only=False)
+    topas_gateway.run(_load(TOPAS_LAB6), str(tmp_path), topas_dir="/t", topas_version="6", validate_only=False)
     assert fake_run.called
-
-
-def test_topas_config_version_out_of_range_raises(tmp_path, monkeypatch):
-    """Config {"version": 6} with topas_version=None raises EngineVersionError."""
-    from powderline.gateways.topas import runner, engine
-
-    monkeypatch.setattr(runner, "_read_topas_config", lambda: {"version": 6})
-    fake_run = Mock()
-    monkeypatch.setattr(engine, "run_topas_recipe", fake_run)
-
-    with pytest.raises(EngineVersionError):
-        topas_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=False)
-    assert not fake_run.called
-
-
-def test_topas_allow_unsupported_bypasses_version_check(tmp_path, monkeypatch):
-    """allow_unsupported_engine_version=True bypasses the version check."""
-    from powderline.gateways.topas import engine
-
-    fake_run = Mock(return_value={})
-    monkeypatch.setattr(engine, "run_topas_recipe", fake_run)
-
-    topas_gateway.run(
-        _lab6_recipe(),
-        str(tmp_path),
-        topas_version=6,
-        allow_unsupported_engine_version=True,
-        validate_only=False,
-    )
-    assert fake_run.called
+    (model, output_arg), kwargs = fake_run.call_args
+    assert isinstance(model, topas_schema.TopasRietveldRecipe)
+    assert Path(output_arg) == tmp_path
+    assert kwargs["topas_dir"] == "/t" and kwargs["topas_version"] == "6"
+    assert callable(kwargs["engine_version_check"])  # A145, applied by run_native when tc.exe is found
 
 
 def test_topas_validate_only_skips_version_check(tmp_path, monkeypatch):
-    """With validate_only=True, the version check is skipped even with topas_version=6."""
-    from powderline.gateways.topas import engine
+    """With validate_only=True no version is needed, even a mismatching declared one."""
+    from powderline.gateways.topas import native_run
 
-    fake_run = Mock(return_value={})
-    monkeypatch.setattr(engine, "run_topas_recipe", fake_run)
+    fake_run = Mock()
+    monkeypatch.setattr(native_run, "run_native", fake_run)
 
-    topas_gateway.run(_lab6_recipe(), str(tmp_path), topas_version=6, validate_only=True)
-    assert fake_run.called
+    result = topas_gateway.run(_load(TOPAS_LAB6), str(tmp_path), topas_version=7, validate_only=True)
+    assert result["method"] == "validate_only"
+    assert not fake_run.called
 
 
 # --- easydiffraction version checking ---
@@ -294,26 +249,29 @@ def test_topas_validate_only_skips_version_check(tmp_path, monkeypatch):
 def test_easydiff_version_out_of_range_raises(tmp_path, monkeypatch):
     """When installed_engine_version() returns '0.20.1' (the previous pin), run() raises EngineVersionError."""
     monkeypatch.setattr(easydiff_gateway, "installed_engine_version", lambda: "0.20.1")
-    from powderline.gateways.easydiffraction import engine
+    from powderline.gateways.easydiffraction import native_run
 
     fake_run = Mock()
-    monkeypatch.setattr(engine, "run_easydiffraction_recipe", fake_run)
+    monkeypatch.setattr(native_run, "run_native", fake_run)
 
     with pytest.raises(EngineVersionError):
-        easydiff_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=False)
+        easydiff_gateway.run(_load(EASY_LAB6), str(tmp_path), validate_only=False)
     assert not fake_run.called
 
 
 def test_easydiff_version_in_range_calls_engine(tmp_path, monkeypatch):
-    """When installed_engine_version() returns '0.21.1', run() calls the engine."""
+    """When installed_engine_version() returns '0.21.1', run() calls run_native with the validated model."""
     monkeypatch.setattr(easydiff_gateway, "installed_engine_version", lambda: "0.21.1")
-    from powderline.gateways.easydiffraction import engine
+    from powderline.gateways.easydiffraction import native_run
 
     fake_run = Mock(return_value={})
-    monkeypatch.setattr(engine, "run_easydiffraction_recipe", fake_run)
+    monkeypatch.setattr(native_run, "run_native", fake_run)
 
-    easydiff_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=False)
+    easydiff_gateway.run(_load(EASY_LAB6), str(tmp_path), validate_only=False)
     assert fake_run.called
+    model, output_arg = fake_run.call_args[0]
+    assert isinstance(model, easydiff_schema.EasydiffractionRietveldRecipe)
+    assert Path(output_arg) == tmp_path
 
 
 @pytest.mark.skipif(
@@ -323,7 +281,7 @@ def test_easydiff_version_in_range_calls_engine(tmp_path, monkeypatch):
 def test_easydiff_not_installed_raises_engine_not_available_error(tmp_path):
     """When easydiffraction is not installed, run() raises EngineNotAvailableError."""
     with pytest.raises(EngineNotAvailableError) as exc_info:
-        easydiff_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=False)
+        easydiff_gateway.run(_load(EASY_LAB6), str(tmp_path), validate_only=False)
     assert isinstance(exc_info.value, ImportError)
     assert "pixi install -e easydiff" in str(exc_info.value)
 
@@ -332,16 +290,10 @@ def test_easydiff_not_installed_raises_engine_not_available_error(tmp_path):
     importlib.util.find_spec("easydiffraction") is not None,
     reason="easydiffraction is installed",
 )
-def test_easydiff_not_installed_validate_only_does_not_raise(tmp_path, monkeypatch):
-    """When easydiffraction is not installed, validate_only=True does not raise."""
-    from powderline.gateways.easydiffraction import engine
-
-    fake_run = Mock(return_value={})
-    monkeypatch.setattr(engine, "run_easydiffraction_recipe", fake_run)
-
-    # validate_only should not trigger the import that raises EngineNotAvailableError
-    easydiff_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=True)
-    assert fake_run.called
+def test_easydiff_not_installed_validate_only_does_not_raise(tmp_path):
+    """When easydiffraction is not installed, validate_only=True returns the summary without the engine."""
+    result = easydiff_gateway.run(_load(EASY_LAB6), str(tmp_path), validate_only=True)
+    assert result["method"] == "validate_only" and result["schema_name"] == "easydiffraction.rietveld"
 
 
 @pytest.mark.skipif(
@@ -403,35 +355,19 @@ def test_dispatcher_routes_by_schema_name_through_registry_get(tmp_path, isolate
     powderline.run({"schema_name": "easydiffraction.rietveld"}, str(tmp_path), verbose=True)
     assert calls == {"easydiffraction": {"verbose": True, "validate_only": False}}
 
-    # the 0.26.0 names route to gsasii until the legacy schema is removed
-    calls.clear()
-    powderline.run({"schema_name": "GSASII_SPF"}, str(tmp_path))
-    assert set(calls) == {"gsasii"}
+
+def test_run_has_no_engine_keyword(tmp_path):
+    """The engine is named by schema_name alone (P-06): run(engine=...) is an option no gateway takes (A59)."""
+    with pytest.raises(TypeError, match="engine"):
+        powderline.run(_lab6_recipe(), str(tmp_path), validate_only=True, engine="gsasii")
 
 
-def test_dispatcher_deprecated_engine_must_agree_with_schema_name(tmp_path, isolated_registry):
-    """run(engine=...) warns, and is accepted only when that gateway serves the recipe's schema_name."""
-    calls = _recording_gateways(["gsasii", "topas"], workflows=("topas.rietveld", "GSASII_Rietveld"))
-
-    with pytest.warns(DeprecationWarning, match="schema_name"):
-        powderline.run({"schema_name": "topas.rietveld"}, str(tmp_path), engine="topas")
-    assert set(calls) == {"topas"}
-
-    calls.clear()
-    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="does not serve schema_name"):
-        powderline.run({"schema_name": "gsasii.rietveld"}, str(tmp_path), engine="topas")
+def test_run_schema_name_without_engine_prefix_is_a_validation_error(tmp_path, isolated_registry):
+    """A schema_name that is not <engine>.<workflow> is reported at schema_name before any gateway is asked (A133)."""
+    calls = _recording_gateways(["gsasii"])
+    with pytest.raises(ValidationError, match="does not name an engine"):
+        powderline.run({"schema_name": "Rietveld"}, str(tmp_path))
     assert calls == {}
-
-    # a legacy recipe may still be sent to a translation path that declares the name
-    with pytest.warns(DeprecationWarning):
-        powderline.run({"schema_name": "GSASII_Rietveld"}, str(tmp_path), engine="topas")
-    assert set(calls) == {"topas"}
-
-
-def test_dispatcher_unknown_engine_raises_value_error():
-    """powderline.run(..., engine='bogus') raises ValueError naming the installed gateways."""
-    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="unknown engine"):
-        powderline.run(_lab6_recipe(), "/tmp", engine="bogus")
 
 
 def test_dispatcher_refuses_allow_unsupported_engine_version(tmp_path, isolated_registry):
@@ -453,9 +389,9 @@ def test_dispatcher_unknown_option_is_the_gateways_type_error(tmp_path):
 
 def test_import_block_schema_layer_and_validate():
     """Schema-layer imports (registry, gateways, capabilities, validate) work with engines blocked."""
-    recipe_path = str(EXAMPLES / "example_LaB6" / "input.json")
-    easydiff_recipe_path = str(EXAMPLES / "example_LaB6_easydiff" / "input.json")
-    topas_native_path = str(REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json")
+    recipe_path = str(LAB6)
+    easydiff_recipe_path = str(EASY_LAB6)
+    topas_native_path = str(TOPAS_LAB6)
     script = f"""
 import sys, importlib.abc, json
 from pathlib import Path
@@ -481,7 +417,6 @@ import powderline.compat
 import powderline.gateways.gsasii
 import powderline.gateways.gsasii.gateway
 import powderline.gateways.gsasii.schema
-import powderline.gateways.gsasii.validation
 import powderline.gateways.topas.gateway
 import powderline.gateways.topas.schema
 import powderline.gateways.topas.native_writer
@@ -528,18 +463,19 @@ assert type(topas_native).__name__ == "TopasRietveldRecipe"
 assert "TCHZ_Peak_Type" in render_native(topas_native, "lab6").inp_text
 
 recipes = {{
-    "gsasii": json.loads(Path(r'{recipe_path}').read_text(encoding="utf-8")),
-    "topas": json.loads(Path(r'{recipe_path}').read_text(encoding="utf-8")),
-    # the GSAS-II LaB6 recipe refines Z, which easydiffraction rejects
-    "easydiffraction": json.loads(Path(r'{easydiff_recipe_path}').read_text(encoding="utf-8")),
+    "gsasii": (json.loads(Path(r'{recipe_path}').read_text(encoding="utf-8")), "GsasiiRietveldRecipe"),
+    "topas": (json.loads(Path(r'{topas_native_path}').read_text(encoding="utf-8")), "TopasRietveldRecipe"),
+    "easydiffraction": (json.loads(Path(r'{easydiff_recipe_path}').read_text(encoding="utf-8")),
+                        "EasydiffractionRietveldRecipe"),
 }}
 
 # The schema-only consumer path, through the registry (entry points)
-for name, recipe in recipes.items():
+for name, (recipe, model_name) in recipes.items():
     gw = registry.get(name)
     caps = gw.capabilities()
     assert caps["name"] == name and "engine_version_spec" in caps
-    assert type(gw.validate(recipe)).__name__ == "RecipeModel"
+    assert list(caps["workflows"]) == [w for w in caps["workflows"] if w.startswith(name + ".")], caps["workflows"]
+    assert type(gw.validate(recipe)).__name__ == model_name
 
 # The support matrix loads every gateway factory (A65)
 assert {{row["gateway"] for row in powderline.support_matrix()}} >= set(recipes)
@@ -556,24 +492,31 @@ print("OK")
 
 
 def test_native_package_imports_are_legacy_free():
-    """Importing the topas/easydiffraction packages and the native TOPAS runner loads no 0.26.0 module (re/07 B).
+    """Importing the topas/easydiffraction packages, gateways and native runners loads only the native modules (re/07 B/H).
 
-    The legacy translation modules are deleted later in re/07; the native paths
-    must not depend on them at import time. The legacy branch of each gateway
-    imports them lazily, by name, where it runs.
+    The module set each package may load at import time is stated here; a new
+    translation layer or an engine import at package import would show up as
+    an unexpected name.
     """
     script = """
 import sys
 import powderline.gateways.topas
+import powderline.gateways.topas.gateway
 import powderline.gateways.topas.native_run
 import powderline.gateways.easydiffraction
-legacy = [m for m in sys.modules if m in (
-    "powderline.gateways.topas.writer", "powderline.gateways.topas.roundtrip",
-    "powderline.gateways.topas.engine", "powderline.gateways.topas.kicker",
-    "powderline.gateways.easydiffraction.engine", "powderline.gateways.easydiffraction.builder",
-    "powderline.gateways.easydiffraction.policy", "powderline.gateways.easydiffraction.conversions",
-)]
-assert not legacy, f"legacy modules loaded at package import: {legacy}"
+import powderline.gateways.easydiffraction.gateway
+import powderline.gateways.easydiffraction.native_run
+allowed = {
+    "powderline.gateways.topas": {"schema", "native_writer", "native_run", "peak_list", "conversions", "runner",
+                                  "gateway", "errors"},
+    "powderline.gateways.easydiffraction": {"schema", "native_builder", "native_run", "space_group_support",
+                                            "space_group_table", "gateway", "errors"},
+}
+for pkg, names in allowed.items():
+    loaded = {m[len(pkg) + 1:] for m in sys.modules if m.startswith(pkg + ".")}
+    assert loaded <= names, f"{pkg} loaded unexpected modules: {sorted(loaded - names)}"
+for engine in ("GSASII", "easydiffraction", "cryspy"):
+    assert engine not in sys.modules, engine
 from powderline.gateways.topas import TopasTranslationError
 from powderline.gateways.easydiffraction import EasyDiffractionTranslationError
 print("OK")
@@ -585,7 +528,7 @@ print("OK")
 
 def test_import_block_run_raises_engine_not_available_error(tmp_path):
     """With GSASII blocked, gsasii gateway run() raises EngineNotAvailableError."""
-    recipe_path = str(EXAMPLES / "example_LaB6" / "input.json")
+    recipe_path = str(LAB6)
     output_path = str(tmp_path)
     script = f"""
 import sys, importlib.abc, json
@@ -632,8 +575,6 @@ def test_validate_signature_is_uniform(gateway_module):
     assert params["verbose"].default is False
 
 
-@pytest.mark.parametrize("name", ["gsasii", "topas", "easydiffraction"])
-def test_validate_accepts_verbose_through_the_registry(name):
-    example = "example_LaB6_easydiff" if name == "easydiffraction" else "example_LaB6"
-    recipe = json.loads((EXAMPLES / example / "input.json").read_text(encoding="utf-8"))
-    assert isinstance(registry.get(name).validate(recipe, verbose=True), schema.RecipeModel)
+@pytest.mark.parametrize("gateway_module,path,model_type", NATIVE_CASES)
+def test_validate_accepts_verbose_through_the_registry(gateway_module, path, model_type):
+    assert isinstance(registry.get(gateway_module.NAME).validate(_load(path), verbose=True), model_type)

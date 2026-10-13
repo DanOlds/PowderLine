@@ -135,7 +135,7 @@ class GSASClient:
             recipe: Recipe to run. Accepts:
                 - Path: path to a JSON/YAML recipe file (loaded automatically)
                 - dict: pre-loaded recipe dictionary
-                - RecipeModel: validated Pydantic model instance
+                - a validated recipe model (``GsasiiRietveldRecipe`` / ``GsasiiSpfRecipe``)
             output_dir: Directory for output files
             verbose: If True, print detailed output
             auto_start_server: If True, start server automatically if not running
@@ -245,8 +245,8 @@ class GSASClient:
     def _normalize_recipe(recipe) -> dict:
         """Normalize recipe input to a plain JSON-serializable dict.
 
-        Accepts Path (loaded from disk), dict (used as-is), or RecipeModel
-        (serialized via .model_dump). Raises TypeError for unsupported inputs.
+        Accepts Path (loaded from disk), dict (used as-is), or a validated
+        recipe model (serialized via .model_dump). Raises TypeError for unsupported inputs.
         """
         if isinstance(recipe, Path):
             import json
@@ -263,7 +263,7 @@ class GSASClient:
         if hasattr(recipe, 'model_dump'):
             return recipe.model_dump(mode='json')
         raise TypeError(
-            f"recipe must be a Path, dict, or RecipeModel instance, got {type(recipe).__name__}"
+            f"recipe must be a Path, dict, or validated recipe model, got {type(recipe).__name__}"
         )
 
     def _start_server_background(self, verbose: bool = False) -> bool:
@@ -397,7 +397,7 @@ class GSASClient:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            recipe = model_from_request(recipe_dict)  # native gsasii.* or 0.26.0 (re/04)
+            recipe = model_from_request(recipe_dict)
         except ValidationError as e:
             error_lines = [
                 f"{' -> '.join(str(loc) for loc in err['loc'])}: {err['msg']}"
@@ -442,7 +442,7 @@ def run_simulation(recipe, output_dir: Path,
     if not running, providing fast performance for first and subsequent uses.
 
     Args:
-        recipe: Recipe to run. Accepts Path, dict, or RecipeModel instance.
+        recipe: Recipe to run. Accepts Path, dict, or a validated recipe model.
         output_dir: Directory for output files
         verbose: If True, print detailed output
         auto_start_server: If True, automatically start server in background
@@ -466,11 +466,10 @@ def _with_validation_warnings(recipe, result: Dict[str, Any]) -> Dict[str, Any]:
     They are collected from the recipe as given (the model the caller validated,
     or the dict / file validated here), so a default the recipe left out is
     reported even though the server receives the dumped model, which states it.
-    A 0.26.0 recipe, or one that does not validate (the run already says why),
-    gets none.
+    A recipe that does not validate (the run already says why) gets none.
     """
     from pydantic import ValidationError
-    from powderline.gateways.gsasii.schema import is_native_recipe, validate_recipe
+    from powderline.gateways.gsasii.schema import validate_recipe
     from powderline.schema_core import collect_warnings
 
     if isinstance(recipe, Path):
@@ -478,8 +477,6 @@ def _with_validation_warnings(recipe, result: Dict[str, Any]) -> Dict[str, Any]:
             recipe = GSASClient._normalize_recipe(recipe)
         except (OSError, ValueError):
             return result
-    if not is_native_recipe(recipe):
-        return result
     try:
         found = collect_warnings(validate_recipe(recipe))
     except ValidationError:

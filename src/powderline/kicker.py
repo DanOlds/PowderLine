@@ -10,9 +10,8 @@
 (:func:`powderline.load_recipe_asset`), refuses template files, maps the
 engine flags onto the gateway's run options and calls :func:`powderline.run`;
 the engine is the one named by the recipe's ``schema_name``, so the same
-command serves ``gsasii.*``, ``topas.*`` and ``easydiffraction.*`` recipes
-(and the 0.26.0 ``GSASII_*`` ones until they go). An engine flag given for a
-recipe of another engine is an error. Exit status 0 on success, 1 otherwise.
+command serves ``gsasii.*``, ``topas.*`` and ``easydiffraction.*`` recipes.
+An engine flag given for a recipe of another engine is an error. Exit status 0 on success, 1 otherwise.
 
 Engine-free: this module imports no engine; GSAS-II is imported by the gsasii
 gateway when a gsasii recipe runs.
@@ -58,11 +57,10 @@ def is_template_file(recipe_dict: dict, input_path: Path) -> tuple[bool, str | N
 
     1. the path contains "template" (case-insensitive);
     2. the payload is missing, or lacks the fields the workflow needs: a
-       ``*.rietveld`` (or ``GSASII_Rietveld``) recipe needs ``xrd_data``,
-       ``instrument``, ``phases`` and ``refinement_controls``; a ``*.spf`` (or
-       ``GSASII_SPF``) one ``single_peaks`` instead of ``phases``; any other
-       schema name is a template only when all of ``xrd_data``, ``instrument``
-       and ``refinement_controls`` are absent.
+       ``*.rietveld`` recipe needs ``xrd_data``, ``instrument``, ``phases`` and
+       ``refinement_controls``; a ``*.spf`` one ``single_peaks`` instead of
+       ``phases``; any other schema name is a template only when all of
+       ``xrd_data``, ``instrument`` and ``refinement_controls`` are absent.
 
     Returns:
         ``(is_template, reason)``; ``(False, None)`` for a runnable recipe.
@@ -83,9 +81,9 @@ def is_template_file(recipe_dict: dict, input_path: Path) -> tuple[bool, str | N
     schema_name = recipe_dict.get('schema_name')
     workflow = None
     if isinstance(schema_name, str):
-        if schema_name == 'GSASII_Rietveld' or schema_name.endswith('.rietveld'):
+        if schema_name.endswith('.rietveld'):
             workflow = ('rietveld', ['xrd_data', 'instrument', 'phases', 'refinement_controls'])
-        elif schema_name == 'GSASII_SPF' or schema_name.endswith('.spf'):
+        elif schema_name.endswith('.spf'):
             workflow = ('single-peak-fitting', ['xrd_data', 'instrument', 'single_peaks', 'refinement_controls'])
     if workflow is not None:
         label, required_fields = workflow
@@ -168,13 +166,10 @@ Examples:
 def _print_validate_only(result: dict, input_path: Path) -> None:
     print(f"{CHECK} Recipe validation successful: {input_path}")
     print(f"   Schema name: {result.get('schema_name')}")
-    if 'schema_version' in result:  # 0.26.0
-        print(f"   Schema version: {result.get('schema_version')}")
-    else:
-        if result.get('core_schema_version') is not None:
-            print(f"   Core schema version: {result['core_schema_version']}")
-        if result.get('engine_schema_version') is not None:
-            print(f"   Engine schema version: {result['engine_schema_version']}")
+    if result.get('core_schema_version') is not None:
+        print(f"   Core schema version: {result['core_schema_version']}")
+    if result.get('engine_schema_version') is not None:
+        print(f"   Engine schema version: {result['engine_schema_version']}")
     if result.get('engine_version') is not None:
         print(f"   Engine version: {result['engine_version']}")
     print(f"   Phases: {result.get('phases', 0)}")
