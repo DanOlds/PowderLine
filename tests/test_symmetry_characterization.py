@@ -173,13 +173,15 @@ def test_committed_examples_agree_with_gsasii():
     for path in sorted(EXAMPLES.glob("*/input.json")):
         if path.parent.name == "example_template":
             continue
-        phases = (json.loads(path.read_text(encoding="utf-8")).get("payload") or {}).get("phases") or {}
-        for phase in phases.values():
-            structure = phase["structure"]
-            sg = gemmi.find_spacegroup_by_name(structure["space_group"])
+        recipe = json.loads(path.read_text(encoding="utf-8"))
+        if not str(recipe.get("schema_name", "")).startswith("gsasii."):
+            continue  # the GSAS-II comparison is for the gsasii.* examples
+        phases = (recipe.get("payload") or {}).get("phases") or {}
+        for phase in phases.values():  # native gsasii.rietveld phase block (A93): [value, flag] parameters
+            sg = gemmi.find_spacegroup_by_name(phase["space_group"])
             _symbol, sgdata = _gsas_symbol(sg)
-            for atom in structure["atoms"].values():
-                xyz = (atom["x"], atom["y"], atom["z"])
+            for atom in phase["atoms"].values():
+                xyz = (atom["x"][0], atom["y"][0], atom["z"][0])
                 site = analyze_site(sg.xhm(), xyz)
                 assert site.multiplicity == G2spc.SytSym(list(xyz), sgdata)[1]
                 checked += 1

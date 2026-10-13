@@ -19,13 +19,24 @@ from powderline import kicker
 from subprocess_utils import run_subprocess_utf8
 
 REPO = Path(__file__).resolve().parent.parent
-LEGACY_LAB6 = REPO / "examples" / "example_LaB6" / "input.json"
+LAB6 = REPO / "examples" / "example_LaB6" / "input.json"  # gsasii.rietveld
+LEGACY_LAB6 = REPO / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json"  # 0.26.0 snapshot (P-16)
 TOPAS_LAB6 = REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json"
 TOPAS_SPF = REPO / "tests" / "data" / "topas" / "native" / "lab6_spf.json"
 EASY_LAB6 = REPO / "tests" / "data" / "easydiffraction" / "native" / "lab6_crysfml_tch.json"
 
 
 # --- --validate-only, every engine ------------------------------------------------------------
+
+
+def test_validate_only_gsasii_native_recipe(capsys):
+    rc = kicker.main([str(LAB6), "--validate-only", "--no-server"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Recipe validation successful" in out
+    assert "Schema name: gsasii.rietveld" in out
+    assert "Core schema version: 1.0.0" in out and "Engine schema version: 1.0.0" in out
+    assert "gsasii_broadening_default_applied" in out  # the structured warnings are shown
 
 
 def test_validate_only_legacy_gsasii_recipe(capsys):
@@ -66,7 +77,7 @@ def test_validate_only_writes_nothing(tmp_path):
 
 
 def _args(**kw) -> argparse.Namespace:
-    ns = kicker.build_parser().parse_args([str(LEGACY_LAB6)])
+    ns = kicker.build_parser().parse_args([str(LAB6)])
     for key, value in kw.items():
         setattr(ns, key, value)
     return ns
@@ -105,7 +116,7 @@ def test_cli_rejects_gsasii_flag_on_topas_recipe(capsys):
 
 def test_cli_use_server_and_no_server_are_exclusive():
     with pytest.raises(SystemExit):
-        kicker.build_parser().parse_args([str(LEGACY_LAB6), "--use-server", "--no-server"])
+        kicker.build_parser().parse_args([str(LAB6), "--use-server", "--no-server"])
 
 
 # --- errors -----------------------------------------------------------------------------------------
@@ -167,7 +178,7 @@ def test_is_template_file_spf_needs_single_peaks(schema_name):
 
 
 def test_is_template_file_real_fixtures_are_not_templates():
-    for path in (LEGACY_LAB6, TOPAS_LAB6, TOPAS_SPF, EASY_LAB6):
+    for path in (LAB6, LEGACY_LAB6, TOPAS_LAB6, TOPAS_SPF, EASY_LAB6):
         assert kicker.is_template_file(json.loads(path.read_text(encoding="utf-8")), path) == (False, None)
 
 
@@ -186,7 +197,7 @@ class _Block(importlib.abc.MetaPathFinder):
         return None
 sys.meta_path.insert(0, _Block())
 from powderline import kicker
-for recipe in (r'{LEGACY_LAB6}', r'{TOPAS_LAB6}', r'{EASY_LAB6}'):
+for recipe in (r'{LAB6}', r'{LEGACY_LAB6}', r'{TOPAS_LAB6}', r'{EASY_LAB6}'):
     assert kicker.main([recipe, "--validate-only"]) == 0, recipe
 for mod in BLOCKED:
     assert mod not in sys.modules, mod

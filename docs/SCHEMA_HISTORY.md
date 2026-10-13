@@ -260,6 +260,21 @@ core `==1.0.0`. A 0.26.0 `GSASII_*` recipe is converted with
   that diverges (a non-finite calculated pattern) is a failure with a clear
   message; GSAS-II itself does not flag it.
 
+#### The committed examples (PowderLine 0.2.0, re/07)
+
+Every `examples/*/input.json` was converted in place with
+`scripts/convert_recipe_026.py` (nothing hand-patched; the converter did not
+stop on any example). What it changed, per example:
+
+| Example | Converter notes |
+|---|---|
+| `example_LaB6`, `example_LaB6_simulation` | the background peak at 1.5° 2θ was removed **before** conversion (P-01: the data have no feature there and GSAS-II never determined it); `schema_version` → core/engine 1.0.0; `xrd_data.UID` → `metadata`; SH/L 0.0005 → 0.002 (A91); `unit_cell.volume` dropped (A75); size and strain broadening left out, so the documented default 10 µm / 0 microstrain applies with a structured warning (A87, A107) |
+| `example_LaB6_singlepeakfit` | `GSASII_SPF` → `gsasii.spf`; `UID` → `metadata`; SH/L 0.0 → 0.002 (A91); background `pv_gaussian_sigma` → `pv_gaussian_sigma_sq` (A89) |
+| `example_DRX_33`, `_anisoADP`, `_atomrefine`, `_simulation`, `_strainonly` | `UID` → `metadata`; SH/L 0.0005 → 0.002 (A91); one background peak with null entries dropped (D4); `unit_cell.volume` dropped (A75); `C2/m` → `C 1 2/m 1` (A105); the stated `Multiplicity: 1` of the seven Li4MgWO6_SG12 atoms dropped (derived 4/4/2/4/8/4/2; A101) |
+
+The pre-conversion recipes are kept byte-identical in `tests/data/legacy_026/`
+for the tests of the 0.26.0 path until that path is deleted (P-16).
+
 ## topas engine schema
 
 ### 1.0.0 — introduced in PowderLine 0.2.0 (in development)

@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 import powderline
 from powderline.gateways.gsasii.client import GSASClient
-from powderline.schema import RecipeModel
+from powderline.gateways.gsasii.schema import GsasiiRietveldRecipe
 from subprocess_utils import unit_cell_match, extract_rwp_from_lst, REFINED_PARAM_COLUMNS, run_subprocess_utf8
 
 REPO = Path(__file__).resolve().parent.parent
@@ -52,9 +52,10 @@ def test_validate_valid_recipe(recipe_LaB6_dict):
     """validate() accepts a valid dict and returns a ValidationResult holding the gateway's model."""
     result = powderline.validate(recipe_LaB6_dict)
     assert isinstance(result, powderline.ValidationResult)
-    assert isinstance(result.recipe, RecipeModel)
-    assert result.recipe.schema_name == "GSASII_Rietveld"
-    assert result.warnings == []  # a 0.26.0 recipe has no structured warnings
+    assert isinstance(result.recipe, GsasiiRietveldRecipe)
+    assert result.recipe.schema_name == "gsasii.rietveld"
+    # the example leaves size/strain out: the A107 defaults are reported as structured warnings
+    assert [w["code"] for w in result.warnings] == ["gsasii_broadening_default_applied"] * 2
 
 
 def test_validate_returns_recipemodel_from_model(recipe_LaB6_model):
@@ -113,7 +114,8 @@ def test_validate_is_engine_free():
 
     The re/08 precondition: the core-only environment validates any recipe.
     """
-    legacy = str(REPO / "examples" / "example_LaB6" / "input.json")
+    legacy = str(REPO / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json")  # 0.26.0 snapshot (P-16)
+    gsasii_native = str(REPO / "examples" / "example_LaB6" / "input.json")
     topas_native = str(REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json")
     easy_native = str(REPO / "tests" / "data" / "easydiffraction" / "native" / "lab6_crysfml_tch.json")
     script = f"""
@@ -133,15 +135,17 @@ import powderline
 assert set(powderline.__all__) >= {{"run", "validate", "load_recipe_asset", "support_matrix"}}
 assert "powderline.kicker" not in sys.modules, "import powderline must not import the CLI module"
 
+r = powderline.validate(json.loads(Path(r'{gsasii_native}').read_text(encoding="utf-8")))
+assert type(r).__name__ == "ValidationResult" and type(r.recipe).__name__ == "GsasiiRietveldRecipe"
 legacy = json.loads(Path(r'{legacy}').read_text(encoding="utf-8"))
 r = powderline.validate(legacy)
-assert type(r).__name__ == "ValidationResult" and type(r.recipe).__name__ == "RecipeModel"
+assert type(r.recipe).__name__ == "RecipeModel"
 r = powderline.validate(json.loads(Path(r'{topas_native}').read_text(encoding="utf-8")))
 assert type(r.recipe).__name__ == "TopasRietveldRecipe", type(r.recipe).__name__
 r = powderline.validate(json.loads(Path(r'{easy_native}').read_text(encoding="utf-8")))
 assert type(r.recipe).__name__ == "EasydiffractionRietveldRecipe", type(r.recipe).__name__
 assert isinstance(r.warnings, list)
-# a gsasii.* recipe converted from the example validates too
+# a gsasii.* recipe converted from the 0.26.0 snapshot validates too
 import importlib.util
 spec = importlib.util.spec_from_file_location("convert_recipe_026", r'{REPO / "scripts" / "convert_recipe_026.py"}')
 conv = importlib.util.module_from_spec(spec); spec.loader.exec_module(conv)
@@ -179,7 +183,7 @@ def test_run_validate_only_returns_summary(recipe_LaB6_dict, tmp_path):
 
     assert result["success"] is True
     assert result["method"] == "validate_only"
-    assert result["schema_name"] == "GSASII_Rietveld"
+    assert result["schema_name"] == "gsasii.rietveld"
     assert isinstance(result["phases"], int)
     assert result["rwp"] is None
 
@@ -364,7 +368,7 @@ def test_gsasclient_accepts_dict(recipe_LaB6_dict, tmp_path):
 
 
 def test_gsasclient_accepts_recipemodel(recipe_LaB6_model, tmp_path):
-    """GSASClient.submit_simulation() accepts a RecipeModel instance."""
+    """GSASClient.submit_simulation() accepts a validated model instance."""
     client = GSASClient(fallback_to_subprocess=True)
     result = client.submit_simulation(
         recipe=recipe_LaB6_model,

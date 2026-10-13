@@ -47,9 +47,9 @@ def extract_rwp_from_stdout(stdout_text: str) -> float | None:
 # (id, input_fixture, expected_marker) — the marker is the per-example string the
 # original test asserted was present in stdout.
 _VALIDATE_ONLY_CASES = [
-    ("LaB6", "example_LaB6_input", "Schema name: GSASII_Rietveld"),
+    ("LaB6", "example_LaB6_input", "Schema name: gsasii.rietveld"),
     ("DRX_33", "example_DRX_33_input", "DRX_33"),
-    ("LaB6_simulation", "example_LaB6_simulation_input", "Schema name: GSASII_Rietveld"),
+    ("LaB6_simulation", "example_LaB6_simulation_input", "Schema name: gsasii.rietveld"),
     ("DRX_33_simulation", "example_DRX_33_simulation_input", "DRX_33"),
     ("DRX_33_atomrefine", "example_DRX_33_atomrefine_input", "DRX_33"),
     ("DRX_33_anisoADP", "example_DRX_33_anisoADP_input", "DRX_33"),
@@ -345,8 +345,8 @@ def test_simulation_determinism(request, tmp_path, input_fixture, obj_label):
 # ============================================================================
 
 def _violate_scale(recipe_dict):
-    """Set the LaB6 scale refine_flag to True (via payload)."""
-    recipe_dict['payload']['phases']['LaB6']['parameterization']['scale'][1] = True
+    """Set the LaB6 scale refine_flag to True (gsasii.rietveld phase block, A93)."""
+    recipe_dict['payload']['phases']['LaB6']['scale'][1] = True
 
 
 def _violate_chebyshev(recipe_dict):
@@ -355,15 +355,14 @@ def _violate_chebyshev(recipe_dict):
 
 
 def _violate_instrument(recipe_dict):
-    """Set the instrument wavelength refine_flag to True."""
-    if recipe_dict.get('payload', {}).get('instrument', {}).get('parameterization') is None:
-        recipe_dict['payload']['instrument']['parameterization'] = {}
-    recipe_dict['payload']['instrument']['parameterization']['wavelength'] = [0.1665, True, None, None]
+    """Set the instrument wavelength refine_flag to True (gsasii instrument block, A103)."""
+    recipe_dict['payload']['instrument']['radiation']['wavelength'] = [0.1665, True]
 
 
 # (id, mutate, bad_filename, sim_fail_required, lower_markers)
-# ``sim_fail_required`` gates the case-sensitive "Simulation mode validation
-# failed" assertion (only scale/chebyshev asserted it). Each entry of
+# ``sim_fail_required`` gates the assertion on the gsasii schema's simulation
+# message ("refinement_cycles is 1 (a simulation), so nothing may be refined",
+# A88; only scale/chebyshev asserted the 0.26.0 equivalent). Each entry of
 # ``lower_markers`` is a list of acceptable alternatives; at least one must
 # appear in ``combined_output.lower()`` (chebyshev accepts "chebyshev" or
 # "background").
@@ -418,7 +417,7 @@ def test_simulation_validation_catches_refine_violation(
     combined_output = result.stdout + result.stderr
 
     if sim_fail_required:
-        assert "Simulation mode validation failed" in combined_output, (
+        assert "a simulation), so nothing may be refined" in combined_output, (
             f"Error message should indicate simulation validation failure.\n"
             f"Output:\n{combined_output}"
         )

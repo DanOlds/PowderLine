@@ -1,5 +1,10 @@
 # Fit to cathode material diffraction data with multiple phases using the file-less payload
 
+Recipe: `input.json` (`gsasii.rietveld`, GSAS-II). Per-engine recipes for the
+same case live next to it: `topas/input.json` (`topas.rietveld`, TOPAS 6) and
+`easydiffraction/input.json` (`easydiffraction.rietveld`, CrysPy); see the
+`README.md` in each directory.
+
 ## Scientific Purpose
 
 I am fitting a diffraction pattern collected on a disordered rocksalt battery material.
@@ -67,15 +72,19 @@ This two-phase Rietveld refinement produces:
 
 None.
 
-## Schema 0.26 note: explicit per-parameter refine flags
+## Refine flags (gsasii 1.0.0)
 
-Since schema 0.26, PowderLine honors each refinement flag individually: a
-parameter refines iff it is present with `refine_flag=true`; absent or `false`
-means fixed (internally enforced with GSAS-II "Hold" constraints).
-Symmetry-linked parameters (e.g. cubic a=b=c) refine together if any member is
-requested. This example uses the **explicit style** - every parameter is listed
-with a symmetry-consistent flag so the recipe states its full intent. Listing
-only the parameters you wish to refine (absence = fixed) is equally valid.
+Every refinable parameter is `[value, refine_flag]` (no bounds: GSAS-II applies
+limits only after a fit); a parameter refines iff its flag is `true`. The gsasii
+schema checks the flags against the symmetry and GSAS-II's own parameter groups
+when the recipe is validated: a refined strict subset of a tie group (e.g. only
+`a` of a cubic cell) or a refined symmetry-fixed parameter is an error, so the
+recipe states exactly what GSAS-II refines. This example uses the **explicit
+style** - every parameter is listed with a symmetry-consistent flag.
+
+The recipe was converted from its schema-0.26.0 form with
+`scripts/convert_recipe_026.py` at PowderLine 0.2.0 (re/07); the converter's
+notes for each example are in `docs/SCHEMA_HISTORY.md`'s gsasii section.
 
 ## Data citation
 

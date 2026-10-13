@@ -50,18 +50,21 @@ This example demonstrates single peak fitting capabilities:
 
 - **Top-level single_peaks field**: Direct peak fitting without crystal structure (distinct from background.single_peaks)
 - **Independent peak width refinement**: `use_instrument_profile: false` allows sigma and gamma refinement per peak
-- **Phases = null**: No crystal structure used (pure phenomenological peak fitting)
-- **Schema name: "GSASII_SPF"**: Specialized single peak fitting workflow
+- **No `phases` block**: No crystal structure used (pure phenomenological peak fitting)
+- **Schema name `gsasii.spf`**: the GSAS-II single peak fitting workflow
 - **Single peak fitting mode**: `refinement_controls.refinement_cycles` controls iteration count for peak-only refinement
 - **Coexisting peak models**: Background single peaks AND top-level single peaks in same recipe
 - **Advanced peak metrics**: Calculated FWHM and integral breadths (Gaussian, Lorentzian, pseudo-Voigt)
 
-## Schema Version
+## Schema
 
-This example uses PowderLine's single peak fitting mode, which provides:
-- `SinglePeaks` class (distinct from `SinglePeaksBackground`)
-- `use_instrument_profile` field for controlling peak width refinement mode
-- Support for coexisting background and Peak List single peaks
+`gsasii.spf` 1.0.0 (core 1.0.0). Every parameter is `[value, refine_flag]`; the
+Peak List (`payload.single_peaks`) and the background peaks
+(`payload.background.single_peaks`) both state `pv_gaussian_sigma_sq`
+(centideg², the value always was σ²) and `pv_lorentzian_gamma` (centideg).
+With `use_instrument_profile: false` a refine flag on the instrument's U..Z is
+an error (GSAS-II would ignore it silently). Converted from the schema-0.26.0
+recipe with `scripts/convert_recipe_026.py` (SH/L 0.0 → 0.002, A91).
 
 ## Output Files
 
@@ -78,3 +81,9 @@ This single peak fitting analysis produces:
 ## Known Issues
 
 None.
+
+## Per-engine recipes
+
+`topas/input.json` (`topas.spf`, TOPAS 6) describes the same 36-peak fit in
+TOPAS's terms; see `topas/README.md`. Only the GSAS-II recipe has committed
+reference output.

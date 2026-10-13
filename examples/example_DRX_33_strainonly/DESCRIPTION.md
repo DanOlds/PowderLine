@@ -38,7 +38,7 @@ publication table / fit figure.
 | Instrument parameters | fixed | fixed |
 
 Concretely, each phase's `peak_broadening.size_broadening` is set to
-`isotropic_size = [10, false, null, null]` and `LG_eta = [1, false, null, null]`;
+`isotropic_size = [10, false]` and `LG_eta = [1, false]`;
 `strain_broadening` is unchanged from the base recipe.
 
 ## Input Parameters
@@ -101,17 +101,12 @@ Same standardized outputs as `example_DRX_33`:
 - **DRX_33_peak_list_report.csv** / **Li4MgWO6_SG12_peak_list_report.csv** -
   per-phase reflection lists (hkl, d-spacing, 2-theta, intensities).
 - **fit_profile.txt** - observed / calculated / background / difference intensities.
-- TOPAS v7 cross-check inputs (`.inp` + `.xye`) are not committed for this
-  example; regenerate them with `pixi run topas-kicker` (the full TOPAS *run*
-  outputs additionally require a Windows `tc.exe` pass).
 
 ## Reproduce
 
 ```
 pixi run kicker examples/example_DRX_33_strainonly/input.json \
-    --output examples/example_DRX_33_strainonly/output
-pixi run topas-kicker examples/example_DRX_33_strainonly/input.json \
-    --output examples/example_DRX_33_strainonly/output/topas
+    --no-server --output examples/example_DRX_33_strainonly/output
 ```
 
 ## Known Issues
@@ -130,17 +125,22 @@ These arise because each phase's isotropic strain magnitude (`Mustrain;i`) and
 its Lorentzian-Gaussian mixing term (`Mustrain;mx`) are 100% correlated — the
 strain LG-mixing is not independently determinable from this data. The reported
 equatorial microstrain is stable. To eliminate the warning entirely, additionally
-fix the strain `LG_eta` (set `strain_broadening.LG_eta = [1, false, null, null]`)
+fix the strain `LG_eta` (set `strain_broadening.LG_eta = [1, false]`)
 and refine only `isotropic_strain`.
 
-## Schema 0.26 note: explicit per-parameter refine flags
+## Refine flags (gsasii 1.0.0)
 
-Since schema 0.26, PowderLine honors each refinement flag individually: a
-parameter refines iff it is present with `refine_flag=true`; absent or `false`
-means fixed (internally enforced with GSAS-II "Hold" constraints).
-Symmetry-linked parameters (e.g. cubic a=b=c) refine together if any member is
-requested. This example uses that mechanism directly: the size parameters are
+Every refinable parameter is `[value, refine_flag]` (no bounds: GSAS-II applies
+limits only after a fit); a parameter refines iff its flag is `true`. The gsasii
+schema checks the flags against the symmetry and GSAS-II's own parameter groups
+when the recipe is validated: a refined strict subset of a tie group (e.g. only
+`a` of a cubic cell) or a refined symmetry-fixed parameter is an error, so the
+recipe states exactly what GSAS-II refines. This example uses that mechanism directly: the size parameters are
 present with `refine_flag=false`, pinning crystallite size while strain refines.
+
+The recipe was converted from its schema-0.26.0 form with
+`scripts/convert_recipe_026.py` at PowderLine 0.2.0 (re/07); the converter's
+notes for each example are in `docs/SCHEMA_HISTORY.md`'s gsasii section.
 
 ## Data citation
 

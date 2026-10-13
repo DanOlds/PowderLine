@@ -23,7 +23,7 @@ This example demonstrates multi-phase simulation capabilities:
 - **Phase-specific outputs**: Separate reports for each phase (unit cell, peak lists)
 - **Combined pattern calculation**: Theoretical pattern from superposition of both phases
 - **Scale factor control**: Fixed relative phase intensities (both set to 1.0)
-- **Meaningless Rwp**: Expected ~100% or higher (pure forward calculation, no fitting)
+- **Meaningless fit statistics**: `rwp` compares the simulated pattern with the placeholder data (pure forward calculation, no fitting); GSAS-II's own 100 % is under `engine_details`
 
 ## Key Differences from Refinement
 
@@ -31,7 +31,7 @@ This example demonstrates multi-phase simulation capabilities:
 |--------|-----------------|-----------------|
 | `refine_flag` values | `true` for parameters to fit | `false` for all parameters |
 | `refinement_cycles` | 5 (typical value) | 1 (all params locked, no optimization) |
-| Output $R_{wp}$ | Quality of fit to data | 100% (no fit performed, meaningless; note y_calc ≠ y_obs) |
+| Output $R_{wp}$ | Quality of fit to data | meaningless (no fit performed; y_calc ≠ the placeholder y_obs) |
 | Processing time | Minutes (GSAS-II iteration) | Seconds (single calculation) |
 | Purpose | Parameter extraction | Pattern prediction |
 | **Multi-phase focus** | Both phases refined | Both phases locked at fixed scales |
@@ -56,7 +56,7 @@ With all parameters locked and `refinement_cycles = 1`:
 - GSAS-II performs no iteration (all parameters frozen)
 - Only calculates theoretical pattern ($y_{calc}$)
 - Result is deterministic and reproducible
-- Rwp = 100% because a fit is not done. (Note: Ycalc != yobs. If that were the case, Rwp would be 0 %.)
+- The result says `simulation_mode: true`; its `rwp` is the uniform statistic against the placeholder data and means nothing (GSAS-II's own 100 % is under `engine_details`)
 - Runs in < 2 seconds
 
 **Multi-Phase Mechanics:**
@@ -92,7 +92,7 @@ This two-phase simulation produces:
 - **Li4MgWO6_SG12_peak_list_report.csv** - Phase 2 reflection list (hkl, d-spacing, 2θ, intensities)
 - **fit_profile.txt** - Calculated pattern (2θ, Iobs, Iweight, Icalc, Ibackground, Idifference)
 
-**Note**: Simulation mode does NOT produce `refined_parameters.csv` because no parameters are refined (all `refine_flag: false`). The $R_{wp}$ value will be ~100% because the calculated pattern is not optimized to the observed data—this metric is meaningless in simulation mode.
+**Note**: Simulation mode does NOT produce `refined_parameters.csv` because no parameters are refined (all `refine_flag: false`). The reported `rwp` is PowderLine's uniform statistic of the calculated pattern against the placeholder data and is meaningless in simulation mode; the result carries `simulation_mode: true`.
 
 ## Data Source
 
@@ -111,14 +111,10 @@ To study phase fractions, modify the scale factors in `input.json`:
 
 ```json
 "DRX_33": {
-  "parameterization": {
-    "scale": [0.7, false, null, null]  // 70% relative phase fraction by mass
-  }
+  "scale": [0.7, false]  // 70% relative phase fraction by mass
 },
 "Li4MgWO6_SG12": {
-  "parameterization": {
-    "scale": [0.3, false, null, null]  // 30% relative phase fraction by mass
-  }
+  "scale": [0.3, false]  // 30% relative phase fraction by mass
 }
 ```
 

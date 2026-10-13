@@ -27,7 +27,7 @@ This example demonstrates simulation mode capabilities:
 - **Pure simulation mode**: All parameters have `refine_flag: false` (no optimization)
 - **Single-cycle execution**: `refinement_cycles: 1` with locked parameters (pure calculation)
 - **Complete parameter specification**: All structural, background, and instrument parameters provided
-- **Meaningless Rwp**: Expected value ~100% or higher (Ycalc not optimized to Yobs)
+- **Meaningless fit statistics**: `rwp` compares the simulated pattern with the placeholder data (Ycalc not optimized to Yobs); GSAS-II's own 100 % is under `engine_details`
 - **Forward calculation**: Demonstrates theoretical pattern generation from known structure
 - **Same schema as refinement**: Uses identical JSON structure with different refine_flag values
 
@@ -37,7 +37,7 @@ This example demonstrates simulation mode capabilities:
 |--------|-----------------|-----------------|
 | `refine_flag` values | `true` for parameters to fit | `false` for all parameters |
 | `refinement_cycles` | 5 (typical value) | 1 (all params locked, no optimization) |
-| Output $R_{wp}$ | Quality of fit to data | 100% (no fit is attempted, Ycalc not optimized to Yobs, meaningless) |
+| Output $R_{wp}$ | Quality of fit to data | meaningless (no fit is attempted; Ycalc not optimized to Yobs) |
 | Processing time | Minutes (GSAS-II iteration) | Seconds (single calculation) |
 | Purpose | Parameter extraction | Pattern prediction |
 
@@ -71,7 +71,7 @@ This simulation produces:
 - **LaB6_peak_list_report.csv** - Reflection list (hkl, d-spacing, 2θ, intensities)
 - **fit_profile.txt** - Calculated pattern (2θ, Iobs, Iweight, Icalc, Ibackground, Idifference)
 
-**Note**: Simulation mode does NOT produce `refined_parameters.csv` because no parameters are refined (all `refine_flag: false`). The $R_{wp}$ value will be ~100% because the calculated pattern is not optimized to the observed data - this metric is meaningless in simulation mode.
+**Note**: Simulation mode does NOT produce `refined_parameters.csv` because no parameters are refined (all `refine_flag: false`). The reported `rwp` is PowderLine's uniform statistic of the calculated pattern against the placeholder data and is meaningless in simulation mode; the result carries `simulation_mode: true`.
 
 ## Comparison with Refinement Example
 
@@ -80,6 +80,7 @@ This example is based on the refinement example (`examples/example_LaB6/`), but 
 - `refinement_cycles: 1` (schema requires ≥1; with all params locked, no optimization occurs)
 - Same LaB6 structure, instrument setup, and XRD data
 - Same background model (Chebyshev coefficients)
+- Like `example_LaB6`, the background peak of the schema-0.26.0 recipe was removed at re/07 (P-01): invisible here (0.0126 counts high), undeterminable there
 
 To convert any refinement recipe to simulation mode:
 1. Recursively set all `refine_flag` values to `false` (structure, background, instrument, broadening)
@@ -95,7 +96,7 @@ To convert any refinement recipe to simulation mode:
 # In kicker.py, the workflow is identical
 # All refine_flag = false → GSAS-II sees parameters as locked
 # refinement_cycles = 1 → single pass (no iteration occurs)
-# Result: y_calc = theoretical pattern, Rwp = 100% (meaningless metric)
+# Result: y_calc = theoretical pattern; the fit statistics are meaningless
 ```
 
 **Why Reuse the Refinement Workflow**:
