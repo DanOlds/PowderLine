@@ -16,8 +16,7 @@ helpers live under ``powderline.gateways.<engine>`` (e.g.
 
 __version__ = "0.1.1"
 
-from powderline.engine import run  # the engine= dispatcher until api.run lands (re/07 step iii)
-from powderline.api import validate, ValidationResult
+from powderline.api import run, validate, ValidationResult
 from powderline.recipes import load_recipe_asset
 from powderline.compat import support_matrix
 from powderline.exceptions import (
