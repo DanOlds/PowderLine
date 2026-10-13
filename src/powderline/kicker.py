@@ -1,169 +1,98 @@
-"""PowderLine: Automated powder X-ray diffraction Rietveld refinements using GSAS-II.
+"""PowderLine command line: run or validate a recipe with the engine its ``schema_name`` names.
 
-File-less architecture (since schema 0.25):
-- All data (XRD patterns, structures, instrument parameters) embedded in JSON
-- No external file dependencies (CIF, CHI, INSTPRM)
-- File handling occurs upstream of PowderLine
+::
 
-This module orchestrates the complete refinement workflow: JSON parsing, GSAS-II
-project initialization, parameter setting, refinement execution, and output generation.
+    powderline <recipe.json> [--output DIR] [--validate-only] [--verbose]
+                             [--use-server | --no-server] [--topas-dir DIR] [--topas-version V]
+
+(``pixi run kicker ...`` / ``python src/powderline/kicker.py ...`` run the same
+``main``; re/08 binds the task names.) The CLI loads the recipe
+(:func:`powderline.load_recipe_asset`), refuses template files, maps the
+engine flags onto the gateway's run options and calls :func:`powderline.run`;
+the engine is the one named by the recipe's ``schema_name``, so the same
+command serves ``gsasii.*``, ``topas.*`` and ``easydiffraction.*`` recipes
+(and the 0.26.0 ``GSASII_*`` ones until they go). An engine flag given for a
+recipe of another engine is an error. Exit status 0 on success, 1 otherwise.
+
+Engine-free: this module imports no engine; GSAS-II is imported by the gsasii
+gateway when a gsasii recipe runs.
+
+**Transitional facade (removed with the 0.26.0 schema):** the GSAS-II
+implementation names that ``powderline.kicker`` used to re-export
+(``run_refinement``, the setters/extractors, ``G2``, ...) still resolve, lazily,
+through the module ``__getattr__`` below, so existing imports and test patches
+keep working without this module importing GSAS-II itself.
 """
+
 from __future__ import annotations
-import sys
-import uuid
-import yaml
-import json
+
 import argparse
-import random as ran
-import numpy as np
-import pandas as pd
-from typing import Any, Dict, List, Literal, Optional, Sequence, Union
+import importlib
+import sys
 from pathlib import Path
+from typing import Any
+
 from pydantic import ValidationError
-from GSASII import GSASIIscriptable as G2  # type: ignore
-from GSASII import GSASIIlattice as G2lat
-from GSASII import GSASIImapvars as G2mv
-from GSASII import GSASIIobj as G2obj
-from GSASII import GSASIIspc as G2spc
-from GSASII import GSASIIElem as G2elem
-from GSASII import GSASIIpwd as G2pwd
-from powderline.schema import RecipeModel, RefinementControls
-from powderline.constraints import atom_refinement_plan, cell_refinement_plan
+
+from powderline import api
 from powderline._status import CHECK, CROSS, INFO, WARN, emoji
-from dataclasses import dataclass
+from powderline.api import run, validate  # noqa: F401  (the CLI's entry points; also ``powderline.kicker.run``)
+from powderline.exceptions import PowderLineError
+from powderline.recipes import load_recipe_asset
 
-# Backward-compatible re-exports: the GSAS-II implementation moved to
-# powderline.gateways.gsasii (multi-engine refactor, re/01). These keep every
-# existing ``powderline.kicker.<name>`` import working; removed in a later branch.
-from powderline.gateways.gsasii.helpers import (  # noqa: F401
-    OutputNamingConfig,
-    OUTPUT_NAMING,
-    DEFAULT_HIST_SCALE_VAL,
-    DEFAULT_HIST_SCALE_REFINE_FLAG,
-    DEFAULT_PHASE_CRYSTALLITE_SIZE,
-    DEFAULT_PHASE_MICROSTRAIN,
-    DEFAULT_SPF_SIGMA_MIN,
-    DEFAULT_SPF_GAMMA_MIN,
-    unpack_refinement_parameter,
-    require_phase,
-    calculate_peak_widths,
-    has_active_refinement_parameter,
-)
-from powderline.gateways.gsasii.project import (  # noqa: F401
-    InstParmValue,
-    InstParmDict,
-    G2InstParmDict,
-    _to_gsasii_instparm_dict,
-    add_powder_histogram_from_arrays,
-    add_phase_from_cif_dict,
-    add_phases_from_dict,
-)
-from powderline.gateways.gsasii.setters import (  # noqa: F401
-    set_hist_scale,
-    set_fit_range_hist,
-    set_chebyshev_background,
-    set_single_peak_background,
-    set_single_peaks,
-    set_phase_scale,
-    set_phase_unit_cell,
-    set_phase_size_broadening,
-    _set_isotropic_size_broadening,
-    set_phase_strain_broadening,
-    _set_isotropic_strain_broadening,
-    set_phase_atom_parameters,
-    set_phase_parameterization,
-    set_instrument_parameterization,
-    set_refinement_cycles,
-)
-from powderline.gateways.gsasii.executors import (  # noqa: F401
-    _refine_with_message,
-    execute_rietveld_refinement,
-    execute_spf_refinement,
-    SCHEMA_EXECUTORS,
-)
-# Native gsasii.* models -> executors.run_refinement; 0.26.0 RecipeModel -> the legacy copy (re/04)
-from powderline.gateways.gsasii.routing import run_refinement  # noqa: F401
-from powderline.gateways.gsasii.schema import is_native_recipe
-from powderline.schema_core import collect_warnings
-from powderline.gateways.gsasii.extractors import (  # noqa: F401
-    calculate_cell_esds_from_A_matrix,
-    extract_refined_params_from_project,
-    extract_refined_params_from_lst,
-    get_descriptive_param_name,
-    parse_parameter_associations,
-    build_phase_name_mapping,
-    build_atom_name_mapping,
-    export_refined_parameters_csv,
-    _extract_fit_profile,
-    _extract_spf_peak_report,
-    _extract_phase_reports,
-    _extract_refined_parameters,
-)
-
-from powderline.gateways.gsasii.validation import (  # noqa: F401
-    validate_simulation_mode_parameters,
-    validate,
-)
-
-
-def load_recipe_asset(recipe_path: Path) -> dict:
-    """Load a recipe asset from .json, .yaml/.yml, or .txt (YAML)."""
-    ext = recipe_path.suffix.lower()
-    text = recipe_path.read_text()
-    if ext == ".json":
-        return json.loads(text)
-    if ext in {".yaml", ".yml", ".txt"}:
-        return yaml.safe_load(text) or {}
-    raise ValueError(f"Unsupported recipe format: {recipe_path}")
+#: CLI flag (argparse dest) -> the gateway it belongs to; any other recipe rejects it.
+_FLAG_GATEWAYS = {
+    "use_server": "gsasii",
+    "no_server": "gsasii",
+    "topas_dir": "topas",
+    "topas_version": "topas",
+}
+_FLAG_NAMES = {"use_server": "--use-server", "no_server": "--no-server",
+               "topas_dir": "--topas-dir", "topas_version": "--topas-version"}
 
 
 def is_template_file(recipe_dict: dict, input_path: Path) -> tuple[bool, str | None]:
-    """
-    Detect if the recipe file is a template that shouldn't be run directly.
+    """Detect a recipe file that is a template and must not be run directly (CLI-only guard).
 
-    Uses two-level detection strategy:
-    1. Path contains "template" (case-insensitive)
-    2. Missing required fields based on schema_name (for GSASII_Rietveld or GSASII_SPF)
+    Two-level detection:
 
-    Args:
-        recipe_dict: Recipe dictionary loaded from JSON
-        input_path: Path to the JSON file
+    1. the path contains "template" (case-insensitive);
+    2. the payload is missing, or lacks the fields the workflow needs: a
+       ``*.rietveld`` (or ``GSASII_Rietveld``) recipe needs ``xrd_data``,
+       ``instrument``, ``phases`` and ``refinement_controls``; a ``*.spf`` (or
+       ``GSASII_SPF``) one ``single_peaks`` instead of ``phases``; any other
+       schema name is a template only when all of ``xrd_data``, ``instrument``
+       and ``refinement_controls`` are absent.
 
     Returns:
-        tuple[bool, str | None]: A 2-tuple ``(is_template, reason)``. ``is_template``
-        is True if this appears to be a template, and ``reason`` explains why it
-        was detected as a template. If not a template, returns ``(False, None)``.
+        ``(is_template, reason)``; ``(False, None)`` for a runnable recipe.
 
     Examples:
         >>> is_template_file({}, Path("example_template/input.json"))
         (True, "filename or path contains 'template'")
-
-        >>> is_template_file({"schema_name": "GSASII_Rietveld", "payload": {"xrd_data": {...}}}, Path("example_LaB6/input.json"))
+        >>> is_template_file({"schema_name": "gsasii.rietveld", "payload": {"xrd_data": {...}, ...}}, Path("in.json"))
         (False, None)
     """
-    # Check 1: Path contains "template"
     if "template" in str(input_path).lower():
         return True, "filename or path contains 'template'"
 
-    # Check 2: Missing payload or schema-specific required fields
-    payload = recipe_dict.get('payload', {})
+    payload = recipe_dict.get('payload', {}) if isinstance(recipe_dict, dict) else {}
     if not payload:
         return True, "missing payload"
 
-    # Check for schema-specific required fields
     schema_name = recipe_dict.get('schema_name')
-    if schema_name == 'GSASII_Rietveld':
-        required_fields = ['xrd_data', 'instrument', 'phases', 'refinement_controls']
+    workflow = None
+    if isinstance(schema_name, str):
+        if schema_name == 'GSASII_Rietveld' or schema_name.endswith('.rietveld'):
+            workflow = ('rietveld', ['xrd_data', 'instrument', 'phases', 'refinement_controls'])
+        elif schema_name == 'GSASII_SPF' or schema_name.endswith('.spf'):
+            workflow = ('single-peak-fitting', ['xrd_data', 'instrument', 'single_peaks', 'refinement_controls'])
+    if workflow is not None:
+        label, required_fields = workflow
         missing = [field for field in required_fields if field not in payload or payload[field] is None]
         if missing:
-            return True, f"GSASII_Rietveld schema missing required fields: {missing}"
-    elif schema_name == 'GSASII_SPF':
-        required_fields = ['xrd_data', 'instrument', 'single_peaks', 'refinement_controls']
-        missing = [field for field in required_fields if field not in payload or payload[field] is None]
-        if missing:
-            return True, f"GSASII_SPF schema missing required fields: {missing}"
+            return True, f"{schema_name} ({label}) schema missing required fields: {missing}"
     else:
-        # Fallback: check for common core fields if schema unknown
         core_fields = ['xrd_data', 'instrument', 'refinement_controls']
         missing_core = [field for field in core_fields if field not in payload]
         if len(missing_core) == len(core_fields):
@@ -172,230 +101,105 @@ def is_template_file(recipe_dict: dict, input_path: Path) -> tuple[bool, str | N
     return False, None
 
 
-########################################
-# Public programmatic API
-########################################
+def engine_options_from_args(args: argparse.Namespace, gateway_name: str) -> dict:
+    """Map the engine flags onto the gateway's ``run`` options; refuse a flag for another engine.
 
-def run(
-    recipe: RecipeModel | dict,
-    output_dir: Path,
-    *,
-    verbose: bool = False,
-    validate_only: bool = False,
-    execution_mode: Literal['auto', 'server', 'subprocess'] = 'auto',
-) -> dict:
-    """Execute a PowderLine refinement from an in-memory recipe.
-
-    This is the primary public API for programmatic use. It encapsulates
-    the full pipeline: schema validation, simulation-mode checks, output
-    directory creation, and refinement execution with automatic backend
-    selection.
-
-    Note: The ``is_template_file()`` guard is **not** applied here.
-    That check is CLI-only (guards against accidentally running bare
-    template JSON files from disk). When calling ``run()``
-    programmatically the caller is responsible for ensuring the recipe
-    contains real data in ``payload.xrd_data``.
-
-    Args:
-        recipe: A fully-populated ``RecipeModel`` instance or equivalent
-            dict. XRD data must already be injected into
-            ``recipe.payload.xrd_data`` before calling.
-        output_dir: Directory where output files will be written
-            (``dummy.gpx``, ``dummy.lst``, CSV reports,
-            ``fit_profile.txt``). Created if it does not exist.
-        verbose: If True, print detailed progress to stdout.
-        validate_only: If True, validate the recipe and return a summary
-            dict without running a refinement. No output files are
-            written in this mode.
-        execution_mode: Controls the backend used to execute the
-            refinement. One of:
-
-            ``'auto'`` *(default)*
-                Try the persistent GSAS-II server first (auto-starting
-                it if needed); fall back to subprocess if unavailable.
-            ``'server'``
-                Use the server only. Fails with an error result if the
-                server cannot be started.
-            ``'subprocess'``
-                Skip the server entirely; always run in a fresh
-                subprocess. Suitable for batch/HPC workflows where each
-                refinement is isolated.
-
-    Returns:
-        **Normal refinement** (``validate_only=False``):
-
-        - ``success`` (bool)
-        - ``run_id`` (str) — UUID4 string uniquely identifying this run
-        - ``rwp`` (float | None) — final weighted-profile R factor
-        - ``elapsed_time`` (float) — wall-clock seconds
-        - ``method`` (str) — ``'server'`` or ``'subprocess'``
-        - ``fit_profile`` (pd.DataFrame) — columns: two_theta, y_obs,
-          y_weights, y_calc, y_diff, y_bkg, q_values, d_spacings
-        - ``unit_cell_data`` (dict) — ``{phase_name: pd.DataFrame}``
-          with columns: parameter, value, esd
-        - ``peak_list_data`` (dict) — ``{phase_name: pd.DataFrame}``
-          with columns: h, k, l, multiplicity, d_spacing, 2theta, …
-        - ``refined_parameters`` (pd.DataFrame) — 9 columns:
-          parameter_name, descriptive_name, phase_name, phase_idx,
-          atom_name, atom_idx, value, esd, category
-          (empty DataFrame with all 9 columns when nothing was refined)
-        - ``spf_peaks`` (pd.DataFrame) — SPF peak report with columns:
-          position_2theta, intensity, sigma, sigma_squared, gamma,
-          fwhm_gaussian, fwhm_lorentzian, fwhm_pseudovoigt,
-          integral_breadth_gaussian, integral_breadth_lorentzian,
-          integral_breadth_pseudovoigt, fwhm_gsas_verification,
-          converged, convergence_detail
-          (empty DataFrame for non-SPF runs)
-        - ``spf_convergence_diagnostics`` (pd.DataFrame) — per-peak
-          diagnostic info for peaks with convergence issues; columns:
-          peak_index, position_2theta, final_sigma_sq, final_gamma,
-          status, notes (empty DataFrame when all peaks converged or
-          for non-SPF runs)
-        - ``output_files`` (list[str]) — paths written to ``output_dir``
-          (informational; secondary to the DataFrame fields above)
-        - ``error`` (str | None) — error message when ``success=False``
-
-        **Validate-only** (``validate_only=True``) — a slim summary dict,
-        no refinement executed, no output files written, no ``run_id``:
-
-        - ``success`` (bool)
-        - ``rwp`` (None)
-        - ``elapsed_time`` (0.0)
-        - ``method`` (``'validate_only'``)
-        - ``schema_name`` (str)
-        - ``schema_version`` (str)
-        - ``phases`` (int) — number of phases in payload
-        - ``refinement_cycles`` (int)
-        - ``simulation_mode`` (bool)
+    ``--no-server`` / ``--use-server`` → gsasii ``execution_mode`` (``'subprocess'``
+    / ``'server'``; neither → the gateway's default, ``'auto'``);
+    ``--topas-dir`` / ``--topas-version`` → topas ``topas_dir`` / ``topas_version``.
 
     Raises:
-        pydantic.ValidationError: If the recipe fails schema validation.
-        ValueError: If simulation-mode constraints are violated.
-        OSError: If ``output_dir`` cannot be created (e.g. permission denied).
-
-    Example::
-
-        import json
-        from pathlib import Path
-        import powderline
-
-        recipe_dict = json.load(open("my_recipe.json"))
-        result = powderline.run(recipe_dict, Path("output/"))
-        if not result["success"]:
-            raise RuntimeError(f"Refinement failed: {result['error']}")
-        print(f"Rwp = {result['rwp']:.3f}%  [{result['method']} mode]")
-        # Access structured results directly as DataFrames:
-        unit_cell_df = result["unit_cell_data"].get("LaB6", pd.DataFrame())
+        ValueError: a flag that belongs to a gateway other than ``gateway_name``.
     """
-    # 0. Validate execution_mode early to catch typos
-    _VALID_EXECUTION_MODES = ('auto', 'server', 'subprocess')
-    if execution_mode not in _VALID_EXECUTION_MODES:
-        raise ValueError(
-            f"Invalid execution_mode={execution_mode!r}. "
-            f"Must be one of: {', '.join(_VALID_EXECUTION_MODES)}"
-        )
+    given = {dest: getattr(args, dest, None) for dest in _FLAG_GATEWAYS}
+    for dest, value in given.items():
+        if value and _FLAG_GATEWAYS[dest] != gateway_name:
+            raise ValueError(
+                f"{_FLAG_NAMES[dest]} applies to {_FLAG_GATEWAYS[dest]!r} recipes only; this recipe's "
+                f"schema_name names the {gateway_name!r} engine")
+    options: dict[str, Any] = {}
+    if given["no_server"]:
+        options["execution_mode"] = "subprocess"
+    elif given["use_server"]:
+        options["execution_mode"] = "server"
+    if given["topas_dir"] is not None:
+        options["topas_dir"] = given["topas_dir"]
+    if given["topas_version"] is not None:
+        options["topas_version"] = given["topas_version"]
+    return options
 
-    # 1. Validate (raises ValidationError / ValueError on failure)
-    recipe = validate(recipe, verbose=verbose)
-    # A native gsasii.* recipe's structured warnings come from validating the
-    # user's recipe and are carried to the result (A115, A119): here for
-    # validate_only and the in-process run, by GSASClient on its paths
-    native = is_native_recipe(recipe)
-    warnings = collect_warnings(recipe) if native else None
 
-    # 2. Validate_only short-circuit
-    if validate_only:
-        controls = recipe.payload.refinement_controls
-        phases = getattr(recipe.payload, 'phases', None)
-        summary = {
-            'success': True,
-            'rwp': None,
-            'elapsed_time': 0.0,
-            'method': 'validate_only',
-            'schema_name': recipe.schema_name,
-            'phases': len(phases) if phases else 0,
-            'refinement_cycles': controls.refinement_cycles,
-            'simulation_mode': controls.refinement_cycles == 1,
-        }
-        if native:
-            summary.update(core_schema_version=recipe.core_schema_version,
-                           engine_schema_version=recipe.engine_schema_version, warnings=warnings)
-        else:
-            summary['schema_version'] = recipe.schema_version
-        return summary
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="powderline",
+        description="Run (or validate) a PowderLine recipe with the engine its schema_name names",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Engine flags (accepted only for a recipe of that engine):
+  gsasii.*  default:      try the GSAS-II server, auto-start it, fall back to in-process
+            --use-server: server only (fail if it cannot be started)
+            --no-server:  in-process only (skip the server)
+  topas.*   --topas-dir DIR / --topas-version V: the TOPAS installation to run
+            (a run needs a declared version: --topas-version or .powderline_config.yaml)
 
-    # 3. Ensure output directory exists
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+Examples:
+  powderline examples/example_LaB6/input.json                     # engine from schema_name
+  powderline examples/example_LaB6/input.json --no-server --verbose
+  powderline recipe.json --validate-only                          # no engine needed
+  powderline topas_recipe.json --topas-version 6 --output out/
+        """
+    )
+    parser.add_argument("input_json", type=Path, help="Path to the recipe file (.json / .yaml)")
+    parser.add_argument("--output", type=Path, default=None,
+                        help="Output directory (default: <recipe dir>/output)")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
+    parser.add_argument("--validate-only", action="store_true",
+                        help="Validate the recipe and report its summary; run nothing")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument('--use-server', action='store_true',
+                            help='gsasii: server mode only (auto-start enabled, fail if still unavailable)')
+    mode_group.add_argument('--no-server', action='store_true',
+                            help='gsasii: in-process mode only (skip the server entirely)')
+    parser.add_argument("--topas-dir", type=Path, default=None, help="topas: directory containing tc.exe")
+    parser.add_argument("--topas-version", default=None, help="topas: the installed TOPAS version to run")
+    return parser
 
-    # 4. Dispatch by execution_mode
-    if execution_mode == 'subprocess':
-        result = run_refinement(recipe, output_dir, verbose=verbose, method='subprocess')
+
+def _print_validate_only(result: dict, input_path: Path) -> None:
+    print(f"{CHECK} Recipe validation successful: {input_path}")
+    print(f"   Schema name: {result.get('schema_name')}")
+    if 'schema_version' in result:  # 0.26.0
+        print(f"   Schema version: {result.get('schema_version')}")
     else:
-        from powderline.gsas_client import GSASClient
-        fallback = execution_mode != 'server'
-        client = GSASClient(fallback_to_subprocess=fallback)
-        result = client.submit_simulation(
-            recipe=recipe,
-            output_dir=output_dir,
-            verbose=verbose,
-            auto_start_server=True,
-        )
-
-    if native and execution_mode == 'subprocess':  # GSASClient adds them on its own paths
-        result['warnings'] = warnings + list(result.get('warnings') or [])
-    elif not native:  # the server's response model carries the native-only keys as null; a 0.26.0 result never had them
-        for key in ('r_exp', 'gof', 'chi2_red', 'simulation_mode', 'engine_details', 'warnings'):
-            if key in result and result[key] is None:
-                del result[key]
-
-    # Normalise structured data fields to DataFrames for a consistent API.
-    # run_refinement() and the server return JSON-serializable primitives;
-    # converting here ensures callers always receive DataFrames regardless
-    # of execution_mode, without touching the HTTP serialization boundary.
-    fit_profile_raw = result.get('fit_profile')
-    result['fit_profile'] = (
-        pd.DataFrame(fit_profile_raw) if fit_profile_raw else pd.DataFrame()
-    )
-    # `or {}` (not a .get default): early-failure results serialize these
-    # tables as an explicit null, which .get(key, {}) passes through as None.
-    result['unit_cell_data'] = {
-        phase: pd.DataFrame(records)
-        for phase, records in (result.get('unit_cell_data') or {}).items()
-    }
-    result['peak_list_data'] = {
-        phase: pd.DataFrame(records)
-        for phase, records in (result.get('peak_list_data') or {}).items()
-    }
-    refined_params_raw = result.get('refined_parameters')
-    result['refined_parameters'] = (
-        pd.DataFrame(refined_params_raw)
-        if refined_params_raw
-        else pd.DataFrame(columns=[
-            'parameter_name', 'descriptive_name', 'phase_name', 'phase_idx',
-            'atom_name', 'atom_idx', 'value', 'esd', 'category'
-        ])
-    )
-    spf_peaks_raw = result.get('spf_peaks')
-    result['spf_peaks'] = (
-        pd.DataFrame(spf_peaks_raw) if spf_peaks_raw else pd.DataFrame()
-    )
-    spf_diag_raw = result.get('spf_convergence_diagnostics')
-    result['spf_convergence_diagnostics'] = (
-        pd.DataFrame(spf_diag_raw) if spf_diag_raw else pd.DataFrame()
-    )
-
-    # Ensure 'error' key is always present (None on success) so callers can
-    # safely use result['error'] without KeyError regardless of success state.
-    # Similarly normalise 'traceback' so callers never hit a KeyError.
-    result.setdefault('error', None)
-    result.setdefault('traceback', None)
-
-    return result
+        if result.get('core_schema_version') is not None:
+            print(f"   Core schema version: {result['core_schema_version']}")
+        if result.get('engine_schema_version') is not None:
+            print(f"   Engine schema version: {result['engine_schema_version']}")
+    if result.get('engine_version') is not None:
+        print(f"   Engine version: {result['engine_version']}")
+    print(f"   Phases: {result.get('phases', 0)}")
+    if 'refinement_cycles' in result:
+        print(f"   Refinement cycles: {result['refinement_cycles']}")
+    if 'iters' in result:
+        print(f"   Iterations: {result['iters']}")
+    if result.get('calculator') is not None:
+        print(f"   Calculator: {result['calculator']}")
+    if result.get('simulation_mode'):
+        print(f"   Mode: Simulation (all parameters locked)")
+    _print_warnings(result.get('warnings'))
 
 
-if __name__ == "__main__":
+def _print_warnings(warnings) -> None:
+    if not warnings:
+        return
+    print(f"{WARN} {len(warnings)} warning(s):")
+    for w in warnings:
+        where = f" ({w['field_path']})" if w.get('field_path') else ""
+        print(f"   - {w['code']}: {w['message']}{where}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point of the ``powderline`` command; returns the exit status."""
     # Ensure emoji/Unicode output works on Windows consoles that default to a
     # legacy code page (e.g. cp1252), which cannot encode the status emoji below.
     for _stream in (sys.stdout, sys.stderr):
@@ -406,55 +210,18 @@ if __name__ == "__main__":
             except (ValueError, OSError):
                 pass
 
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(
-        description="Run GSAS-II refinement from JSON recipe",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Execution modes:
-  Default (no flags):  Try server → auto-start if needed → fall back to subprocess
-  --use-server:        Use server only (fail if unavailable, auto-start enabled)
-  --no-server:         Use subprocess only (skip server entirely)
-
-Examples:
-  pixi run kicker recipe.json                    # Smart mode (auto-detect)
-  pixi run kicker recipe.json --use-server       # Server only (with auto-start)
-  pixi run kicker recipe.json --no-server        # Subprocess only
-  pixi run kicker recipe.json --verbose          # Show detailed output
-        """
-    )
-
-    parser.add_argument("input_json", type=Path, help="Path to input JSON recipe file")
-    parser.add_argument("--output", type=Path, default=None, help="Output directory (default: input_json_parent/output)")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
-    parser.add_argument("--validate-only", action="store_true", help="Validate recipe without running refinement")
-
-    # Execution mode flags
-    mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument(
-        '--use-server',
-        action='store_true',
-        help='Force server mode (auto-start enabled, fail if still unavailable)'
-    )
-    mode_group.add_argument(
-        '--no-server',
-        action='store_true',
-        help='Force subprocess mode (skip server entirely)'
-    )
-
-    args = parser.parse_args()
-
-    # Set output directory
+    args = build_parser().parse_args(argv)
     output_dir = args.output if args.output else args.input_json.parent / "output"
-    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load recipe
-    recipe_dict = load_recipe_asset(args.input_json)
+    try:
+        recipe_dict = load_recipe_asset(args.input_json)
+    except OSError as e:
+        print(f"\n{CROSS} Cannot read recipe {args.input_json}: {e}\n")
+        return 1
 
     if args.verbose:
         print(f"This is the recipe:\n\n{recipe_dict}\n\n")
 
-    # Check if this is a template file
     is_template, template_reason = is_template_file(recipe_dict, args.input_json)
     if is_template:
         print(f"\n{CROSS} Error: This appears to be a template file ({template_reason}).")
@@ -466,27 +233,22 @@ Examples:
         print(f"  3. See examples/example_template/DESCRIPTION.md for guidance")
         print(f"\nOr run an existing example:")
         print(f"     pixi run kicker examples/example_LaB6/input.json\n")
-        sys.exit(1)
+        return 1
 
-    # Validate recipe, check constraints, and execute via run()
     try:
-        # Map CLI flags to execution_mode
-        if args.no_server:
-            execution_mode = 'subprocess'
-        elif args.use_server:
-            execution_mode = 'server'
-        else:
-            execution_mode = 'auto'
-
+        gateway_name = api.gateway_name_for(api.schema_name_of(recipe_dict))
+        engine_options = engine_options_from_args(args, gateway_name)
+        if not args.validate_only:
+            output_dir.mkdir(parents=True, exist_ok=True)
         if args.verbose:
-            print(f"{CHECK} Template check passed. Starting refinement...\n")
+            print(f"{CHECK} Template check passed. Engine: {gateway_name}. Starting refinement...\n")
 
         result = run(
-            recipe=recipe_dict,
-            output_dir=output_dir,
+            recipe_dict,
+            output_dir,
             verbose=args.verbose,
             validate_only=args.validate_only,
-            execution_mode=execution_mode,
+            **engine_options,
         )
 
     except ValidationError as e:
@@ -497,45 +259,94 @@ Examples:
             print(f"  • {location}: {error['msg']}")
         print(f"\nPlease fix the errors above and try again.")
         print(f"See examples/example_LaB6/input.json for a working example.\n")
-        sys.exit(1)
+        return 1
 
-    except ValueError as e:
+    except (ValueError, PowderLineError) as e:
         print(f"\n{CROSS} {e}\n")
-        sys.exit(1)
+        return 1
 
     except Exception as e:
         print(f"\n{CROSS} Unexpected error during refinement:")
         print(f"   {str(e)}")
         print(f"\nTry running with --verbose for more details:")
         print(f"  pixi run kicker {args.input_json} --verbose\n")
-        sys.exit(1)
+        return 1
 
-    # Handle validate_only result
     if args.validate_only:
-        print(f"{CHECK} Recipe validation successful: {args.input_json}")
-        print(f"   Schema name: {result.get('schema_name')}")
-        print(f"   Schema version: {result.get('schema_version')}")
-        print(f"   Phases: {result.get('phases', 0)}")
-        print(f"   Refinement cycles: {result.get('refinement_cycles')}")
-        if result.get('simulation_mode'):
-            print(f"   Mode: Simulation (all parameters locked)")
-        sys.exit(0)
+        _print_validate_only(result, args.input_json)
+        return 0
 
-    # Show execution mode and timing
-    mode_emoji = emoji("🚀" if result.get('method') == 'server' else "🐢")
-    print(f"\n{INFO} Executed using {result.get('method', 'unknown')} mode {mode_emoji} ({result.get('elapsed_time', 0):.1f}s)")
+    method = result.get('method', 'unknown')
+    mode_emoji = emoji("🚀" if method == 'server' else "🐢")
+    print(f"\n{INFO} Executed using {method} mode {mode_emoji} ({result.get('elapsed_time', 0):.1f}s)")
     if args.verbose and 'run_id' in result:
         print(f"{INFO} Run ID: {result['run_id']}")
 
-    # Check for success
     if not result.get('success'):
         print(f"\n{CROSS} Refinement failed:")
         print(f"   {result.get('error', 'Unknown error')}")
-        print(f"\nCheck .lst file for detailed error messages: {output_dir}/*.lst\n")
-        sys.exit(1)
+        hint = f"{output_dir}/*.lst" if gateway_name == "gsasii" else str(output_dir)
+        print(f"\nCheck the engine's log for details: {hint}\n")
+        return 1
 
-    # Report final Rwp
+    _print_warnings(result.get('warnings'))
     if result.get('rwp') is not None:
         print(f"{CHECK} Refinement complete. Final Rwp: {result['rwp']:.3f}%\n")
     else:
         print(f"{CHECK} Refinement complete.\n")
+    return 0
+
+
+# --- transitional facade: ``powderline.kicker.<GSAS-II implementation name>`` -----------------------
+
+_GSASII_MODULES = {
+    "G2": "GSASII.GSASIIscriptable", "G2lat": "GSASII.GSASIIlattice", "G2mv": "GSASII.GSASIImapvars",
+    "G2obj": "GSASII.GSASIIobj", "G2spc": "GSASII.GSASIIspc", "G2elem": "GSASII.GSASIIElem",
+    "G2pwd": "GSASII.GSASIIpwd",
+}
+_FACADE_NAMES = {
+    "powderline.gateways.gsasii.helpers": (
+        "OutputNamingConfig", "OUTPUT_NAMING", "DEFAULT_HIST_SCALE_VAL", "DEFAULT_HIST_SCALE_REFINE_FLAG",
+        "DEFAULT_PHASE_CRYSTALLITE_SIZE", "DEFAULT_PHASE_MICROSTRAIN", "DEFAULT_SPF_SIGMA_MIN",
+        "DEFAULT_SPF_GAMMA_MIN", "unpack_refinement_parameter", "require_phase", "calculate_peak_widths",
+        "has_active_refinement_parameter"),
+    "powderline.gateways.gsasii.project": (
+        "InstParmValue", "InstParmDict", "G2InstParmDict", "_to_gsasii_instparm_dict",
+        "add_powder_histogram_from_arrays", "add_phase_from_cif_dict", "add_phases_from_dict"),
+    "powderline.gateways.gsasii.setters": (
+        "set_hist_scale", "set_fit_range_hist", "set_chebyshev_background", "set_single_peak_background",
+        "set_single_peaks", "set_phase_scale", "set_phase_unit_cell", "set_phase_size_broadening",
+        "_set_isotropic_size_broadening", "set_phase_strain_broadening", "_set_isotropic_strain_broadening",
+        "set_phase_atom_parameters", "set_phase_parameterization", "set_instrument_parameterization",
+        "set_refinement_cycles"),
+    "powderline.gateways.gsasii.executors": (
+        "_refine_with_message", "execute_rietveld_refinement", "execute_spf_refinement", "SCHEMA_EXECUTORS"),
+    "powderline.gateways.gsasii.routing": ("run_refinement",),
+    "powderline.gateways.gsasii.extractors": (
+        "calculate_cell_esds_from_A_matrix", "extract_refined_params_from_project",
+        "extract_refined_params_from_lst", "get_descriptive_param_name", "parse_parameter_associations",
+        "build_phase_name_mapping", "build_atom_name_mapping", "export_refined_parameters_csv",
+        "_extract_fit_profile", "_extract_spf_peak_report", "_extract_phase_reports",
+        "_extract_refined_parameters"),
+    "powderline.gateways.gsasii.validation": ("validate_simulation_mode_parameters",),
+    "powderline.gateways.gsasii.schema": ("is_native_recipe",),
+    "powderline.schema_core": ("collect_warnings",),
+    "powderline.schema": ("RecipeModel", "RefinementControls"),
+    "powderline.constraints": ("atom_refinement_plan", "cell_refinement_plan"),
+}
+_FACADE = {name: (module, name) for module, names in _FACADE_NAMES.items() for name in names}
+_FACADE.update({alias: (module, None) for alias, module in _GSASII_MODULES.items()})
+
+
+def __getattr__(name: str):
+    """Resolve a legacy ``powderline.kicker.<name>`` lazily (PEP 562); imports GSAS-II only when asked for."""
+    try:
+        module_name, attr = _FACADE[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    module = importlib.import_module(module_name)
+    return module if attr is None else getattr(module, attr)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

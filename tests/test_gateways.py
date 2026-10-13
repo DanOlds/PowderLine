@@ -20,6 +20,7 @@ import pytest
 from packaging.specifiers import SpecifierSet
 from pydantic import ValidationError
 
+import powderline
 from powderline import registry, schema
 from powderline.exceptions import EngineNotAvailableError, EngineVersionError
 from powderline.gateways.gsasii import gateway as gsasii_gateway
@@ -155,38 +156,39 @@ def test_gsasii_installed_engine_version_satisfies_spec():
 def test_gsasii_version_check_raises_when_version_out_of_range(tmp_path, monkeypatch):
     """When the installed version is out of range, run() raises EngineVersionError."""
     monkeypatch.setattr(gsasii_gateway, "installed_engine_version", lambda: "5.8.0")
-    # Mock the kicker.run so it doesn't actually run
-    import powderline.kicker
-
+    # Mock the in-process executor so nothing actually runs
     fake_run = Mock()
-    monkeypatch.setattr(powderline.kicker, "run", fake_run)
+    monkeypatch.setattr(gsasii_gateway, "run_refinement", fake_run)
 
     with pytest.raises(EngineVersionError):
-        gsasii_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=False)
-    assert not fake_run.called, "kicker.run should not be called when version check fails"
+        gsasii_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=False, execution_mode="subprocess")
+    assert not fake_run.called, "run_refinement should not be called when version check fails"
 
 
 def test_gsasii_version_check_bypassed_with_allow_unsupported(tmp_path, monkeypatch):
-    """With allow_unsupported_engine_version=True, the version check is bypassed."""
+    """With allow_unsupported_engine_version=True, the version check is bypassed and the run proceeds."""
     monkeypatch.setattr(gsasii_gateway, "installed_engine_version", lambda: "5.8.0")
-    import powderline.kicker
+    fake_run = Mock(return_value={"success": True, "method": "subprocess"})
+    monkeypatch.setattr(gsasii_gateway, "run_refinement", fake_run)
 
-    fake_run = Mock(return_value={})
-    monkeypatch.setattr(powderline.kicker, "run", fake_run)
-
-    gsasii_gateway.run(
+    result = gsasii_gateway.run(
         _lab6_recipe(),
         str(tmp_path),
         validate_only=False,
         verbose=True,
-        execution_mode="auto",
+        execution_mode="subprocess",
         allow_unsupported_engine_version=True,
     )
     assert fake_run.called
+    recipe_arg, output_arg = fake_run.call_args[0]
+    assert isinstance(recipe_arg, schema.RecipeModel)  # the gateway validated the dict first
+    assert Path(output_arg) == tmp_path
     call_kwargs = fake_run.call_args[1]
     assert call_kwargs["verbose"] is True
-    assert call_kwargs["validate_only"] is False
-    assert call_kwargs["execution_mode"] == "auto"
+    assert call_kwargs["method"] == "subprocess"
+    # the gateway's own result normalisation applied
+    assert result["error"] is None
+    assert result["refined_parameters"].empty
 
 
 def test_gsasii_validate_only_skips_version_check(tmp_path, monkeypatch):
@@ -198,13 +200,13 @@ def test_gsasii_validate_only_skips_version_check(tmp_path, monkeypatch):
         raise AssertionError("version check should not be called for validate_only=True")
 
     monkeypatch.setattr(gsasii_gateway, "installed_engine_version", failing_version_check)
-    import powderline.kicker
-
     fake_run = Mock(return_value={})
-    monkeypatch.setattr(powderline.kicker, "run", fake_run)
+    monkeypatch.setattr(gsasii_gateway, "run_refinement", fake_run)
 
-    gsasii_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=True)
+    result = gsasii_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=True)
     assert not called, "installed_engine_version should not be called for validate_only=True"
+    assert not fake_run.called
+    assert result["method"] == "validate_only" and result["schema_name"] == "GSASII_Rietveld"
 
 
 # --- topas version checking ---
@@ -360,14 +362,11 @@ def test_easydiff_installed_version_satisfies_spec():
     assert version in spec
 
 
-# --- Dispatcher routing ---
+# --- Dispatcher routing (powderline.run dispatches on schema_name, P-06) ---
 
 
-def test_dispatcher_routes_through_registry_get(tmp_path, monkeypatch, isolated_registry):
-    """powderline.engine.run(..., engine=X) routes through registry.get(X).run(...)."""
-    from powderline import engine as dispatcher_module
-
-    # Register fake gateways that record calls
+def _recording_gateways(names, workflows=()):
+    """Register fake gateways under ``names`` that record run() kwargs; return the record."""
     calls = {}
 
     def make_fake_gateway(name):
@@ -377,65 +376,76 @@ def test_dispatcher_routes_through_registry_get(tmp_path, monkeypatch, isolated_
 
         return registry.Gateway(
             name=name,
-            capabilities=lambda: {"name": name, "workflows": [], "engine_version_spec": ">=1"},
+            capabilities=lambda: {"name": name, "workflows": list(workflows), "engine_version_spec": ">=1"},
             validate=lambda recipe, **opts: recipe,
             run=fake_run,
         )
 
-    for name in ["gsasii", "topas", "easydiffraction"]:
+    for name in names:
         registry.register_gateway(name, lambda n=name: make_fake_gateway(n))
+    return calls
 
-    # Test gsasii routing
-    dispatcher_module.run(
-        _lab6_recipe(),
-        str(tmp_path),
-        engine="gsasii",
-        verbose=True,
-        validate_only=False,
-        execution_mode="subprocess",
-    )
-    assert "gsasii" in calls
-    assert calls["gsasii"]["verbose"] is True
-    assert calls["gsasii"]["validate_only"] is False
-    assert calls["gsasii"]["execution_mode"] == "subprocess"
 
-    # Test topas routing
+def test_dispatcher_routes_by_schema_name_through_registry_get(tmp_path, isolated_registry):
+    """powderline.run(recipe) routes to registry.get(<engine of schema_name>).run(...) with the options unchanged."""
+    calls = _recording_gateways(["gsasii", "topas", "easydiffraction"])
+
+    powderline.run({"schema_name": "gsasii.rietveld"}, str(tmp_path), verbose=True, validate_only=False,
+                   execution_mode="subprocess")
+    assert calls == {"gsasii": {"verbose": True, "validate_only": False, "execution_mode": "subprocess"}}
+
     calls.clear()
-    dispatcher_module.run(
-        _lab6_recipe(),
-        str(tmp_path),
-        engine="topas",
-        verbose=False,
-        validate_only=True,
-        topas_dir="/fake",
-        topas_version=7,
-    )
-    assert "topas" in calls
-    assert calls["topas"]["verbose"] is False
-    assert calls["topas"]["validate_only"] is True
-    assert calls["topas"]["topas_dir"] == "/fake"
-    assert calls["topas"]["topas_version"] == 7
+    powderline.run({"schema_name": "topas.spf"}, str(tmp_path), verbose=False, validate_only=True,
+                   topas_dir="/fake", topas_version=7)
+    assert calls == {"topas": {"verbose": False, "validate_only": True, "topas_dir": "/fake", "topas_version": 7}}
 
-    # Test easydiffraction routing
     calls.clear()
-    dispatcher_module.run(
-        _lab6_recipe(),
-        str(tmp_path),
-        engine="easydiffraction",
-        verbose=True,
-        validate_only=False,
-    )
-    assert "easydiffraction" in calls
-    assert calls["easydiffraction"]["verbose"] is True
-    assert calls["easydiffraction"]["validate_only"] is False
+    powderline.run({"schema_name": "easydiffraction.rietveld"}, str(tmp_path), verbose=True)
+    assert calls == {"easydiffraction": {"verbose": True, "validate_only": False}}
+
+    # the 0.26.0 names route to gsasii until the legacy schema is removed
+    calls.clear()
+    powderline.run({"schema_name": "GSASII_SPF"}, str(tmp_path))
+    assert set(calls) == {"gsasii"}
+
+
+def test_dispatcher_deprecated_engine_must_agree_with_schema_name(tmp_path, isolated_registry):
+    """run(engine=...) warns, and is accepted only when that gateway serves the recipe's schema_name."""
+    calls = _recording_gateways(["gsasii", "topas"], workflows=("topas.rietveld", "GSASII_Rietveld"))
+
+    with pytest.warns(DeprecationWarning, match="schema_name"):
+        powderline.run({"schema_name": "topas.rietveld"}, str(tmp_path), engine="topas")
+    assert set(calls) == {"topas"}
+
+    calls.clear()
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="does not serve schema_name"):
+        powderline.run({"schema_name": "gsasii.rietveld"}, str(tmp_path), engine="topas")
+    assert calls == {}
+
+    # a legacy recipe may still be sent to a translation path that declares the name
+    with pytest.warns(DeprecationWarning):
+        powderline.run({"schema_name": "GSASII_Rietveld"}, str(tmp_path), engine="topas")
+    assert set(calls) == {"topas"}
 
 
 def test_dispatcher_unknown_engine_raises_value_error():
-    """powderline.engine.run(..., engine='bogus') raises ValueError."""
-    from powderline import engine as dispatcher_module
+    """powderline.run(..., engine='bogus') raises ValueError naming the installed gateways."""
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="unknown engine"):
+        powderline.run(_lab6_recipe(), "/tmp", engine="bogus")
 
-    with pytest.raises(ValueError, match="unknown engine"):
-        dispatcher_module.run(_lab6_recipe(), "/tmp", engine="bogus")
+
+def test_dispatcher_refuses_allow_unsupported_engine_version(tmp_path, isolated_registry):
+    """The gateways' test-only version-check bypass is not a public run() option (A53)."""
+    calls = _recording_gateways(["gsasii"])
+    with pytest.raises(TypeError, match="allow_unsupported_engine_version"):
+        powderline.run({"schema_name": "gsasii.rietveld"}, str(tmp_path), allow_unsupported_engine_version=True)
+    assert calls == {}
+
+
+def test_dispatcher_unknown_option_is_the_gateways_type_error(tmp_path):
+    """An option the gateway does not take is a TypeError naming it (A59), from the gateway's signature."""
+    with pytest.raises(TypeError, match="topas_dir"):
+        powderline.run(_lab6_recipe(), str(tmp_path), validate_only=True, topas_dir="/nowhere")
 
 
 # --- Import-block guarantee ---

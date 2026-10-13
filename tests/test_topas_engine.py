@@ -1,4 +1,9 @@
-"""Tests for the engine dispatcher + GSAS-II-free TOPAS run() adapter."""
+"""Tests for the engine dispatcher + GSAS-II-free TOPAS run() adapter.
+
+The 0.26.0 recipes reach the TOPAS translation path only through the deprecated
+``engine="topas"`` keyword (a DeprecationWarning each call), until that path is deleted.
+"""
+
 
 from __future__ import annotations
 
@@ -18,6 +23,8 @@ from powderline.gateways.topas.errors import TopasTranslationError
 from subprocess_utils import run_subprocess_utf8
 
 REPO = Path(__file__).resolve().parent.parent
+
+pytestmark = pytest.mark.filterwarnings("ignore:powderline.run\\(engine=:DeprecationWarning")
 EXAMPLES = REPO / "examples"
 
 # run() dict keys locked by tests/test_api.py (must match across engines)
@@ -53,7 +60,8 @@ def _mock_topas_run(name):
 
 
 def test_run_is_the_dispatcher():
-    assert powderline.run.__module__ == "powderline.engine"
+    assert powderline.run.__module__ == "powderline.api"
+    assert dispatcher.run is powderline.run  # the deprecated import path is the same function
 
 
 def test_topas_engine_runs_without_gsasii(tmp_path):
@@ -89,7 +97,7 @@ def test_topas_engine_runs_without_gsasii(tmp_path):
 
 
 def test_unknown_engine_raises():
-    with pytest.raises(ValueError, match="unknown engine"):
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="unknown engine"):
         dispatcher.run(_recipe(), "/tmp/x", engine="bogus")
 
 

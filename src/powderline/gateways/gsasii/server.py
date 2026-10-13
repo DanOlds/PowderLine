@@ -153,9 +153,10 @@ class GSASServer:
             sys.path.insert(0, str(src_dir))
 
         try:
-            # Import kicker module which has all the GSAS-II integration
-            from powderline import kicker
-            self.kicker = kicker
+            # Import the GSAS-II executors (they import GSAS-II at module top)
+            # once, so every request finds it loaded
+            from powderline.gateways.gsasii import executors
+            self.runtime = executors
             import_time = time.time() - import_start
             self.logger.info(f"GSAS-II loaded in {import_time:.1f}s")
         except ImportError as e:
@@ -234,7 +235,7 @@ class GSASServer:
         uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
 
     def _run_simulation(self, request: Dict[str, Any]) -> Dict[str, Any]:
-        """Run a GSAS-II simulation using the loaded kicker module.
+        """Run a GSAS-II simulation with the loaded GSAS-II runtime.
 
         Args:
             request: Dictionary with 'recipe_data' (inline recipe dict), 'output_dir',
@@ -246,8 +247,7 @@ class GSASServer:
             'peak_list_data' (dict), 'refined_parameters' (list), 'spf_peaks' (dict),
             'spf_convergence_diagnostics' (dict), and optional 'error', 'traceback'.
         """
-        from powderline.kicker import run_refinement
-        from powderline.gateways.gsasii.routing import model_from_request
+        from powderline.gateways.gsasii.routing import model_from_request, run_refinement
         from pydantic import ValidationError
 
         recipe_dict = request.get('recipe_data')

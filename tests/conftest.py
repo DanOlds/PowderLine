@@ -92,7 +92,7 @@ def recipe_LaB6_dict():
 def recipe_LaB6_model(recipe_LaB6_dict):
     """example_LaB6 recipe as a validated RecipeModel."""
     import powderline
-    return powderline.validate(recipe_LaB6_dict)
+    return powderline.validate(recipe_LaB6_dict).recipe
 
 
 @pytest.fixture

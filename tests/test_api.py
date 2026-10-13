@@ -1,12 +1,13 @@
 """API-based tests for the powderline public programmatic interface.
 
 These tests complement the CLI-based regression suite by exercising the
-``powderline.run()``, ``powderline.validate()``, and ``powderline.GSASClient``
-entry points directly, confirming that the API and CLI paths produce
-equivalent outputs.
+``powderline.run()`` and ``powderline.validate()`` entry points (and the
+gateway's ``GSASClient``) directly, confirming that the API and CLI paths
+produce equivalent outputs.
 """
 
 import json
+import sys
 import uuid
 from unittest.mock import patch, MagicMock
 import pytest
@@ -15,8 +16,11 @@ from pathlib import Path
 from pydantic import ValidationError
 
 import powderline
-from powderline import RecipeModel
-from subprocess_utils import unit_cell_match, extract_rwp_from_lst, REFINED_PARAM_COLUMNS
+from powderline.gateways.gsasii.client import GSASClient
+from powderline.schema import RecipeModel
+from subprocess_utils import unit_cell_match, extract_rwp_from_lst, REFINED_PARAM_COLUMNS, run_subprocess_utf8
+
+REPO = Path(__file__).resolve().parent.parent
 
 
 # ─── Constants (must match test_example_LaB6_regression.py tolerances) ────────
@@ -45,16 +49,113 @@ def lab6_subprocess_run(tmp_path_factory):
 # ─── validate() tests ─────────────────────────────────────────────────────────
 
 def test_validate_valid_recipe(recipe_LaB6_dict):
-    """validate() accepts a valid dict and returns a RecipeModel."""
+    """validate() accepts a valid dict and returns a ValidationResult holding the gateway's model."""
     result = powderline.validate(recipe_LaB6_dict)
-    assert isinstance(result, RecipeModel)
-    assert result.schema_name == "GSASII_Rietveld"
+    assert isinstance(result, powderline.ValidationResult)
+    assert isinstance(result.recipe, RecipeModel)
+    assert result.recipe.schema_name == "GSASII_Rietveld"
+    assert result.warnings == []  # a 0.26.0 recipe has no structured warnings
 
 
 def test_validate_returns_recipemodel_from_model(recipe_LaB6_model):
     """validate() is idempotent — a RecipeModel passes through unchanged."""
     result = powderline.validate(recipe_LaB6_model)
-    assert isinstance(result, RecipeModel)
+    assert result.recipe is recipe_LaB6_model
+
+
+def test_validation_result_is_frozen(recipe_LaB6_dict):
+    """ValidationResult is a record of one validation: its attributes cannot be rebound."""
+    result = powderline.validate(recipe_LaB6_dict)
+    with pytest.raises(AttributeError):
+        result.recipe = None
+
+
+def test_validate_missing_schema_name_is_a_validation_error():
+    """A recipe without schema_name fails as an invalid recipe (at schema_name), not as a dispatch error."""
+    with pytest.raises(ValidationError) as exc:
+        powderline.validate({"payload": {}})
+    assert [tuple(e["loc"]) for e in exc.value.errors()] == [("schema_name",)]
+    assert exc.value.errors()[0]["type"] == "missing"
+
+
+def test_validate_schema_name_without_engine_prefix_is_a_validation_error():
+    """A schema_name that is neither <engine>.<workflow> nor a 0.26.0 name is reported at schema_name."""
+    with pytest.raises(ValidationError, match="does not name an engine"):
+        powderline.validate({"schema_name": "Rietveld", "payload": {}})
+
+
+def test_validate_unknown_engine_prefix_raises_gateway_not_installed():
+    """schema_name 'bogus.rietveld' names a gateway that is not installed."""
+    with pytest.raises(powderline.GatewayNotInstalledError) as exc:
+        powderline.validate({"schema_name": "bogus.rietveld", "payload": {}})
+    assert exc.value.gateway == "bogus"
+
+
+def test_validate_native_recipes_dispatch_by_schema_name():
+    """validate() routes gsasii.*, topas.* and easydiffraction.* recipes to their gateways and exposes warnings."""
+    cases = {
+        "gsasii": REPO / "tests" / "data" / "gsasii_native_lab6.json",
+        "topas": REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json",
+        "easydiffraction": REPO / "tests" / "data" / "easydiffraction" / "native" / "lab6_crysfml_tch.json",
+    }
+    for name, path in cases.items():
+        if not path.exists():
+            continue
+        result = powderline.validate(json.loads(path.read_text(encoding="utf-8")))
+        assert result.recipe.schema_name.startswith(name + ".")
+        assert isinstance(result.warnings, list)
+        for w in result.warnings:
+            assert set(w) == {"code", "message", "field_path"}
+
+
+def test_validate_is_engine_free():
+    """powderline.validate() runs with GSASII, easydiffraction and cryspy blocked, for every gateway.
+
+    The re/08 precondition: the core-only environment validates any recipe.
+    """
+    legacy = str(REPO / "examples" / "example_LaB6" / "input.json")
+    topas_native = str(REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json")
+    easy_native = str(REPO / "tests" / "data" / "easydiffraction" / "native" / "lab6_crysfml_tch.json")
+    script = f"""
+import sys, importlib.abc, json
+from pathlib import Path
+
+BLOCKED = ("GSASII", "easydiffraction", "cryspy")
+
+class _Block(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path, target=None):
+        if name in BLOCKED or name.startswith(tuple(b + "." for b in BLOCKED)):
+            raise ImportError(name + " blocked for the engine-free validate test")
+        return None
+
+sys.meta_path.insert(0, _Block())
+import powderline
+assert set(powderline.__all__) >= {{"run", "validate", "load_recipe_asset", "support_matrix"}}
+assert "powderline.kicker" not in sys.modules, "import powderline must not import the CLI module"
+
+legacy = json.loads(Path(r'{legacy}').read_text(encoding="utf-8"))
+r = powderline.validate(legacy)
+assert type(r).__name__ == "ValidationResult" and type(r.recipe).__name__ == "RecipeModel"
+r = powderline.validate(json.loads(Path(r'{topas_native}').read_text(encoding="utf-8")))
+assert type(r.recipe).__name__ == "TopasRietveldRecipe", type(r.recipe).__name__
+r = powderline.validate(json.loads(Path(r'{easy_native}').read_text(encoding="utf-8")))
+assert type(r.recipe).__name__ == "EasydiffractionRietveldRecipe", type(r.recipe).__name__
+assert isinstance(r.warnings, list)
+# a gsasii.* recipe converted from the example validates too
+import importlib.util
+spec = importlib.util.spec_from_file_location("convert_recipe_026", r'{REPO / "scripts" / "convert_recipe_026.py"}')
+conv = importlib.util.module_from_spec(spec); spec.loader.exec_module(conv)
+legacy["payload"]["background"]["single_peaks"]["pv_lorentzian_gamma"][0][0] = 0.1
+r = powderline.validate(conv.convert(legacy)[0])
+assert type(r.recipe).__name__ == "GsasiiRietveldRecipe", type(r.recipe).__name__
+
+for mod in BLOCKED:
+    assert mod not in sys.modules, mod + " was imported despite the block"
+print("OK")
+"""
+    proc = run_subprocess_utf8([sys.executable, "-c", script], capture_output=True, text=True)
+    assert proc.returncode == 0, f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    assert "OK" in proc.stdout
 
 
 def test_validate_invalid_recipe_raises():
@@ -219,7 +320,7 @@ def test_run_refined_parameters_has_nine_columns(lab6_subprocess_run):
 
 def test_run_auto_fallback_returns_full_structured_data(recipe_LaB6_dict, tmp_path):
     """GSASClient fallback (server down) returns full structured DataFrames identical to subprocess mode."""
-    client = powderline.GSASClient(fallback_to_subprocess=True)
+    client = GSASClient(fallback_to_subprocess=True)
     result = client.submit_simulation(
         recipe=recipe_LaB6_dict,
         output_dir=tmp_path / "out",
@@ -253,7 +354,7 @@ def test_run_auto_fallback_returns_full_structured_data(recipe_LaB6_dict, tmp_pa
 
 def test_gsasclient_accepts_dict(recipe_LaB6_dict, tmp_path):
     """GSASClient.submit_simulation() accepts a plain dict (no file required)."""
-    client = powderline.GSASClient(fallback_to_subprocess=True)
+    client = GSASClient(fallback_to_subprocess=True)
     result = client.submit_simulation(
         recipe=recipe_LaB6_dict,
         output_dir=tmp_path / "out",
@@ -264,7 +365,7 @@ def test_gsasclient_accepts_dict(recipe_LaB6_dict, tmp_path):
 
 def test_gsasclient_accepts_recipemodel(recipe_LaB6_model, tmp_path):
     """GSASClient.submit_simulation() accepts a RecipeModel instance."""
-    client = powderline.GSASClient(fallback_to_subprocess=True)
+    client = GSASClient(fallback_to_subprocess=True)
     result = client.submit_simulation(
         recipe=recipe_LaB6_model,
         output_dir=tmp_path / "out",
@@ -275,7 +376,7 @@ def test_gsasclient_accepts_recipemodel(recipe_LaB6_model, tmp_path):
 
 def test_gsasclient_accepts_path(tmp_path):
     """GSASClient.submit_simulation() still accepts a Path (backward compat)."""
-    client = powderline.GSASClient(fallback_to_subprocess=True)
+    client = GSASClient(fallback_to_subprocess=True)
     result = client.submit_simulation(
         recipe=Path("examples/example_LaB6/input.json"),
         output_dir=tmp_path / "out",
@@ -327,7 +428,7 @@ def test_run_failure_result_normalization(recipe_LaB6_dict, tmp_path):
         "method": "subprocess",
     }
 
-    with patch("powderline.kicker.run_refinement", return_value=minimal_failure):
+    with patch("powderline.gateways.gsasii.gateway.run_refinement", return_value=minimal_failure):
         result = powderline.run(
             recipe_LaB6_dict,
             tmp_path / "out",
@@ -412,7 +513,6 @@ def test_run_server_mode_failure_normalizes_result(recipe_LaB6_dict, tmp_path):
 def test_submit_to_server_retries_on_connect_error(recipe_LaB6_dict, tmp_path):
     """_submit_to_server() retries up to 3 times on ConnectError before raising."""
     import httpx
-    from powderline.gsas_client import GSASClient
 
     client = GSASClient()
     connect_error = httpx.ConnectError("Simulated connection refused")
@@ -431,7 +531,6 @@ def test_submit_to_server_does_not_retry_on_http_status_error(
 ):
     """_submit_to_server() raises immediately on HTTP status errors (no retry)."""
     import httpx
-    from powderline.gsas_client import GSASClient
 
     client = GSASClient()
     mock_response = MagicMock()
