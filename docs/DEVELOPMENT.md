@@ -929,27 +929,43 @@ See `examples/CONTRIBUTING_EXAMPLES.md` for detailed guidelines.
 
 ### Running Tests
 
+Every test carries exactly one suite marker (`pyproject.toml`
+`[tool.pytest.ini_options] markers`; `tests/conftest.py` refuses a collection
+where one is missing or doubled), and the pixi tasks select on them:
+
 ```bash
-# All tests
+# Engine-free suites (core + topas_gen): any env, the default one included.
+# Installs the core guard: an engine import or a tc.exe run fails loudly.
 pixi run test
 
-# Specific test file
-pixi run pytest tests/test_example_LaB6_regression.py
+# Engine suites, each in its env (the slow regressions are part of test-gsasii)
+pixi run -e gsasii test-gsasii
+pixi run -e easydiffraction test-easydiffraction
 
-# With verbose output
-pixi run pytest -v
+# TOPAS: generation everywhere; topas_exec needs tc.exe (none exists yet)
+pixi run test-topas
 
-# See stdout/stderr
-pixi run pytest -s
+# Everything, in the dev env -- the pre-merge gauntlet
+pixi run test-all
+
+# Extra pytest arguments pass through
+pixi run test -x -k schema
+pixi run -e gsasii test-gsasii -m "gsasii and not slow"
 ```
 
-**Regression test strategy:**
-- Exact matching of Rwp, unit cell parameters, peak counts
-- Detects any changes in GSAS-II refinement algorithm
-- Reference outputs committed to git for comparison
-- If test fails: inspect .lst file to determine if change is expected or bug
+Markers: `core` (imports no engine, runs no engine subprocess -- the schema
+layer of every gateway included), `gsasii`, `topas_gen` (engine-free TOPAS
+input generation), `topas_exec` (tc.exe), `easydiffraction`, plus the optional
+`slow` (a full refinement runs). `POWDERLINE_CORE_GUARD=1` forces the guard on
+for a path or `-k` selection; `=0` turns it off.
 
-**Note on test speed:** All tests currently run as a single suite (`pixi run test`). Introducing `@pytest.mark.slow` / `@pytest.mark.integration` markers to allow skipping GSAS-II-dependent tests in CI is planned.
+**Regression test strategy:**
+- Rwp, unit cell parameters and refined values compared within the tolerances
+  of `regression-tolerance.md`; peak lists by row count
+- Detects any change in the engine's refinement result
+- Reference outputs committed to git for comparison
+- If a test fails: inspect the `.lst` file to determine whether the change is
+  expected or a bug; a new engine version goes through `engine-versions.md`
 
 ### Template File Detection
 
