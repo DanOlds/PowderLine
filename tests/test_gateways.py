@@ -546,7 +546,7 @@ print("OK")
 
 
 def test_native_package_imports_are_legacy_free():
-    """Importing the topas package and the native TOPAS runner loads no 0.26.0 module (re/07 B).
+    """Importing the topas/easydiffraction packages and the native TOPAS runner loads no 0.26.0 module (re/07 B).
 
     The legacy translation modules are deleted later in re/07; the native paths
     must not depend on them at import time. The legacy branch of each gateway
@@ -556,12 +556,16 @@ def test_native_package_imports_are_legacy_free():
 import sys
 import powderline.gateways.topas
 import powderline.gateways.topas.native_run
+import powderline.gateways.easydiffraction
 legacy = [m for m in sys.modules if m in (
     "powderline.gateways.topas.writer", "powderline.gateways.topas.roundtrip",
     "powderline.gateways.topas.engine", "powderline.gateways.topas.kicker",
+    "powderline.gateways.easydiffraction.engine", "powderline.gateways.easydiffraction.builder",
+    "powderline.gateways.easydiffraction.policy", "powderline.gateways.easydiffraction.conversions",
 )]
 assert not legacy, f"legacy modules loaded at package import: {legacy}"
 from powderline.gateways.topas import TopasTranslationError
+from powderline.gateways.easydiffraction import EasyDiffractionTranslationError
 print("OK")
 """
     proc = run_subprocess_utf8([sys.executable, "-c", script], capture_output=True, text=True)
