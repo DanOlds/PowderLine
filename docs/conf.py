@@ -31,8 +31,8 @@ extensions = [
 ]
 
 # GSAS-II is a heavy conda dependency absent from the doc-build
-# environment; mock it so autodoc can import powderline.kicker
-# (kicker.py imports `from GSASII import ...` unguarded at module top).
+# environment; mock it so autodoc can import the GSAS-II gateway's runtime
+# modules (gateways/gsasii/{setters,extractors,...}.py import GSASII at top).
 autodoc_mock_imports = ["GSASII"]
 
 # Napoleon settings for Google/NumPy style docstrings
@@ -73,11 +73,6 @@ nitpick_ignore = [
     # inventory to link against.
     ('py:class', 'annotated_types.Gt'),
     ('py:class', 'annotated_types.Ge'),
-    # `RefinementParameter`'s auto-generated "alias of Annotated[...]" line
-    # (see its `#:` doc-comment in schema.py) spells out its real
-    # `PlainSerializer(func=<lambda>, ...)` metadata; Sphinx's stringifier
-    # renders the lambda's qualname fragment as its own bogus xref target.
-    ('py:class', 'lambda'),
     # The GSAS-II extractors' signatures (ledger R22) name the native recipe
     # models; api.rst does not autodoc the gsasii schema module yet (re/10),
     # so the rendered type hints have no link target (re/07, P-22).
@@ -85,50 +80,6 @@ nitpick_ignore = [
     ('py:class', 'powderline.gateways.gsasii.schema.GsasiiSpfRecipe'),
 ]
 
-
-# Sphinx's type-hint renderer emits ``py:class`` references for bare names in
-# annotations, even when the target is a module-level type alias documented as
-# ``py:data``. Keep this workaround explicit so misspelled or wrong-role class
-# references still warn under ``nitpicky = True``.
-_TYPE_ALIAS_OBJ_FALLBACK_TARGETS = {
-    'RefinementParameter',
-    'powderline.schema.RefinementParameter',
-}
-
-
-def _resolve_type_alias_as_data(app, env, node, contnode):
-    """Fall back to a ``py:obj``-style lookup for unresolved ``py:class`` refs.
-    Resolve known type aliases documented as Python data objects.
-
-    Type-hint rendering always emits a ``:py:class:`` xref for any bare
-    identifier (see ``sphinx.domains.python._annotations.parse_reftarget``),
-    even when the identifier is actually a module-level type alias documented
-    as ``py:data`` (e.g. ``RefinementParameter = Annotated[...]``). The
-    Python domain's ``class`` role only searches ``class``/``exception``
-    objtypes, so such a ref can never resolve as-is -- regardless of how the
-    alias itself is documented. Retry it as an ``obj`` lookup, which every
-    objtype (data, type, attribute, ...) satisfies.
-    ``RefinementParameter`` is a module-level ``Annotated[...]`` alias. Sphinx
-    renders references to it from type annotations as ``py:class`` links, but
-    the Python domain's ``class`` role only searches class/exception objects.
-    Retry just this explicit alias set as ``py:obj`` so it can link to its
-    ``py:data`` documentation while preserving warnings for all other
-    unresolved class references.
-    """
-    if (
-        node.get('refdomain') != 'py'
-        or node.get('reftype') != 'class'
-        or node.get('reftarget') not in _TYPE_ALIAS_OBJ_FALLBACK_TARGETS
-    ):
-        return None
-
-    py_domain = env.get_domain('py')
-    return py_domain.resolve_xref(
-        env, node['refdoc'], app.builder, 'obj', node['reftarget'], node, contnode)
-
-
-def setup(app):
-    app.connect('missing-reference', _resolve_type_alias_as_data)
 
 # MyST parser settings for Markdown support
 myst_enable_extensions = [
@@ -170,6 +121,3 @@ autodoc_default_options = {
 
 # Type hints configuration
 autodoc_typehints = 'signature'
-autodoc_type_aliases = {
-    'RefinementParameter': 'powderline.schema.RefinementParameter',
-}

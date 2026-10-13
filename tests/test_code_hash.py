@@ -1,21 +1,19 @@
-"""Test that GSAS-II gateway module code changes are accompanied by a version bump.
+"""Test that the frozen GSAS-II gateway modules change only with a recorded hash update.
 
 WHY THIS EXISTS:
-    The GSAS-II server loads the GSAS-II gateway modules
-    (src/powderline/gateways/gsasii/) once at startup and caches them in memory.
-    If those modules change on disk, running servers still use the old code. The
-    schema_version in each recipe is validated against EXPECTED_SCHEMA_VERSION
-    in schema.py, so bumping the version forces stale servers to reject new
-    recipes and restart with fresh code. Without this, tests pass locally
-    (subprocess mode uses current code) but fail in production (server mode
-    uses stale cached code).
+    The GSAS-II setup/execution code (src/powderline/gateways/gsasii/
+    helpers, project, setters, executors, extractors, constraints) is frozen
+    for the multi-engine refactor (master plan invariant 1, A39): it moves
+    verbatim, and every edit goes through the signed edits ledger. The hash
+    manifest is the tripwire. The GSAS-II server also caches these modules in
+    memory, so a change on disk needs a server restart (pixi run gsas-server
+    restart).
 
 WHEN THIS TEST FAILS:
-    A GSAS-II gateway module was modified but _code_hash.json was not updated. Fix it:
+    A hashed module was modified but _code_hash.json was not updated. Fix it:
 
-    1. If output behavior changed (new files, format changes, column additions):
-       bump EXPECTED_SCHEMA_VERSION in schema.py and update schema_version
-       in all examples/*/input.json files.
+    1. Record the edit (ledger row) if the module is frozen, or bump the
+       engine_schema_version where the output behaviour changed.
     2. Run: pixi run update-code-hash
     3. Commit _code_hash.json alongside your changes.
 
@@ -40,7 +38,6 @@ EXPECTED_MODULES = (
     "executors.py",
     "extractors.py",
     "constraints.py",
-    "_legacy_executor.py",
 )
 
 
@@ -65,8 +62,8 @@ def test_gateway_hashes_match(module_name):
     If this test fails, it means a gateway module was modified without updating
     the code hash. To fix:
 
-    1. If output behavior changed: bump EXPECTED_SCHEMA_VERSION in schema.py
-       and update schema_version in all examples/*/input.json files.
+    1. Record the edit (ledger row), or bump the engine_schema_version where the
+       output behaviour changed.
     2. Run: pixi run update-code-hash
     3. Commit the updated _code_hash.json along with your changes.
     """
@@ -85,7 +82,7 @@ def test_gateway_hashes_match(module_name):
         f"\n{module_name} has changed but _code_hash.json was not updated!\n"
         f"  Stored hash:  {stored_hash}\n"
         f"  Current hash: {current_hash}\n\n"
-        f"If gateway module output behavior changed, bump EXPECTED_SCHEMA_VERSION in schema.py.\n"
+        f"Record the edit in the frozen-edits ledger (or bump engine_schema_version).\n"
         f"Then run: pixi run update-code-hash\n"
         f"See docs/DEVELOPMENT.md 'Schema Version Discipline' for details."
     )

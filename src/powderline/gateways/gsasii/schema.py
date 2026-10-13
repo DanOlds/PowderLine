@@ -667,10 +667,10 @@ _RECIPE_MODELS = {"gsasii.rietveld": GsasiiRietveldRecipe, "gsasii.spf": GsasiiS
 
 
 def is_native_recipe(recipe) -> bool:
-    """True for a ``gsasii.*`` recipe (dict or model); False for anything else (e.g. 0.26.0 ``GSASII_*``).
+    """True for a ``gsasii.*`` recipe (dict or model); False for anything else.
 
     Any ``gsasii.`` name counts, so a mistyped one (``gsasii.reitveld``) is
-    reported against the native schema names, not the 0.26.0 schema.
+    reported against the gsasii schema names.
     """
     if isinstance(recipe, (GsasiiRietveldRecipe, GsasiiSpfRecipe)):
         return True

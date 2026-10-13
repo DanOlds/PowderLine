@@ -18,9 +18,10 @@ from pathlib import Path
 
 import pytest
 
-from powderline.gsas_client import GSASClient
+from powderline.gateways.gsasii.client import GSASClient
 
-RECIPE = {"schema_name": "GSASII_Rietveld", "schema_version": "0.26.0", "payload": {}}
+#: Never validated on these paths (the submit methods are monkeypatched); the shape is enough.
+RECIPE = {"schema_name": "gsasii.rietveld", "payload": {}}
 
 
 @pytest.fixture

@@ -93,6 +93,31 @@ def test_xrd_negative_intensity_ok():
     assert m.Itth[0] == -5.0
 
 
+def test_xrd_zero_weight_point_ok():
+    # A single 0 weight is fine (excludes that point) as long as one weight is > 0.
+    m = XRDData(tth=[1.0, 2.0], Itth=[10.0, 20.0], Itth_weights=[0.0, 1.0])
+    assert m.Itth_weights == [0.0, 1.0]
+
+
+def test_xrd_single_point_ok():
+    # A one-point pattern is degenerate but well-formed: the strictly-increasing
+    # check must be vacuously satisfied (np.diff of one element is empty).
+    m = XRDData(tth=[10.0], Itth=[100.0], Itth_weights=[2.0])
+    assert m.tth == [10.0]
+
+
+def test_xrd_negative_zero_weight_ok():
+    # -0.0 compares equal to 0.0: it is an exclusion marker, not a negative weight.
+    m = XRDData(tth=[1.0, 2.0], Itth=[10.0, 20.0], Itth_weights=[-0.0, 1.0])
+    assert m.Itth_weights[0] == 0.0
+
+
+def test_xrd_all_negative_zero_weights_raise():
+    # ... but all -0.0 weights still means nothing to fit.
+    with pytest.raises(ValidationError, match="all zero"):
+        XRDData(tth=[1.0, 2.0], Itth=[10.0, 20.0], Itth_weights=[-0.0, -0.0])
+
+
 def test_xrd_extra_key_rejected():
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         XRDData(tth=[1.0, 2.0], Itth=[10.0, 20.0], Itth_weights=[1.0, 1.0], unknown_field="foo")

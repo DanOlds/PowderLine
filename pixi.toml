@@ -11,7 +11,7 @@ kicker = "PYTHONPATH=$PWD/src:$PYTHONPATH python src/powderline/kicker.py"
 # Cross-platform (task-level env avoids Unix-only shell syntax; see
 # docs/cross-platform-guide.md Issue B for the remaining tasks)
 mp-simulate = { cmd = "python -m powderline.gateways.gsasii.mp_simulate", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
-gsas-server = "PYTHONPATH=$PWD/src:$PYTHONPATH python src/powderline/gsas_server.py"
+gsas-server = { cmd = "python -m powderline.gateways.gsasii.server", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
 test = "PYTHONPATH=$PWD/src:$PYTHONPATH pytest -v"
 docs = "sphinx-build -W --keep-going -b html docs docs/_build/html"
 docs-clean = "rm -rf docs/_build"

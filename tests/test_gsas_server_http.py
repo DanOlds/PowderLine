@@ -67,7 +67,7 @@ def test_server(server_port):
 
     # Try to start test server
     src_dir = Path(__file__).parent.parent / 'src'
-    server_script = src_dir / 'powderline' / 'gsas_server.py'
+    server_script = src_dir / 'powderline' / 'gateways' / 'gsasii' / 'server.py'
 
     if not server_script.exists():
         pytest.skip(f"Server script not found: {server_script}")

@@ -182,7 +182,7 @@ def test_extract_refined_params_empty_covariance_returns_empty_dict():
     The RuntimeError at the call site only fires when GSAS-II DID populate a varyList
     but extraction still returned nothing (indicating corrupt covariance data).
     """
-    from powderline.kicker import extract_refined_params_from_project  # noqa: PLC0415
+    from powderline.gateways.gsasii.extractors import extract_refined_params_from_project  # noqa: PLC0415
 
     mock_proj = MagicMock()
     mock_proj.data = {"Covariance": {"data": {}}}
@@ -200,7 +200,7 @@ def test_extract_refined_params_missing_covariance_key_returns_empty_dict():
     entirely absent from proj.data (e.g. a freshly constructed project that has not
     been refined yet, or SPF mode).
     """
-    from powderline.kicker import extract_refined_params_from_project  # noqa: PLC0415
+    from powderline.gateways.gsasii.extractors import extract_refined_params_from_project  # noqa: PLC0415
 
     mock_proj = MagicMock()
     mock_proj.data = {}  # No 'Covariance' key at all
@@ -216,7 +216,7 @@ def test_extract_refined_params_populated_varylast_returns_params():
     extract_refined_params_from_project() returns a non-empty dict when covariance
     data has a non-empty varyList. This is the normal post-refinement case.
     """
-    from powderline.kicker import extract_refined_params_from_project  # noqa: PLC0415
+    from powderline.gateways.gsasii.extractors import extract_refined_params_from_project  # noqa: PLC0415
 
     import numpy as np
 

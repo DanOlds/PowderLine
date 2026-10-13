@@ -272,8 +272,8 @@ stop on any example). What it changed, per example:
 | `example_LaB6_singlepeakfit` | `GSASII_SPF` → `gsasii.spf`; `UID` → `metadata`; SH/L 0.0 → 0.002 (A91); background `pv_gaussian_sigma` → `pv_gaussian_sigma_sq` (A89) |
 | `example_DRX_33`, `_anisoADP`, `_atomrefine`, `_simulation`, `_strainonly` | `UID` → `metadata`; SH/L 0.0005 → 0.002 (A91); one background peak with null entries dropped (D4); `unit_cell.volume` dropped (A75); `C2/m` → `C 1 2/m 1` (A105); the stated `Multiplicity: 1` of the seven Li4MgWO6_SG12 atoms dropped (derived 4/4/2/4/8/4/2; A101) |
 
-The pre-conversion recipes are kept byte-identical in `tests/data/legacy_026/`
-for the tests of the 0.26.0 path until that path is deleted (P-16).
+The pre-conversion recipes are kept byte-identical in `tests/data/convert_026/`
+as the converter's test fixtures (P-16, P-23); the 0.26.0 path itself is gone.
 
 ## topas engine schema
 

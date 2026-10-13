@@ -16,17 +16,11 @@ An engine flag given for a recipe of another engine is an error. Exit status 0 o
 Engine-free: this module imports no engine; GSAS-II is imported by the gsasii
 gateway when a gsasii recipe runs.
 
-**Transitional facade (removed with the 0.26.0 schema):** the GSAS-II
-implementation names that ``powderline.kicker`` used to re-export
-(``run_refinement``, the setters/extractors, ``G2``, ...) still resolve, lazily,
-through the module ``__getattr__`` below, so existing imports and test patches
-keep working without this module importing GSAS-II itself.
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib
 import sys
 from pathlib import Path
 from typing import Any
@@ -35,7 +29,7 @@ from pydantic import ValidationError
 
 from powderline import api
 from powderline._status import CHECK, CROSS, INFO, WARN, emoji
-from powderline.api import run, validate  # noqa: F401  (the CLI's entry points; also ``powderline.kicker.run``)
+from powderline.api import run
 from powderline.exceptions import PowderLineError
 from powderline.recipes import load_recipe_asset
 
@@ -290,57 +284,6 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"{CHECK} Refinement complete.\n")
     return 0
-
-
-# --- transitional facade: ``powderline.kicker.<GSAS-II implementation name>`` -----------------------
-
-_GSASII_MODULES = {
-    "G2": "GSASII.GSASIIscriptable", "G2lat": "GSASII.GSASIIlattice", "G2mv": "GSASII.GSASIImapvars",
-    "G2obj": "GSASII.GSASIIobj", "G2spc": "GSASII.GSASIIspc", "G2elem": "GSASII.GSASIIElem",
-    "G2pwd": "GSASII.GSASIIpwd",
-}
-_FACADE_NAMES = {
-    "powderline.gateways.gsasii.helpers": (
-        "OutputNamingConfig", "OUTPUT_NAMING", "DEFAULT_HIST_SCALE_VAL", "DEFAULT_HIST_SCALE_REFINE_FLAG",
-        "DEFAULT_PHASE_CRYSTALLITE_SIZE", "DEFAULT_PHASE_MICROSTRAIN", "DEFAULT_SPF_SIGMA_MIN",
-        "DEFAULT_SPF_GAMMA_MIN", "unpack_refinement_parameter", "require_phase", "calculate_peak_widths",
-        "has_active_refinement_parameter"),
-    "powderline.gateways.gsasii.project": (
-        "InstParmValue", "InstParmDict", "G2InstParmDict", "_to_gsasii_instparm_dict",
-        "add_powder_histogram_from_arrays", "add_phase_from_cif_dict", "add_phases_from_dict"),
-    "powderline.gateways.gsasii.setters": (
-        "set_hist_scale", "set_fit_range_hist", "set_chebyshev_background", "set_single_peak_background",
-        "set_single_peaks", "set_phase_scale", "set_phase_unit_cell", "set_phase_size_broadening",
-        "_set_isotropic_size_broadening", "set_phase_strain_broadening", "_set_isotropic_strain_broadening",
-        "set_phase_atom_parameters", "set_phase_parameterization", "set_instrument_parameterization",
-        "set_refinement_cycles"),
-    "powderline.gateways.gsasii.executors": (
-        "_refine_with_message", "execute_rietveld_refinement", "execute_spf_refinement", "SCHEMA_EXECUTORS"),
-    "powderline.gateways.gsasii.routing": ("run_refinement",),
-    "powderline.gateways.gsasii.extractors": (
-        "calculate_cell_esds_from_A_matrix", "extract_refined_params_from_project",
-        "extract_refined_params_from_lst", "get_descriptive_param_name", "parse_parameter_associations",
-        "build_phase_name_mapping", "build_atom_name_mapping", "export_refined_parameters_csv",
-        "_extract_fit_profile", "_extract_spf_peak_report", "_extract_phase_reports",
-        "_extract_refined_parameters"),
-    "powderline.gateways.gsasii.validation": ("validate_simulation_mode_parameters",),
-    "powderline.gateways.gsasii.schema": ("is_native_recipe",),
-    "powderline.schema_core": ("collect_warnings",),
-    "powderline.schema": ("RecipeModel", "RefinementControls"),
-    "powderline.constraints": ("atom_refinement_plan", "cell_refinement_plan"),
-}
-_FACADE = {name: (module, name) for module, names in _FACADE_NAMES.items() for name in names}
-_FACADE.update({alias: (module, None) for alias, module in _GSASII_MODULES.items()})
-
-
-def __getattr__(name: str):
-    """Resolve a legacy ``powderline.kicker.<name>`` lazily (PEP 562); imports GSAS-II only when asked for."""
-    try:
-        module_name, attr = _FACADE[name]
-    except KeyError:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
-    module = importlib.import_module(module_name)
-    return module if attr is None else getattr(module, attr)
 
 
 if __name__ == "__main__":

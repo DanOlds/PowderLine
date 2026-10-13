@@ -19,13 +19,11 @@ HASHED_MODULES = (
     "executors.py",
     "extractors.py",
     "constraints.py",
-    "_legacy_executor.py",  # verbatim 0.26.0 copy (re/04, A39); removed in re/07
 )
 
 
 def main():
     current = json.loads(HASH_FILE.read_text(encoding="utf-8"))
-    schema_version = current.get("schema_version")
 
     # Compute new hashes
     new_hashes = {}
@@ -49,19 +47,22 @@ def main():
         else:
             changed.append(f"{module_name}: {old_hash} -> {new_hash}")
 
-    if not changed:
+    stale = sorted(set(current) - {"gsasii_gateway_hashes"}) + sorted(set(old_manifest) - set(HASHED_MODULES))
+    if not changed and not stale:
         print("All hashes unchanged:")
         for line in unchanged:
             print(f"  {line}")
         return
 
     # Write updated manifest
-    manifest = {"schema_version": schema_version, "gsasii_gateway_hashes": new_hashes}
+    manifest = {"gsasii_gateway_hashes": new_hashes}
     HASH_FILE.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
     print("Updated _code_hash.json:")
     for line in changed:
         print(f"  {line}")
+    for key in stale:
+        print(f"  {key}: removed (no longer in the manifest)")
     if unchanged:
         print("Unchanged:")
         for line in unchanged:

@@ -231,12 +231,3 @@ print("OK")
     assert proc.returncode == 0, f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
     assert "OK" in proc.stdout
 
-
-def test_legacy_facade_resolves_lazily():
-    """``powderline.kicker.<GSAS-II name>`` still resolves (transitional), without the CLI importing GSAS-II itself."""
-    from powderline.gateways.gsasii.routing import run_refinement
-
-    assert kicker.run_refinement is run_refinement
-    assert kicker.load_recipe_asset is __import__("powderline").load_recipe_asset
-    with pytest.raises(AttributeError, match="no attribute 'nonexistent_name'"):
-        kicker.nonexistent_name

@@ -121,7 +121,7 @@ def test_validate_is_engine_free():
 
     The re/08 precondition: the core-only environment validates any recipe.
     """
-    legacy = str(REPO / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json")  # 0.26.0 input of the converter
+    legacy = str(REPO / "tests" / "data" / "convert_026" / "example_LaB6" / "input.json")  # the converter's 0.26.0 fixture (P-23)
     gsasii_native = str(REPO / "examples" / "example_LaB6" / "input.json")
     topas_native = str(REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json")
     easy_native = str(REPO / "tests" / "data" / "easydiffraction" / "native" / "lab6_crysfml_tch.json")
@@ -466,7 +466,7 @@ def test_run_auto_mode_falls_back_to_subprocess_when_server_unavailable(
     recipe_LaB6_dict, tmp_path
 ):
     """run(execution_mode='auto') falls back to subprocess when server cannot be started."""
-    from powderline import gsas_client as _gc
+    from powderline.gateways.gsasii import client as _gc
 
     with patch.object(_gc.GSASClient, "is_server_available", return_value=False), \
          patch.object(_gc.GSASClient, "_start_server_background", return_value=False):
@@ -491,7 +491,7 @@ def test_run_server_mode_failure_normalizes_result(recipe_LaB6_dict, tmp_path):
     must still pass through DataFrame normalization so callers can safely
     access result['fit_profile'], result['refined_parameters'], etc.
     """
-    from powderline import gsas_client as _gc
+    from powderline.gateways.gsasii import client as _gc
 
     with patch.object(_gc.GSASClient, "is_server_available", return_value=False), \
          patch.object(_gc.GSASClient, "_start_server_background", return_value=False):

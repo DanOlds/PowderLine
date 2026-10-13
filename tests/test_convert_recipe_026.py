@@ -3,8 +3,9 @@
 One test per rule, a synthetic ADP switch in both directions (no committed
 example has one), and every 0.26.0 example converted: the result validates,
 or the conversion stops for a stated reason. The 0.26.0 inputs are the
-snapshots in ``tests/data/legacy_026/`` (the committed examples are native
-``gsasii.*`` recipes since re/07; P-16).
+converter's fixtures in ``tests/data/convert_026/`` (the pre-conversion
+examples, byte-identical; the committed examples are native ``gsasii.*``
+recipes since re/07; P-16, P-23).
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ _spec = importlib.util.spec_from_file_location("convert_recipe_026", ROOT / "scr
 conv = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(conv)
 
-LEGACY = ROOT / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
+LEGACY = ROOT / "tests" / "data" / "convert_026"  # the converter's 0.26.0 fixtures (re/07, P-23)
 EXAMPLES = sorted(LEGACY.glob("*/input.json"))
 
 
