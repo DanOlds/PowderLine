@@ -20,6 +20,7 @@ fresh clone to a finished refinement, on Linux or Windows.
    quickstart
    getting-started
    schemas
+   fields
    integration-guide
    cross-engine-comparison
    mp-simulation

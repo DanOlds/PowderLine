@@ -37,7 +37,8 @@ fill-in-the-blanks skeletons that the CLI refuses to run (`template` in the
 path): copy one into your own directory, fill the blanks (data arrays,
 wavelength, element symbols), and validate the copy.
 
-The schema changelog is [SCHEMA_HISTORY](SCHEMA_HISTORY.md).
+Field-by-field tables, with units, are on the [fields page](fields.md). The
+schema changelog is [SCHEMA_HISTORY](SCHEMA_HISTORY.md).
 
 ## Minimum inputs
 
