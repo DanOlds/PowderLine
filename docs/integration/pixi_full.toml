@@ -68,7 +68,8 @@ pip = ">=25.0"
 # recipe). Pin the same rev PowderLine uses for reproducible refinement results —
 # a GSAS-II (or scipy/BLAS) change can shift refined values. Currently resolves to
 # GSAS-II v5.7.9.
-GSAS-II = { git = "https://github.com/tacaswell/GSAS-II", rev = "enh/pixi_pkg" }
+# (commit of the fork's `enh/pixi_pkg` branch, as in PowderLine's pixi.toml feature `gsasii`)
+GSAS-II = { git = "https://github.com/tacaswell/GSAS-II", rev = "e0910fc19bdd829a10f0204e3e4f4eaa38ad5e0f" }
 
 [pypi-dependencies]
 # EDIT THIS PATH to point to your local clone of the PowderLine repository.
