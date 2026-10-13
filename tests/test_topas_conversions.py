@@ -174,3 +174,14 @@ def test_size_strain_equation_strings_match_blueprint():
     assert cv.strain_gauss_fwhm_eq("LaB6_strain_eta", "LaB6_strain") == (
         "1.8e-4 (1 - LaB6_strain_eta) LaB6_strain Tan(Th) / Pi"
     )
+
+
+# --- peak widths (moved from test_topas_spf, re/07 H) ---------------------------
+
+
+def test_peak_widths_math():
+    fg, fl, fpv, ibg, ibl, ibpv = cv.peak_widths(0.1, 0.05)
+    assert fg == pytest.approx(2.0 * math.sqrt(2 * math.log(2)) * 0.1)
+    assert fl == pytest.approx(0.1)  # 2 * HWHM
+    assert fg < fpv and fl < fpv  # pV FWHM exceeds each component
+    assert ibg == pytest.approx(fg * math.sqrt(math.pi / (4 * math.log(2))))

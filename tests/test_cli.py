@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -20,7 +21,6 @@ from subprocess_utils import run_subprocess_utf8
 
 REPO = Path(__file__).resolve().parent.parent
 LAB6 = REPO / "examples" / "example_LaB6" / "input.json"  # gsasii.rietveld
-LEGACY_LAB6 = REPO / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json"  # 0.26.0 snapshot (P-16)
 TOPAS_LAB6 = REPO / "tests" / "data" / "topas" / "native" / "lab6_rietveld.json"
 TOPAS_SPF = REPO / "tests" / "data" / "topas" / "native" / "lab6_spf.json"
 EASY_LAB6 = REPO / "tests" / "data" / "easydiffraction" / "native" / "lab6_crysfml_tch.json"
@@ -37,15 +37,6 @@ def test_validate_only_gsasii_native_recipe(capsys):
     assert "Schema name: gsasii.rietveld" in out
     assert "Core schema version: 1.0.0" in out and "Engine schema version: 1.0.0" in out
     assert "gsasii_broadening_default_applied" in out  # the structured warnings are shown
-
-
-def test_validate_only_legacy_gsasii_recipe(capsys):
-    rc = kicker.main([str(LEGACY_LAB6), "--validate-only", "--no-server"])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "Recipe validation successful" in out
-    assert "Schema name: GSASII_Rietveld" in out
-    assert "Schema version: 0.26.0" in out
 
 
 def test_validate_only_topas_native_recipe(capsys):
@@ -71,6 +62,40 @@ def test_validate_only_writes_nothing(tmp_path):
     rc = kicker.main([str(TOPAS_LAB6), "--validate-only", "--output", str(out)])
     assert rc == 0
     assert not out.exists()
+
+
+# --- a TOPAS run through the one CLI (moved from test_topas_cli, re/07 H) ------------------------
+
+
+def _no_tc_exe(monkeypatch):
+    monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe", lambda *a, **kw: None)
+
+
+def test_cli_topas_default_output_path_is_beside_the_recipe(tmp_path, monkeypatch, capsys):
+    """No --output: the run writes to <recipe dir>/output, the base name is the recipe's directory.
+
+    Without tc.exe the native runner generates the INP and xye only and reports
+    the run as failed (tc.exe not found), so the CLI exits 1 with that message.
+    """
+    _no_tc_exe(monkeypatch)
+    case_dir = tmp_path / "example_case"
+    case_dir.mkdir()
+    shutil.copy(TOPAS_LAB6, case_dir / "input.json")
+    rc = kicker.main([str(case_dir / "input.json"), "--topas-version", "6"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "Refinement failed" in out and "tc.exe not found" in out
+    assert (case_dir / "output" / "example_case.inp").exists()
+    assert (case_dir / "output" / "example_case.xye").exists()
+
+
+def test_cli_topas_output_dir_flag(tmp_path, monkeypatch):
+    """--output DIR: the INP and xye land in DIR (base name ``topas`` unless DIR is a case's ``output``)."""
+    _no_tc_exe(monkeypatch)
+    out = tmp_path / "lab6_run"
+    rc = kicker.main([str(TOPAS_LAB6), "--output", str(out)])
+    assert rc == 1  # generate-only, see above
+    assert (out / "topas.inp").exists() and (out / "topas.xye").exists()
 
 
 # --- engine flags ---------------------------------------------------------------------------------
@@ -160,8 +185,7 @@ def test_cli_unknown_engine_exits_1_with_the_registry_message(tmp_path, capsys):
 # --- template guard ------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("schema_name", ["GSASII_Rietveld", "gsasii.rietveld", "topas.rietveld",
-                                         "easydiffraction.rietveld"])
+@pytest.mark.parametrize("schema_name", ["gsasii.rietveld", "topas.rietveld", "easydiffraction.rietveld"])
 def test_is_template_file_rietveld_needs_phases(schema_name):
     payload = {"xrd_data": {}, "instrument": {}, "refinement_controls": {}}
     is_template, reason = kicker.is_template_file({"schema_name": schema_name, "payload": payload}, Path("in.json"))
@@ -170,7 +194,7 @@ def test_is_template_file_rietveld_needs_phases(schema_name):
     assert kicker.is_template_file({"schema_name": schema_name, "payload": payload}, Path("in.json")) == (False, None)
 
 
-@pytest.mark.parametrize("schema_name", ["GSASII_SPF", "gsasii.spf", "topas.spf"])
+@pytest.mark.parametrize("schema_name", ["gsasii.spf", "topas.spf"])
 def test_is_template_file_spf_needs_single_peaks(schema_name):
     payload = {"xrd_data": {}, "instrument": {}, "refinement_controls": {}}
     is_template, reason = kicker.is_template_file({"schema_name": schema_name, "payload": payload}, Path("in.json"))
@@ -178,7 +202,7 @@ def test_is_template_file_spf_needs_single_peaks(schema_name):
 
 
 def test_is_template_file_real_fixtures_are_not_templates():
-    for path in (LAB6, LEGACY_LAB6, TOPAS_LAB6, TOPAS_SPF, EASY_LAB6):
+    for path in (LAB6, TOPAS_LAB6, TOPAS_SPF, EASY_LAB6):
         assert kicker.is_template_file(json.loads(path.read_text(encoding="utf-8")), path) == (False, None)
 
 
@@ -197,7 +221,7 @@ class _Block(importlib.abc.MetaPathFinder):
         return None
 sys.meta_path.insert(0, _Block())
 from powderline import kicker
-for recipe in (r'{LAB6}', r'{LEGACY_LAB6}', r'{TOPAS_LAB6}', r'{EASY_LAB6}'):
+for recipe in (r'{LAB6}', r'{TOPAS_LAB6}', r'{EASY_LAB6}'):
     assert kicker.main([recipe, "--validate-only"]) == 0, recipe
 for mod in BLOCKED:
     assert mod not in sys.modules, mod

@@ -10,14 +10,17 @@ import json
 import math
 import os
 import re
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from powderline.exceptions import EngineExecutionError, EngineVersionError
-from powderline.gateways.topas import gateway, native_run, native_writer, schema
+from powderline.gateways.topas import gateway, native_run, native_writer, peak_list, schema
+from subprocess_utils import run_subprocess_utf8
 from test_topas_schema import P, _rietveld, _spf
 
 
@@ -773,18 +776,6 @@ def test_gateway_validate_native_dict():
     assert isinstance(result, schema.TopasRietveldRecipe)
 
 
-def test_gateway_validate_legacy_recipe():
-    """gateway.validate on 0.26.0 LaB6 example returns RecipeModel."""
-    from powderline.schema import RecipeModel
-
-    # Load the 0.26.0 example
-    example_path = Path(__file__).parent.parent / "tests" / "data" / "legacy_026" / "example_LaB6" / "input.json"
-    if example_path.exists():
-        legacy_recipe = json.loads(example_path.read_text(encoding="utf-8"))
-        result = gateway.validate(legacy_recipe)
-        assert isinstance(result, RecipeModel)
-
-
 def test_gateway_capabilities():
     """capabilities() includes topas.rietveld, topas.spf, supported_engine_versions==6."""
     caps = gateway.capabilities()
@@ -935,3 +926,150 @@ def test_writer_open_ends_are_the_weighted_data_limits():
     native = native_writer.render_native(model, "x")
     assert f"   start_X {fmt(tth[2])}\n   finish_X {fmt(tth[-2])}\n" in native.inp_text
     assert native.dropped_points == 3
+
+
+# ============================================================================
+# I. Peak-list parsing (peak_list.py; moved from test_topas_roundtrip, re/07 H)
+# ============================================================================
+
+
+def test_parse_peak_list_derives_f_obs_and_f_calc():
+    # 13 cols: H K L M d 2theta I_no I_after Iobs A01 B01 A11 B11
+    # F_calc^2 = A01^2+B01^2+A11^2+B11^2; F_obs^2 = F_calc^2 * Iobs/I_no
+    text = " 1 0 0 6 4.15682 2.29512 0.0010494 0.0010494 0.0010491 37.405 0 0 0\n"
+    (row,) = peak_list.parse_peak_list(text, "LaB6")
+    assert row["F_calc_squared"] == pytest.approx(37.405**2, rel=1e-6)
+    # F_calc^2 ~ GSAS-II F_calc_squared(100) = 1395.2 (different engine, ~0.3%)
+    assert row["F_calc_squared"] == pytest.approx(1395.2, rel=0.01)
+    assert row["F_obs_squared"] == pytest.approx(37.405**2 * (0.0010491 / 0.0010494), rel=1e-6)
+    assert row["phase"] == "LaB6"
+
+
+def test_f_obs_zero_when_i_no_scale_nonpositive():
+    text = " 1 0 0 6 4.1 2.3 0 0.001 0.5 10 0 0 0\n"  # I_no_scale_pks = 0
+    (row,) = peak_list.parse_peak_list(text, "P")
+    assert row["F_obs_squared"] == 0.0
+    assert row["F_calc_squared"] == pytest.approx(100.0)
+
+
+def test_parse_peak_list_skips_garbage_rows():
+    # a stray header/short line is skipped, not fatal
+    assert len(peak_list.parse_peak_list("oops\n1 0 0 6 4.1 2.3 1 1 1 5 0 0 0\n", "P")) == 1
+
+
+def test_parse_peak_list_golden_row():
+    """The first LaB6 reflection TOPAS 6 wrote (golden ``_p1_peaks.txt``): F_calc^2 and F_obs^2 as derived."""
+    golden = Path(__file__).parent / "data" / "topas" / "native" / "golden" / "lab6_rietveld__snapped_p1_peaks.txt"
+    row = peak_list.parse_peak_list(golden.read_text(encoding="utf-8"), "LaB6")[0]
+    assert (row["h"], row["k"], row["l"], row["multiplicity"]) == (1, 0, 0, 6)
+    assert row["d_spacing"] == pytest.approx(4.15682)
+    assert row["F_calc_squared"] == pytest.approx(37.40517764**2, rel=1e-9)
+    assert row["F_obs_squared"] == pytest.approx(37.40517764**2 * 0.02053270198 / 0.02213020061, rel=1e-9)
+
+
+# ============================================================================
+# J. Package guards (moved from test_topas_writer, re/07 H): zero GSAS-II
+# ============================================================================
+
+
+def test_topas_package_has_no_gsasii_imports():
+    import powderline.gateways.topas as topas_pkg
+
+    pkg_dir = Path(topas_pkg.__file__).parent
+    offenders = []
+    for src in pkg_dir.glob("*.py"):
+        text = src.read_text()
+        if re.search(r"\bimport\s+GSASII|\bfrom\s+GSASII", text):
+            offenders.append(src.name)
+    assert not offenders, f"GSAS-II imports found in TOPAS package: {offenders}"
+
+
+def test_topas_import_does_not_load_gsasii():
+    # The TOPAS path must work with GSAS-II *unavailable* (the Windows scenario).
+    # Run in a fresh subprocess that blocks the GSASII import so this holds even
+    # when GSAS-II is installed in the dev env (Linux regression dependency).
+    import textwrap
+
+    script = textwrap.dedent(
+        """
+        import sys, importlib.abc, importlib.machinery
+
+        class _Block(importlib.abc.MetaPathFinder):
+            def find_spec(self, name, path, target=None):
+                if name == "GSASII" or name.startswith("GSASII."):
+                    raise ImportError("GSASII blocked for the TOPAS-path guard test")
+                return None
+
+        sys.meta_path.insert(0, _Block())
+        import powderline               # imports no engine
+        import powderline.gateways.topas
+        import powderline.gateways.topas.native_writer
+        import powderline.gateways.topas.native_run
+        import powderline.gateways.topas.gateway
+        assert "GSASII" not in sys.modules, "TOPAS path pulled GSAS-II into sys.modules"
+        print("OK")
+        """
+    )
+    proc = run_subprocess_utf8([sys.executable, "-c", script], capture_output=True, text=True)
+    assert proc.returncode == 0, f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    assert "OK" in proc.stdout
+
+
+# ============================================================================
+# K. Cross-engine result contract (moved from test_topas_engine, re/07 H)
+# ============================================================================
+
+#: run() dict keys and types locked by tests/test_api.py for GSAS-II; every engine returns them.
+_GSASII_CONTRACT = {
+    "success": bool,
+    "run_id": str,
+    "rwp": (float, type(None)),
+    "elapsed_time": float,
+    "method": str,
+    "output_files": list,
+    "fit_profile": pd.DataFrame,
+    "unit_cell_data": dict,
+    "peak_list_data": dict,
+    "refined_parameters": pd.DataFrame,
+    "spf_peaks": pd.DataFrame,
+    "spf_convergence_diagnostics": pd.DataFrame,
+    "error": type(None),   # None on success
+    "traceback": type(None),  # None on success
+}
+
+
+def test_native_result_matches_gsasii_key_and_type_contract(tmp_path, monkeypatch):
+    """A native TOPAS success dict carries every GSAS-II key with the matching type."""
+    model = schema.validate_recipe(_rietveld())
+    refined_params = {"p1_cell_a": (4.1580, 0.0002), "p1_a2_x": (0.1995, 0.0003), "p1_volume": (71.85, 0.01)}
+    tth = model.payload.xrd_data.tth
+    lo, hi = model.payload.window()
+    profile_tth = [t for t in tth if lo <= t <= hi]
+    profile = _make_profile(profile_tth, [100.0 + 50 * math.sin(t) for t in profile_tth],
+                            [100.0 + 48 * math.sin(t) for t in profile_tth])
+    runner = _fake_topas_runner(_make_results_csv(refined_params), profile, {"LaB6": _make_peak_list()})
+    monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe",
+                        lambda *a, **kw: tmp_path / "TOPAS6" / "tc.exe")
+
+    result = native_run.run_native(model, tmp_path, runner=runner)
+
+    assert result["success"] is True
+    for key, expected_type in _GSASII_CONTRACT.items():
+        assert key in result, f"missing GSAS-II contract key {key!r}"
+        assert isinstance(result[key], expected_type), (
+            f"{key!r} is {type(result[key]).__name__}, expected "
+            f"{getattr(expected_type, '__name__', expected_type)}"
+        )
+    # dict-of-DataFrame values carry DataFrames (GSAS-II per-phase contract)
+    for phase_frame in result["unit_cell_data"].values():
+        assert isinstance(phase_frame, pd.DataFrame)
+    for phase_frame in result["peak_list_data"].values():
+        assert isinstance(phase_frame, pd.DataFrame)
+    # the 9 refined_parameters columns of the GSAS-II path
+    assert set(result["refined_parameters"].columns) == {
+        "parameter_name", "descriptive_name", "phase_name", "phase_idx",
+        "atom_name", "atom_idx", "value", "esd", "category",
+    }
+    # empty SPF frames match GSAS-II's column-less pd.DataFrame() for a Rietveld recipe
+    assert result["spf_peaks"].empty and list(result["spf_peaks"].columns) == []
+    assert list(result["spf_convergence_diagnostics"].columns) == []
