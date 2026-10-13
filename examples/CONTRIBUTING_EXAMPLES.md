@@ -74,15 +74,16 @@ This works the same for a `gsasii.*`, `topas.*` or `easydiffraction.*` recipe
 (the engine comes from `schema_name`); it prints the schema, the phase count
 and the structured warnings (e.g. a default that was applied). The template
 files are refused on purpose (`template` in the path): copy the template into
-your own directory first, then validate the copy. A *run* needs the engine:
-GSAS-II in the default environment, `tc.exe` on win-64 for TOPAS (with
-`--topas-version 6`), the `easydiffraction` pixi environment for easydiffraction.
+your own directory first, then validate the copy. A *run* needs the engine's
+environment: `pixi run -e gsasii kicker ...` for GSAS-II, `tc.exe` on win-64
+for TOPAS (with `--topas-version 6`), `pixi run -e easydiffraction kicker ...`
+for easydiffraction. The default environment validates but runs nothing.
 
 ## Purpose
 
-This directory collects real-world GSAS-II refinement scenarios from collaborators. These examples drive the development of the JSON schema that PowderLine will use to define refinements.
+This directory collects real-world refinement scenarios from collaborators. These examples drive the development of the recipe schemas (core + per engine) and are the regression references of the GSAS-II path.
 
-The schema will evolve organically based on actual use cases rather than premature abstraction.
+The schemas evolve based on actual use cases rather than premature abstraction; a change in what an example computes is a deliberate change (see `docs/policies.md`).
 
 ## How to Contribute an Example
 
@@ -105,7 +106,10 @@ The schema will evolve organically based on actual use cases rather than prematu
    - Expected behavior (what should GSAS-II do?)
    - Known issues or special considerations
 
-4. **Run the refinement** (Phase 1 implementation): Once the kicker is implemented, run your example and capture output in `output/`
+4. **Run the refinement**: `pixi run -e gsasii kicker my_refinement_name/input.json`
+   writes `output/` next to the recipe; commit it (it becomes a regression
+   reference). For a `topas.*` or `easydiffraction.*` recipe, commit the recipe
+   and its README only (no engine output under `examples/`).
 
 5. **Submit your example via Pull Request**:
    ```bash
@@ -141,7 +145,7 @@ my_refinement_name/
 they were derived; no TOPAS or easydiffraction output is committed under
 `examples/` (the TOPAS 6 goldens live in `tests/data/topas/native/golden/`).
 
-**`output/`**: After running the refinement, GSAS-II output files go here. **These output files should be committed to the repository** - they serve as reference outputs for validation and regression testing, allowing us to verify that code changes produce consistent results across different refinements.
+**`output/`**: After running the refinement, the GSAS-II output files go here. **These output files should be committed to the repository** (except `dummy.gpx`, which is gitignored) - they are the regression references, compared within the tolerances of `docs/regression-tolerance.md`; they move only as a recorded deliberate change.
 
 PowderLine generates fixed output filenames:
 

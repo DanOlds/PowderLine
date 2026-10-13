@@ -8,9 +8,15 @@ guides.
 ```bash
 git clone https://github.com/NSLS2/PowderLine.git
 cd PowderLine
-pixi install        # installs everything, including GSAS-II
-pixi run test       # full suite — run it before and after your change
+pixi install -e dev   # every engine + docs/test tooling (GSAS-II is built as a conda package)
+pixi run test         # full suite (dev env) — run it before and after your change
+pixi run docs         # Sphinx with -W; zero warnings is the standard
 ```
+
+The default environment is core-only (it validates recipes for every engine
+and runs none); `pixi install -e gsasii` / `-e easydiffraction` install one
+engine. After pulling a change to `pyproject.toml`'s entry points, run
+`pixi reinstall powderline --all`.
 
 [pixi](https://pixi.sh) is the only tool you install yourself. See the
 [README](README.md) for platforms and the [Quickstart](docs/quickstart.md) for
@@ -19,8 +25,14 @@ a first refinement run.
 ## Where things are
 
 - **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** — developer guide:
-  architecture, domain concepts, GSAS-II integration, how to add a refinement
-  parameter, and a `## Contributing` section with expectations for changes.
+  architecture (core + gateways), the schema layer, **how to add a refinement
+  engine or a capability**, GSAS-II integration, workflow.
+- **[docs/policies.md](docs/policies.md)** — what binds every change:
+  versioning and declared compatibility, deliberate behaviour changes, the
+  frozen GSAS-II modules and the edits ledger, engine-version pins, review
+  gates, "ask, don't assume".
+- **[docs/engine-behavior.md](docs/engine-behavior.md)** — what each engine
+  does with a recipe and PowderLine's policy toward it.
 - **[docs/known_issues.md](docs/known_issues.md)** — the known-issues register
   (`KI-NN` ids, referenced from code and docs): check it before "fixing" a
   quirk. See also [docs/regression-tolerance.md](docs/regression-tolerance.md)
@@ -68,8 +80,16 @@ the pre-commit guard so they never reach `main`.
 - Run `pixi run test` before opening a PR. Some regression cases need a working
   GSAS-II refinement — compare failures against a baseline run, don't assume
   they're yours.
-- After editing `src/powderline/kicker.py`: run `pixi run update-code-hash` and
-  `pixi run gsas-server restart`.
+- The frozen GSAS-II modules
+  (`src/powderline/gateways/gsasii/{helpers,project,setters,executors,extractors,constraints}.py`)
+  change only through the maintainers' signed-off edits ledger; after such an
+  edit run `pixi run update-code-hash`. Restart the GSAS-II server after
+  editing anything it runs (`pixi run -e gsasii gsas-server restart`).
+- After editing a schema module or a gateway's version declarations, run
+  `PYTHONPATH=src python scripts/gen_schema_field_tables.py` and commit the
+  regenerated `docs/_generated/` fragments.
+- If a decision is not written down (policies page, schema history, decision
+  log), ask the maintainer rather than inferring it.
 - `examples/**/output/` is tracked on purpose (regression references) — don't
   regenerate it casually.
 - Questions and bug reports: open a GitHub issue.

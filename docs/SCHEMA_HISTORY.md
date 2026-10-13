@@ -8,19 +8,19 @@ conventions. Every schema has its own version. A recipe states both
 **declares** which versions it accepts. Compatibility is never inferred from the
 version numbers (`powderline.support_matrix()` lists the declarations).
 
-> **Refactor in progress (v0.2.0).** The schemas below are being introduced on
-> the `refactor/multi-engine` branch. Until the 0.26.0 schema is removed (re/07),
-> `powderline.run()` / `validate()` still validate recipes against the
-> **unified 0.26.0 schema** documented in the archive at the bottom of this page.
+> **PowderLine 0.2.0** reads these schemas only. The unified 0.26.0 schema of
+> PowderLine 0.1.1 is documented in the archive at the bottom of this page and
+> is no longer accepted; `scripts/convert_recipe_026.py` converts a 0.26.0
+> GSAS-II recipe (see the [migration guide](migration-0.26-to-1.0.md)). The
+> field tables generated from these schemas are on the [fields page](fields.md).
 
 ---
 
 ## Core schema
 
-### 1.0.0 — introduced in PowderLine 0.2.0 (in development)
+### 1.0.0 — introduced in PowderLine 0.2.0
 
-Defined in `src/powderline/schema_core.py`. Not used by any gateway yet: the
-engine schemas adopt it in re/04–06.
+Defined in `src/powderline/schema_core.py`; every engine schema builds on it.
 
 > **Pre-release revision (re/03b, not a new version).** Before its first
 > release, core 1.0.0 replaced its structure-only phase model (`PhaseStructure`
@@ -49,7 +49,8 @@ engine schemas adopt it in re/04–06.
 - **Numbers** are JSON numbers: a quoted number (`"0.25"`) or a boolean is an
   error, never converted. Integer fields (`Multiplicity`, `num_coefficients`)
   take a whole number (`4` or `4.0`), not `4.5`.
-- **Accepted core versions** (this release): `==1.0.0`.
+- **Accepted core versions** (this release): `==1.0.0`. Compatibility is
+  declared, never inferred ([support matrix](support-matrix.md)).
 
 - **Phase block** (`Phase`): one block per phase, keyed by the phase name in
   the engine payload's `phases` (no `phase_name` field). Core owns
@@ -192,7 +193,7 @@ engine schemas adopt it in re/04–06.
 
 ## gsasii engine schema
 
-### 1.0.0 — introduced in PowderLine 0.2.0 (in development)
+### 1.0.0 — introduced in PowderLine 0.2.0
 
 Defined in `src/powderline/gateways/gsasii/schema.py` (engine-free), on core
 1.0.0. Accepted versions are declared: engine schema `==1.0.0`, requiring
@@ -277,14 +278,14 @@ as the converter's test fixtures (P-16, P-23); the 0.26.0 path itself is gone.
 
 ## topas engine schema
 
-### 1.0.0 — introduced in PowderLine 0.2.0 (in development)
+### 1.0.0 — introduced in PowderLine 0.2.0
 
 Defined in `src/powderline/gateways/topas/schema.py` (engine-free), on core
 1.0.0. Accepted versions are declared: engine schema `==1.0.0`, requiring core
 `==1.0.0`. Native recipes state TOPAS's own keywords, macro parameters and
 units: the numbers in the recipe are the numbers in the INP. There is no
-converter from 0.26.0 recipes (the 0.26.0 `GSASII_*` → TOPAS path is
-unchanged).
+converter from 0.26.0 recipes (the 0.26.0 `GSASII_*` → TOPAS translation path
+was removed with the unified schema).
 
 - **Workflows**: `topas.rietveld` (`phases`) and `topas.spf` (`single_peaks`).
 - **TOPAS version**: required `engine_version`, the TOPAS major version the
@@ -349,14 +350,14 @@ unchanged).
 
 ## easydiffraction engine schema
 
-### 1.0.0 — introduced in PowderLine 0.2.0 (in development)
+### 1.0.0 — introduced in PowderLine 0.2.0
 
 Defined in `src/powderline/gateways/easydiffraction/schema.py` (engine-free),
 on core 1.0.0. Accepted versions are declared: engine schema `==1.0.0`,
 requiring core `==1.0.0`. Native recipes use easydiffraction's own names and
 units (`setup_wavelength`, `calib_twotheta_offset`, `broad_gauss_u` in deg², …).
 There is no converter from 0.26.0 recipes (the 0.26.0 `GSASII_*` →
-easydiffraction path is unchanged until re/07).
+easydiffraction translation path was removed with the unified schema).
 
 - **Workflow**: `easydiffraction.rietveld` (`phases`); no single peak fitting.
 - **easydiffraction version**: pinned (`==0.21.1`) and read at run time; a
