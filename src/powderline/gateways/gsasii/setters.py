@@ -454,7 +454,7 @@ def set_phase_unit_cell(proj: Any, phase_name: str, unit_cell_dict: dict, print_
     returning "Hold" constraint variable names (e.g. '0::A2') for the DOF
     groups that were not requested. Symmetry-linked parameters (e.g. cubic
     a=b=c, or the coupled monoclinic {a, c, beta}) refine together if any
-    member is requested — see powderline.constraints.
+    member is requested — see powderline.gateways.gsasii.constraints.
 
     Parameters:
     proj : GSAS-II project object
@@ -763,7 +763,7 @@ def set_phase_atom_parameters(proj: Any, phase_name: str, atom_parameters_dict: 
     fixed. GSAS-II's 'X'/'U' flags are per-atom, so per-component control is
     achieved by returning "Hold" constraint variable names (e.g. '0::dAy:3',
     '0::AU22:4') for the site-symmetry DOF groups that were not requested —
-    see powderline.constraints.
+    see powderline.gateways.gsasii.constraints.
     Symmetry-linked components (e.g. x=y on an (x,x,z) site) refine together
     if any member is requested.
 

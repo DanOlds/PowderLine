@@ -97,7 +97,7 @@ def _refine_with_message(proj) -> tuple[bool, str]:
 def execute_rietveld_refinement(
     proj: Any,
     hist: Any,
-    recipe: Any,
+    recipe: GsasiiRietveldRecipe,
     verbose: bool
 ) -> dict:
     """
@@ -227,7 +227,7 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
     Internal execution engine: run a GSAS-II refinement using already-loaded libraries.
 
     This function is the single execution entry point used by all paths:
-    - ``gsas_server.py`` calls it directly after receiving an HTTP request
+    - the GSAS-II server (``gateways/gsasii/server.py``) calls it directly after receiving an HTTP request
       (``method='server'``).
     - ``GSASClient._submit_via_subprocess()`` calls it in-process as the
       subprocess fallback (``method='subprocess'``). Despite the method name,
