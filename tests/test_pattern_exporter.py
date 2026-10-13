@@ -1,4 +1,4 @@
-"""Smoke tests for powderline.pattern_exporter.PatternExporter.
+"""Smoke tests for powderline.gateways.gsasii.pattern_exporter.PatternExporter.
 
 The module is pure pandas/numpy (no GSAS-II), so it is fully exercisable in
 isolation. export_simulation_results consumes the in-band fit_profile dict
@@ -8,7 +8,7 @@ exercised against a synthesized fit_profile.txt.
 import numpy as np
 import pytest
 
-from powderline.pattern_exporter import PatternExporter
+from powderline.gateways.gsasii.pattern_exporter import PatternExporter
 
 
 def _write_fit_profile(path):

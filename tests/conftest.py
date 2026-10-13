@@ -168,8 +168,8 @@ def mp_lab6_structure_data():
         'material_id': 'mp-2680',
         'cif': '',  # Not used by SimulationRecipeBuilder
         'formula': 'LaB6',
-        # Condensed spglib-style symbol, as emitted by MPInterface;
-        # kicker normalizes it via G2spc.StandardizeSpcName
+        # Condensed spglib-style symbol, as emitted by MPInterface; the
+        # simulation builder writes the canonical gemmi name (A105)
         'space_group': 'Pm-3m',
         'unit_cell': {
             'a': 4.15682,
@@ -180,11 +180,24 @@ def mp_lab6_structure_data():
             'gamma': 90.0,
             'volume': 71.82632674659455,
         },
+        # Every atom of the conventional cell, as MPInterface.get_structure lists
+        # them (1 La on 1a, the 6 B of site 6f); the builder reduces them to one
+        # representative per orbit
         'sites': [
             {'element': 'La', 'x': 0.0, 'y': 0.0, 'z': 0.0,
              'occupancy': 1.0, 'label': 'La1'},
             {'element': 'B', 'x': 0.5, 'y': 0.5, 'z': 0.2021,
              'occupancy': 1.0, 'label': 'B1'},
+            {'element': 'B', 'x': 0.5, 'y': 0.5, 'z': 0.7979,
+             'occupancy': 1.0, 'label': 'B2'},
+            {'element': 'B', 'x': 0.2021, 'y': 0.5, 'z': 0.5,
+             'occupancy': 1.0, 'label': 'B3'},
+            {'element': 'B', 'x': 0.7979, 'y': 0.5, 'z': 0.5,
+             'occupancy': 1.0, 'label': 'B4'},
+            {'element': 'B', 'x': 0.5, 'y': 0.2021, 'z': 0.5,
+             'occupancy': 1.0, 'label': 'B5'},
+            {'element': 'B', 'x': 0.5, 'y': 0.7979, 'z': 0.5,
+             'occupancy': 1.0, 'label': 'B6'},
         ],
         'is_ordered': True,
         'metadata': {

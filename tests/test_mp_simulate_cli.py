@@ -14,7 +14,7 @@ import sys
 
 import pytest
 
-import powderline.mp_simulate as mp_simulate
+import powderline.gateways.gsasii.mp_simulate as mp_simulate
 from powderline.mp_interface import MPAuthError
 
 DUMMY_KEY = "0123456789abcdef0123456789abcdef"

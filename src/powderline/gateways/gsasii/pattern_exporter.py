@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from typing import Optional
 
-from ._status import CHECK
+from powderline._status import CHECK
 
 
 class PatternExporter:

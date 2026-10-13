@@ -2,7 +2,11 @@
 """CLI tool for generating simulated diffraction patterns from Materials Project structures.
 
 This standalone tool fetches crystal structures from the Materials Project database
-and generates simulated powder diffraction patterns using PowderLine's simulation mode.
+and generates simulated powder diffraction patterns using PowderLine's simulation
+mode. It ships with the GSAS-II gateway (A43): the recipe it builds is a
+``gsasii.rietveld`` 1.0.0 recipe (:mod:`.simulation_builder`) and the pattern
+is calculated by GSAS-II. ``powderline.mp_interface`` (the Materials Project
+API wrapper) and ``powderline.config_loader`` stay engine-agnostic in core.
 
 Usage:
     pixi run mp-simulate --material-id mp-1234 --output patterns/
@@ -25,9 +29,9 @@ from powderline.mp_interface import (
     MPNotFoundError,
     MPConnectionError,
 )
-from powderline.simulation_builder import SimulationRecipeBuilder
-from powderline.pattern_exporter import PatternExporter
-from powderline.gsas_client import GSASClient
+from powderline.gateways.gsasii.simulation_builder import SimulationRecipeBuilder
+from powderline.gateways.gsasii.pattern_exporter import PatternExporter
+from powderline.gateways.gsasii.client import GSASClient
 
 
 def main():
