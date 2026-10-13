@@ -12,7 +12,8 @@ from powderline.gateways.topas import runner as tc_runner
 
 REPO = Path(__file__).resolve().parent.parent
 EXAMPLES = REPO / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
-LEGACY_TOPAS_OUT = REPO / "examples"  # the TOPAS 7.25 goldens under examples/*/output/topas/ (go with P-02)
+LEGACY_TOPAS_OUT = REPO / "examples"  # held the TOPAS 7.25 goldens (examples/*/output/topas/) until re/07, P-02
+_LEGACY_GOLDENS_GONE = pytest.mark.skip(reason="reads the TOPAS 7.25 goldens that examples/*/output/topas/ carried; removed at re/07 (P-02), the test goes with the legacy TOPAS path")
 GOLDEN = REPO / "tests" / "data" / "topas"
 CASES = ["example_LaB6", "example_DRX_33"]
 
@@ -78,6 +79,7 @@ def test_default_output_path(tmp_path):
 
 
 @pytest.mark.parametrize("name", CASES)
+@_LEGACY_GOLDENS_GONE
 def test_end_to_end_with_mocked_topas(name, tmp_path, monkeypatch):
     out = tmp_path / "topas"
     fixture = (GOLDEN / f"{name}_results.csv").read_text()
@@ -162,6 +164,7 @@ def test_run_flag_errors_without_tc(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("name", CASES)
+@_LEGACY_GOLDENS_GONE
 def test_parse_results_writes_roundtrip_tables(name, tmp_path):
     out = tmp_path / "topas"
     rc = kicker.main([

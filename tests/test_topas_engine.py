@@ -26,7 +26,8 @@ REPO = Path(__file__).resolve().parent.parent
 
 pytestmark = pytest.mark.filterwarnings("ignore:powderline.run\\(engine=:DeprecationWarning")
 EXAMPLES = REPO / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
-LEGACY_TOPAS_OUT = REPO / "examples"  # the TOPAS 7.25 goldens under examples/*/output/topas/ (go with P-02)
+LEGACY_TOPAS_OUT = REPO / "examples"  # held the TOPAS 7.25 goldens (examples/*/output/topas/) until re/07, P-02
+_LEGACY_GOLDENS_GONE = pytest.mark.skip(reason="reads the TOPAS 7.25 goldens that examples/*/output/topas/ carried; removed at re/07 (P-02), the test goes with the legacy TOPAS path")
 
 # run() dict keys locked by tests/test_api.py (must match across engines)
 _STRUCTURED = ("fit_profile", "unit_cell_data", "peak_list_data", "refined_parameters")
@@ -105,6 +106,7 @@ def test_unknown_engine_raises():
 # --- TOPAS engine: full run() dict shape ------------------------------------
 
 
+@_LEGACY_GOLDENS_GONE
 def test_topas_run_success_returns_locked_shape(tmp_path, monkeypatch):
     monkeypatch.setattr(te, "run_topas", _mock_topas_run("example_LaB6"))
     out = tmp_path / "example_LaB6" / "output" / "topas"  # -> base_name "example_LaB6"
@@ -168,6 +170,7 @@ def _mock_simulation_run(name):
     return fake_run
 
 
+@_LEGACY_GOLDENS_GONE
 def test_topas_run_simulation_no_results_csv_is_success(tmp_path, monkeypatch):
     name = "example_DRX_33_simulation"
     monkeypatch.setattr(te, "run_topas", _mock_simulation_run(name))
@@ -226,6 +229,7 @@ _GSASII_CONTRACT = {
 
 
 @pytest.mark.parametrize("name", ["example_LaB6", "example_LaB6_singlepeakfit"])
+@_LEGACY_GOLDENS_GONE
 def test_topas_result_matches_gsasii_key_and_type_contract(name, tmp_path, monkeypatch):
     """A TOPAS success dict carries every GSAS-II key with the matching type."""
     monkeypatch.setattr(te, "run_topas", _mock_topas_run(name))

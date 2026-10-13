@@ -14,7 +14,8 @@ from powderline.gateways.topas import roundtrip as rt
 
 REPO = Path(__file__).resolve().parent.parent
 EXAMPLES = REPO / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
-LEGACY_TOPAS_OUT = REPO / "examples"  # the TOPAS 7.25 goldens under examples/*/output/topas/ (go with P-02)
+LEGACY_TOPAS_OUT = REPO / "examples"  # held the TOPAS 7.25 goldens (examples/*/output/topas/) until re/07, P-02
+_LEGACY_GOLDENS_GONE = pytest.mark.skip(reason="reads the TOPAS 7.25 goldens that examples/*/output/topas/ carried; removed at re/07 (P-02), the test goes with the legacy TOPAS path")
 DATA = REPO / "tests" / "data" / "topas"
 
 
@@ -198,6 +199,7 @@ def test_refined_parameters_csv_schema():
     assert rt.refined_parameters_csv(res) == csv_text
 
 
+@_LEGACY_GOLDENS_GONE
 def test_committed_roundtrip_artifacts_match():
     """examples/**/output/topas/refined_parameters.csv are tracked and reproducible."""
     for name in ("example_LaB6", "example_DRX_33"):
@@ -210,6 +212,7 @@ def _committed_results(name):
     return (LEGACY_TOPAS_OUT / name / "output" / "topas" / f"{name}_results.csv").read_text()
 
 
+@_LEGACY_GOLDENS_GONE
 @pytest.mark.parametrize("name", ["example_DRX_33_atomrefine", "example_DRX_33_anisoADP"])
 def test_declarative_examples_roundtrip_reproduce_committed(name):
     # Validate the permissive-coord / Uaniso round-trip against the maintainer's
@@ -219,6 +222,7 @@ def test_declarative_examples_roundtrip_reproduce_committed(name):
     assert rt.refined_parameters_csv(res) == committed
 
 
+@_LEGACY_GOLDENS_GONE
 def test_anisoadp_uij_roundtrip_from_real_topas():
     # The six O1 u_ij come back as atom_adp rows (Angstrom^2, no beq transform)
     # with real refined values + ESDs from TOPAS.
@@ -336,6 +340,7 @@ def _peak_list_cases():
     return cases
 
 
+@_LEGACY_GOLDENS_GONE
 def test_derived_report_bond_covers_examples():
     # Guard: if the glob discovery ever silently breaks, parametrize would collect
     # zero cases and pass vacuously. Pin a floor so coverage can't vanish unnoticed.

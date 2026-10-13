@@ -3,7 +3,7 @@
 Hand-derived recipes for the native easydiffraction schema (A137, A157 B8).
 They are not converted recipes: PowderLine ships no 0.26.0 →
 `easydiffraction.*` converter. The data arrays are the committed LaB6 example's
-(`examples/example_LaB6_easydiff`); the values are worked out as below.
+(`examples/example_LaB6`; the 0.26.0 `example_LaB6_easydiff` recipe they were first written against is kept as `tests/data/legacy_026/example_LaB6_easydiff/input.json`); the values are worked out as below.
 
 | Fixture | What it is |
 |---|---|

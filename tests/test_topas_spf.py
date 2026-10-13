@@ -20,7 +20,8 @@ from powderline.gateways.topas.errors import TopasTranslationError
 
 REPO = Path(__file__).resolve().parent.parent
 EXAMPLES = REPO / "tests" / "data" / "legacy_026"  # 0.26.0 snapshots of the examples (re/07, P-16)
-LEGACY_TOPAS_OUT = REPO / "examples"  # the TOPAS 7.25 goldens under examples/*/output/topas/ (go with P-02)
+LEGACY_TOPAS_OUT = REPO / "examples"  # held the TOPAS 7.25 goldens (examples/*/output/topas/) until re/07, P-02
+_LEGACY_GOLDENS_GONE = pytest.mark.skip(reason="reads the TOPAS 7.25 goldens that examples/*/output/topas/ carried; removed at re/07 (P-02), the test goes with the legacy TOPAS path")
 GOLDEN = REPO / "tests" / "data" / "topas"
 SPF = "example_LaB6_singlepeakfit"
 
@@ -87,6 +88,7 @@ def test_spf_parse_spf_peaks_shape_and_widths():
     assert row0["converged"] is True
 
 
+@_LEGACY_GOLDENS_GONE
 def test_spf_committed_reports_reproduce():
     """examples/<spf>/output/topas/single_peaks_report.csv is tracked + reproducible."""
     for ex in (SPF,):
