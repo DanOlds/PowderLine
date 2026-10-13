@@ -1,6 +1,11 @@
 """Pytest configuration and fixtures for PowderLine tests."""
 
+import importlib.abc
+import importlib.machinery
 import json
+import os
+import subprocess
+import sys
 import pytest
 from pathlib import Path
 import tempfile
@@ -34,6 +39,131 @@ def pytest_collection_modifyitems(config, items):
         raise pytest.UsageError(
             f"{len(bad)} test(s) without exactly one suite marker {SUITE_MARKERS}:\n  {shown}{more}"
         )
+
+
+# ─── The core guard (re/09, P-26; master plan invariant §4.4) ─────────────────
+#
+# A pytest run restricted to the engine-free suites (`-m core`, `-m topas_gen`,
+# `-m "core or topas_gen"`, ... -- any -m expression that can select no
+# gsasii/easydiffraction/topas_exec item) must pass in an env that HAS the
+# engines without ever importing one: that is the enforceable form of the
+# no-plugin guarantee. The guard is installed in pytest_configure, before
+# collection, so a module-level engine import in a mis-marked test fails too;
+# a module that imports its engine through pytest.importorskip is skipped, as
+# it would be in the real core env.
+#
+# POWDERLINE_CORE_GUARD=1 forces the guard on (e.g. for a `-k` or path
+# selection), =0 forces it off.
+
+CORE_GUARD_ENV = "POWDERLINE_CORE_GUARD"
+
+#: Top-level packages no core/topas_gen test may import: the engines and their
+#: calculators, and the Materials Project stack, which lives in the gsasii env
+#: (P-21), so a test that needs it is `gsasii`.
+CORE_GUARD_BLOCKED = ("GSASII", "easydiffraction", "cryspy", "pycrysfml", "crysfml", "mp_api", "pymatgen")
+
+ENGINE_MARKERS = tuple(m for m in SUITE_MARKERS if m not in ("core", "topas_gen"))
+
+
+def markexpr_excludes_engines(markexpr: str) -> bool:
+    """True if the ``-m`` expression can select no engine-marked item.
+
+    Evaluated the way pytest does: for each engine marker, an item carrying it
+    (alone or with ``slow``) must be deselected. An empty or unparsable
+    expression selects everything, so the guard stays off.
+    """
+    if not markexpr or not markexpr.strip():
+        return False
+    try:
+        from _pytest.mark.expression import Expression
+
+        expr = Expression.compile(markexpr)
+    except Exception:
+        return False
+    for name in ENGINE_MARKERS:
+        for marks in ({name}, {name, "slow"}):
+            if expr.evaluate(lambda n, marks=marks: n in marks):
+                return False
+    return True
+
+
+class _CoreGuardFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    """Claims every blocked package and refuses to create it.
+
+    ``find_spec`` returns a spec (so ``importlib.util.find_spec`` still reports
+    the engine as present and a ``skipif(find_spec(...) is None)`` keeps its
+    meaning); the import itself raises ``ModuleNotFoundError`` naming the guard.
+    """
+
+    def find_spec(self, name, path, target=None):
+        if name.partition(".")[0] in CORE_GUARD_BLOCKED:
+            return importlib.machinery.ModuleSpec(name, self)
+        return None
+
+    def create_module(self, spec):
+        raise ModuleNotFoundError(
+            f"import of {spec.name!r} blocked by the PowderLine core guard (P-26): this pytest run is "
+            f"restricted to the engine-free suites, so the test that imported it is marked wrong, or core "
+            f"code gained an engine import. Unset the restriction or set {CORE_GUARD_ENV}=0 to run it.",
+            name=spec.name,
+        )
+
+    def exec_module(self, module):  # pragma: no cover - create_module always raises
+        raise ModuleNotFoundError(module.__name__, name=module.__name__)
+
+
+def _install_core_guard():
+    already = sorted(m for m in sys.modules if m.partition(".")[0] in CORE_GUARD_BLOCKED)
+    if already:
+        raise pytest.UsageError(f"core guard: engine modules already imported before the guard: {already}")
+    sys.meta_path.insert(0, _CoreGuardFinder())
+
+    # tc.exe must never run from an engine-free suite: where the native TOPAS
+    # runner would call its default (un-injected) subprocess.run, it gets a
+    # runner that raises instead. Discovery still works (a run without tc.exe
+    # is the generate-only path, tested in topas_gen); tests inject fake runners.
+    from powderline.gateways.topas import native_run, runner
+
+    def _refusing_runner(command, **kwargs):
+        raise RuntimeError(
+            f"executing {command[0]!r} blocked by the PowderLine core guard (P-26): running tc.exe is a "
+            "topas_exec test, not core/topas_gen."
+        )
+
+    real_run_tc, real_run_topas = native_run.run_tc, runner.run_topas
+
+    def guarded_run_tc(tc, inp, runner=subprocess.run):
+        return real_run_tc(tc, inp, runner=_refusing_runner if runner is subprocess.run else runner)
+
+    def guarded_run_topas(inp_path, topas_dir=None, topas_version=None, runner=subprocess.run):
+        return real_run_topas(inp_path, topas_dir, topas_version,
+                              runner=_refusing_runner if runner is subprocess.run else runner)
+
+    native_run.run_tc = guarded_run_tc
+    runner.run_topas = guarded_run_topas
+
+
+def pytest_configure(config):
+    forced = os.environ.get(CORE_GUARD_ENV)
+    if forced in ("0", "1"):
+        active = forced == "1"
+    else:
+        active = markexpr_excludes_engines(config.getoption("markexpr") or "")
+    config._powderline_core_guard = active
+    if active:
+        _install_core_guard()
+
+
+def pytest_report_header(config):
+    if getattr(config, "_powderline_core_guard", False):
+        return f"PowderLine core guard: ON (blocked imports: {', '.join(CORE_GUARD_BLOCKED)}; tc.exe execution refused)"
+    return "PowderLine core guard: off (unrestricted run)"
+
+
+@pytest.fixture(scope="session")
+def core_guard_active(request) -> bool:
+    """Whether this run installed the core guard (see pytest_configure)."""
+    return bool(getattr(request.config, "_powderline_core_guard", False))
 
 
 @pytest.fixture
