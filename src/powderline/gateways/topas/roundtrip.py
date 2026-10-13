@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 
 from . import conversions as cv
 from .errors import TopasTranslationError
+from .peak_list import PEAK_LIST_COLUMNS, _rows_of_floats, parse_peak_list  # noqa: F401 (re-exported; native-owned, re/07)
 from .writer import render_topas
 
 # Fit-quality scalars the INP exports as value-only rows (no ESD).
@@ -277,15 +278,6 @@ FIT_PROFILE_COLUMNS = (
     "two_theta", "y_obs", "y_weights", "y_calc", "y_diff", "y_bkg", "q_values", "d_spacings",
 )
 
-#: peak-list columns (GSAS-II names) TOPAS provides faithfully. F_calc² and
-#: F_obs² are derived from confirmed structure-factor / intensity variables
-#: (§D.11); GSAS-II-only columns (sigma_squared, gamma, I_corr, Prfo, Trans,
-#: ExtP; peak widths) have no faithful TOPAS str equivalent and are omitted.
-PEAK_LIST_COLUMNS = (
-    "h", "k", "l", "multiplicity", "d_spacing", "2theta",
-    "F_obs_squared", "F_calc_squared", "I_no_scale_pks", "I_after_scale_pks", "phase",
-)
-
 
 def recipe_wavelength(recipe) -> float:
     """Resolve the wavelength (Å): parameterization value if non-null, else Iparm1 Lam."""
@@ -299,19 +291,6 @@ def recipe_wavelength(recipe) -> float:
     if isinstance(lam, list) and len(lam) > 1 and lam[1] is not None:
         return float(lam[1])
     raise TopasTranslationError("could not resolve wavelength from recipe")
-
-
-def _rows_of_floats(text: str, ncols: int) -> list[list[float]]:
-    rows = []
-    for raw in text.splitlines():
-        parts = raw.split()
-        if len(parts) < ncols:
-            continue
-        try:
-            rows.append([float(p) for p in parts[:ncols]])
-        except ValueError:
-            continue  # skip a stray header/comment line
-    return rows
 
 
 def parse_fit_profile(profile_text: str, wavelength: float) -> list[dict]:
@@ -330,30 +309,6 @@ def parse_fit_profile(profile_text: str, wavelength: float) -> list[dict]:
         out.append({
             "two_theta": x, "y_obs": yobs, "y_weights": yw, "y_calc": ycalc,
             "y_diff": ydiff, "y_bkg": ybkg, "q_values": q, "d_spacings": d,
-        })
-    return out
-
-
-def parse_peak_list(peaks_text: str, phase_name: str) -> list[dict]:
-    """TOPAS peak table -> GSAS-II rows with derived F_obs² / F_calc².
-
-    Columns: H K L M D_spacing 2theta I_no_scale_pks I_after_scale_pks
-    Iobs_no_scale_pks A01 B01 A11 B11. Then, per reflection (§D.11):
-
-    * ``F_calc² = A01² + B01² + A11² + B11²`` (the ``F2_Merged`` idiom)
-    * ``F_obs²  = F_calc² · Iobs_no_scale_pks / I_no_scale_pks`` — the Rietveld
-      observed/calculated intensity ratio applied to F_calc² (multiplicity, LP,
-      etc. cancel); 0 when ``I_no_scale_pks`` is non-positive.
-    """
-    out = []
-    for row in _rows_of_floats(peaks_text, 13):
-        h, k, l, m, d, tt, i_ns, i_as, iobs, a01, b01, a11, b11 = row
-        f_calc_sq = a01 * a01 + b01 * b01 + a11 * a11 + b11 * b11
-        f_obs_sq = f_calc_sq * (iobs / i_ns) if i_ns > 0 else 0.0
-        out.append({
-            "h": h, "k": k, "l": l, "multiplicity": m, "d_spacing": d, "2theta": tt,
-            "F_obs_squared": f_obs_sq, "F_calc_squared": f_calc_sq,
-            "I_no_scale_pks": i_ns, "I_after_scale_pks": i_as, "phase": phase_name,
         })
     return out
 
