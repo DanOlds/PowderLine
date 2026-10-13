@@ -74,7 +74,7 @@ def test_is_native_recipe_any_easydiffraction_name():
     assert is_native_recipe({"schema_name": "easydiffraction.rietvel"})  # typo counts as native
     assert not is_native_recipe({"schema_name": "gsasii.rietveld"})
     assert not is_native_recipe({"schema_name": "topas.rietveld"})
-    assert not is_native_recipe({"schema_name": "0.26.0"})
+    assert not is_native_recipe({"schema_name": "rietveld"})  # no engine prefix
 
 
 def test_unknown_easydiffraction_workflow_reported_at_schema_name():

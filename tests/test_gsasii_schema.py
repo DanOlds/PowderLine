@@ -142,7 +142,7 @@ def test_version_unknown_schema_name_rejected():
 
 
 def test_mistyped_gsasii_name_reported_against_the_native_schema():
-    """A gsasii.* typo gets the native error at schema_name, not 0.26.0 errors (re/04 PR review)."""
+    """A gsasii.* typo gets the gsasii error at schema_name, not another schema's errors (re/04 PR review)."""
     recipe = copy.deepcopy(_rietveld_recipe())
     recipe["schema_name"] = "gsasii.reitveld"
     assert is_native_recipe(recipe)
@@ -1028,9 +1028,9 @@ def test_is_native_recipe_gsasii_rietveld():
     assert is_native_recipe({"schema_name": "gsasii.rietveld"}) is True
 
 
-def test_is_native_recipe_legacy_schema_false():
-    """is_native_recipe({'schema_name': 'GSASII_Rietveld'}) is False."""
-    assert is_native_recipe({"schema_name": "GSASII_Rietveld"}) is False
+def test_is_native_recipe_other_engine_false():
+    """is_native_recipe({'schema_name': 'topas.rietveld'}) is False (another engine's name)."""
+    assert is_native_recipe({"schema_name": "topas.rietveld"}) is False
 
 
 def test_powderline_validate_returns_gsasii_rietveld_recipe():

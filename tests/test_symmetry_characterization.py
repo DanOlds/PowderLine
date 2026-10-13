@@ -9,8 +9,9 @@ own ``SytSym`` / ``GetCSxinel`` / ``GetCSuinel``. They must agree on:
 - per-axis coordinate DOF (FIXED / FREE / COUPLED);
 - per-component Uij DOF.
 
-The legacy ``site_dof`` / ``adp_dof`` (used by the 0.26.0 TOPAS writer) are held
-to the same reference. GSAS-II is read only; nothing in it is changed. Skipped
+The older ``site_dof`` / ``adp_dof`` (their first consumer, the deleted TOPAS
+translation writer, is gone; the functions stay in core) are held to the same
+reference. GSAS-II is read only; nothing in it is changed. Skipped
 where GSAS-II is not installed. A disagreement must be escalated, not
 tolerated (A35).
 """

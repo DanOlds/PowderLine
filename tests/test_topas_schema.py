@@ -124,7 +124,7 @@ def test_valid_recipe_round_trips(build, model):
 
 def test_is_native_recipe_any_topas_name():
     assert is_native_recipe({"schema_name": "topas.reitveld"})
-    assert not is_native_recipe({"schema_name": "GSASII_Rietveld"})
+    assert not is_native_recipe({"schema_name": "gsasii.rietveld"})
 
 
 def test_unknown_topas_workflow_reported_at_schema_name():

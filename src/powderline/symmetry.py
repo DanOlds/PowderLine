@@ -160,8 +160,8 @@ def canonical_space_group(space_group: str) -> gemmi.SpaceGroup:
     would silently pick a default (``"Fd-3m"`` -> origin 1, ``"R-3m"`` -> ``:H``,
     ``"C2/m"`` -> b-unique). A symbol without a setting lists the choices:
     ``:H``/``:R``, ``:1``/``:2``, or every monoclinic setting of the group, by
-    unique axis.
-    The legacy 0.26.0 paths keep the lenient :func:`resolve_space_group`.
+    unique axis. :func:`resolve_space_group` is the lenient reader (GSAS-II's
+    own defaults), kept for callers that want them.
     """
     raw = str(space_group)
     sg = gemmi.find_spacegroup_by_name(raw)

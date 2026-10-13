@@ -302,7 +302,7 @@ def test_core_recipe_minimal_valid():
 @pytest.mark.parametrize(
     "bad_name",
     [
-        "GSASII_Rietveld",   # uppercase
+        "GSASII_rietveld",   # uppercase, no dot
         "gsasii",            # missing workflow
         "Gsasii.rietveld",   # uppercase first letter
         "gsasii.rietveld.x", # too many dots
