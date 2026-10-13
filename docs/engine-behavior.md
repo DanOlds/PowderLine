@@ -1,0 +1,478 @@
+# Engine behaviour notes
+
+PowderLine drives three refinement engines it does not control. Each has
+quirks, limits and silent conversions; PowderLine's rule is to **expose
+them, never paper over them**: wherever an engine would silently compute
+something other than what the recipe says, the recipe is refused at
+validation with a message naming the value to write; wherever an engine
+does something a user should know about but that does not change the
+recipe's meaning, the result carries a structured warning. This page lists
+every verified engine behaviour that reaches a user, grouped by topic, with
+PowderLine's policy toward it. The identifiers in brackets (`EB-nn`) are the
+entries of the maintainers' engine-behaviour register; the decisions behind
+the policies are cited as `A-nnn` (the maintainers' decision log).
+
+Versions: GSAS-II 5.7.9, TOPAS-64 Version 6 (TOPAS 7 noted where known),
+easydiffraction 0.21.1 (CrysPy 0.13.0, CrysFML 0.8.0). An item marked
+*unverified* is recorded from documentation or a model, not from a run.
+
+## Space-group spellings and settings per engine
+
+Core requires gemmi's canonical extended Hermann–Mauguin name (564
+settings; [input guidance](input-guidance.md#space-group-one-canonical-spelling)).
+Each gateway translates it and refuses what its engine cannot express.
+
+**GSAS-II** reads spaced symbols; hexagonal axes and origin choice 2 are its
+defaults; rhombohedral axes come from a trailing ` R`. Its own lookup
+tolerates `:H` and `:2` and **silently ignores `:1`** (a recipe meant in
+origin choice 1 runs in origin choice 2, on a different structure, EB-03),
+returns nothing for `R-3m:H` or `Fd-3m:2` spellings, and reads two symbols
+as another setting (`P 21 n m`, `A b a m`: the general position's orbit
+differs, EB-41). *Policy:* the gsasii gateway translates the canonical name
+(spaced symbol, ` R` for `:R`, `:H`/`:2` dropped) and refuses **origin
+choice 1 (33 settings) and 9 further settings** (7 it does not parse, 2 it
+misreads); the translation was proved by a general-position orbit test over
+every accepted setting. To use a refused setting, transform the structure to
+a standard setting.
+
+**TOPAS** accepts the symbols of its own table (case-insensitive, spaces
+allowed, or the number); `:2` selects origin choice 2 and a **bare two-origin
+symbol is origin choice 1** (the opposite of GSAS-II's default, EB-11); a
+bare rhombohedral symbol is hexagonal axes and a trailing `r` rhombohedral
+axes (EB-43). Twenty of gemmi's settings have no TOPAS symbol, and TOPAS 6
+reads three (`C 1 21 1`, `I 1 21 1`, `C 4 2 21`) as another setting,
+dropping an origin shift (EB-68). *Policy:* the topas gateway writes the
+explicit TOPAS form (`:2` kept, `:1` and `:H` dropped, `:R` → `r`) and refuses
+**23 settings**; the other 541 were checked operator by operator against
+TOPAS 6's own generated operator files.
+
+**easydiffraction** takes one of 230 short names plus a separate setting
+code (531 settings in all, EB-42), but each **calculator** computes only some
+of them correctly: CrysFML is handed the short symbol alone and misreads
+almost every non-default setting (unique axis, cell choice, `:R`, some
+origin-1 groups) (EB-80); CrysPy misreads 41 settings, crashes on 53
+(EB-84), computes `P 31` with `P 32`'s operators (EB-80), resets the unique
+angle of c- and a-unique monoclinic cells to 90° (EB-83), and computes
+special positions wrongly in nine origin-choice-1 settings (EB-77).
+*Policy:* validation accepts, per calculator, only the settings a computation
+passed for a general position **and** every special site — **CrysPy 428,
+CrysFML 230** of the 531 — and the error names a setting of the same group
+that calculator computes, or the other calculator (A163, A170, A174).
+
+## Special positions and site symmetry
+
+- **Core decides special positions, not the engine.** An atom within 5e-6
+  (fractional) of a special position is on it; 5e-6 to 2e-3 off is an error;
+  derived values are held exactly in the validated model, so the engines'
+  own tolerances never matter: GSAS-II compares images within 2e-5 + 1e-5·|x|
+  and not modulo 1 (EB-01); TOPAS compares within 1e-15 and treats any
+  decimal third as a general position, so PowderLine writes fixed special
+  coordinates as exact equations (`= 1/3;`) (EB-08); CrysPy rationalizes
+  coordinates to denominator ≤ 10⁵ and snaps 5-decimal thirds (EB-12).
+- **GSAS-II's cell-edge defect** (a coordinate just below an integer gets
+  multiplicity 0, just above 0 an invalid one, EB-02) cannot be reached:
+  such coordinates are exact constants in the model.
+- **GSAS-II misreads some orientations of 2-fold sites** in R32, R-3m and
+  R-3c on hexagonal axes, e.g. (0, 1/3, 1/6): it reports a general position
+  with **doubled multiplicity**, and with nothing refined computes **four
+  times** the Bragg intensity of the equivalent (1/3, 0, 1/6) (EB-40). Some
+  other site orientations it cannot name at all (`'sp'`, e.g. F432 at
+  (0, y, 0)), and it crashes when a coordinate or `Uaniso` of such an atom is
+  refined (EB-05). *Policy:* after phase setup the gsasii gateway compares
+  GSAS-II's site symmetry and multiplicity with core's for every atom and
+  **stops with an error naming an equivalent position GSAS-II reads
+  correctly** (always for a wrong multiplicity, since the site weight
+  doubles even in a simulation; for an unnamed site only when a coordinate
+  or `Uaniso` is refined) (A117). PowderLine never substitutes the position
+  silently, because refined coordinates would then differ from the recipe.
+- **easydiffraction applies site symmetry itself**: it detects the Wyckoff
+  position when the structure is built, marks fixed coordinates and ignores
+  a `free` flag on them, re-detects on a user edit with tolerance 1e-3 (so an
+  off-special coordinate can change the multiplicity), and never re-detects
+  during a fit (EB-47, EB-74). *Policy:* the gateway hands over core's exact
+  values and checks easydiffraction's multiplicity against core's for every
+  atom after the build.
+- **CrysPy computes wrong structure factors for some equivalent writings of a
+  special position with a free coordinate** (LaB6's B written as
+  (½, ½, x) instead of the template's (x, ½, ½): intensities off by up to
+  ×2), while general positions and fixed special positions are right
+  (EB-77). *Policy:* with `calculator: "cryspy"` an atom on such a site must
+  be written in the pattern of easydiffraction's Wyckoff template; the
+  builder refuses anything else before the run and names the position to
+  write (A164). A position easydiffraction merely stores translated by a
+  lattice vector ((0.137, 0.863, z) held as (0.137, −0.137, z)) is the same
+  atom: accepted, with the warning `easydiffraction_position_translated`;
+  reports stay in the recipe's writing (A176). CrysFML has no such rule.
+
+## Unit cell and ADPs
+
+- **GSAS-II enforces cell symmetry only when the cell is refined**; a fixed
+  inconsistent cell is used as given and gives wrong peak positions (EB-06).
+  **TOPAS** uses individual `a b c al be ga` as given (EB-09). *Policy:* core
+  refuses a cell that does not fit the space group (within 1e-9), in every
+  engine.
+- **Uij and site symmetry.** GSAS-II applies the constraints when refining
+  and stores the values as given (EB-07); TOPAS's `adps` keyword applies them
+  (*unverified*; EB-10); core requires symmetric `Uij` up front.
+- **Isotropic ADP conventions.** TOPAS's `beq = 8π²·Uiso` (EB-24): the recipe
+  states `Uiso` in Å², the gateway converts value and bounds and warns
+  `topas_adp_converted` once per atom; results report `Uiso`. Core's `Uiso`
+  and `Uij` are Å² in every schema.
+- **Anisotropic ADPs in easydiffraction**: supported, but **CrysFML is
+  handed only B = 8π²·Ueq**, so a `Uaniso` would have no effect there (EB-23);
+  with CrysPy, easydiffraction 0.21.1 wrote a refined Uij into the wrong
+  atom's column whenever an isotropic atom preceded the anisotropic one, so
+  the refined tensor had no effect (EB-86). *Policy:* `Uaniso` with CrysFML is
+  a validation error; with CrysPy the gateway hands the anisotropic atoms
+  first (reports keep the recipe's order), and a test proves a refined Uij
+  moves (A169).
+- **Signs and definiteness.** GSAS-II carries negative `Uiso`/`Uij` and
+  refines from them (EB-51) and has no positive-definiteness check (EB-50);
+  easydiffraction computes a finite pattern for both (EB-46, EB-50); TOPAS
+  *unverified*. *Policy:* core has no sign rule (a negative ADP can
+  compensate for an unmodelled effect) and warns `uaniso_not_positive_definite`
+  (A111, A118). easydiffraction **refuses** a negative `Uiso` or U11/U22/U33
+  at input (its physical limit 0–10 Å², EB-46/EB-71), so an `easydiffraction.*`
+  recipe may not state one.
+- **Occupancy.** GSAS-II accepts any value (EB-20), TOPAS limits `occ` to
+  0..2·value+1 per iteration (EB-21), easydiffraction refuses values outside
+  [0, 1] (EB-22). *Policy:* core requires 0 ≤ occupancy ≤ 1 for every engine.
+- **Element and ion notation** differs (GSAS-II/TOPAS `Fe+3`, CrysPy `Fe3+`;
+  gemmi strips the charge, EB-13, EB-25; GSAS-II reads `Fe3+` as hydrogen).
+  *Policy:* core accepts bare symbols only; ions are rejected, never
+  stripped.
+
+## Names
+
+GSAS-II rewrites phase names (strips surrounding whitespace, replaces
+non-ASCII with `_`) and the settings of a renamed phase were then skipped
+silently; a `/` broke the report file write (EB-44). easydiffraction accepts
+atom labels of the form `[A-Za-z_][A-Za-z0-9_]*` only and lowercases
+datablock names (EB-45). TOPAS treats two `prm` of the same name as one
+parameter, so composed names could collide silently (EB-49, *unverified
+beyond the model*). *Policy:* the core name rule
+(`^[A-Za-z][A-Za-z0-9_]*$`, ≤ 64 characters, no Python keyword, distinct
+ignoring case) makes every such name invalid before an engine runs; the
+TOPAS writer uses index-based parameter names.
+
+## Bounds and limits
+
+Each engine means something different by a bound, so each schema says what
+it exposes.
+
+**GSAS-II applies parameter limits only after all cycles of a `Refine`
+call**: an out-of-range value is set to the limit with ESD 0 and frozen for
+the *next* call, while the reported values, ESDs and Rwp belong to the
+unclamped fit (EB-30); cell limits must be set on the reciprocal-metric
+terms and map onto direct-cell boxes exactly for only four of the seven
+crystal systems (EB-31). *Policy:* **gsasii 1.0.0 exposes no bounds**; a
+4-element parameter list is a validation error (A84). Bounds may come in a
+later gsasii schema version with a clamp-freeze-refit scheme.
+
+**TOPAS keywords carry default limits** (`scale` ≥ 1e-11, `beq` in [−10, 20],
+cell lengths ≥ 1.5 Å, lattice ±0.5 % per iteration, …) and the TOPAS.INC
+macros add their own to refined parameters (TCHZ U–Z in [−1, 2], X, Y in
+[1e-4, 2], CS in [0.3, 10000] nm, Strain in [1e-4, 5], …); a user `min`/`max`
+overrides the default on that side, and a start outside a limit is moved
+onto it silently (EB-58). The `_LIMIT_MIN/MAX` markers TOPAS 6 writes are
+mislabelled or spurious (EB-62). *Policy (A138):* a stated bound replaces
+TOPAS's limit on that side; a `null` side keeps TOPAS's default limit, and a
+**refined start outside a fixed default limit on a `null` side is a
+validation error** (state a bound to override TOPAS, or start inside). After
+a run every refined parameter within 1e-6 (relative) of a limit acting on it
+gets `topas_parameter_at_limit`, judged from the final values and the limits
+the writer knows, not from TOPAS's markers.
+
+**easydiffraction gives an unbounded side its physical limit** when a fit
+starts (cell lengths 0–30 Å, angles 0–180°, occupancy 0–1, `adp_iso` and
+U11/U22/U33 0–10 Å², scale, wavelength and μR ≥ 0), refuses a value outside a
+physical limit at input even when fixed (no cell over 30 Å can be modelled),
+and lmfit moves a start outside its bounds onto the bound without a message
+(EB-71). *Policy (A157 B4):* a stated bound replaces the physical limit on
+its side, `null` keeps it, a value outside a physical limit is a validation
+error, and `easydiffraction_parameter_at_limit` marks a refined value that
+ended within 1e-6 (relative) of a bound or physical limit (for a limit of 0,
+within 1e-6 of the starting value).
+
+## Defaults, floors and silent substitutions
+
+### gsasii
+
+- **GSAS-II's own defaults add sample broadening and background the recipe
+  never asked for**: a new project gets isotropic size 1 µm, microstrain 1000
+  and a constant 1.0 Chebyshev background, all fixed (EB-36). *Policy:*
+  size/strain left out means **10 µm / 0 microstrain, isotropic, fixed** (no
+  sample broadening), applied with the warning
+  `gsasii_broadening_default_applied` naming the phase and the values, so
+  GSAS-II's default is never used silently (A87, A107, A119); background left
+  out means **none** (one fixed Chebyshev term 0.0). These are the only
+  documented defaults in gsasii 1.0.0; state the blocks to silence the
+  warning.
+- **SH/L is floored at 0.002** in the Rietveld and Peak List profile
+  calculations (and at 0.0005 in `GetFobsSq`; background peaks use it as
+  stored) (EB-37). *Policy:* `axial_divergence` < 0.002 is a validation error
+  (A91). The converted LaB6 examples state 0.002 where they said 0.0005.
+- **Background peaks are evaluated with silent floors**: intensity 0.1, σ²
+  0.01 centideg², γ 0.1 centideg (EB-35); **Peak List peaks** floor σ² and γ
+  at 0.001 (EB-37). *Policy:* a value below a floor is a validation error
+  (A86, A90).
+- **The background-peak width is a variance**: GSAS-II's `BkPksig` is σ² in
+  centideg² although its GUI calls it `sig` and its prose "Gaussian width"
+  (EB-34). *Policy:* the field is named `pv_gaussian_sigma_sq` (A89).
+- **Width-derived quantities**: GSAS-II's peak `int` is an integrated area;
+  its exporters write σ in degrees while the project holds σ² in centideg²,
+  and several exporter formulas are wrong (EB-39). PowderLine reads the
+  project directly and uses none of those exporters.
+- **Single peak fitting ignores some refine flags silently**: with the
+  instrument profile in use a peak's own σ²/γ flags, with per-peak widths the
+  U..Z flags; it even clears the U/V/W flags when any σ² is refined, and drops
+  singular parameters without a message (EB-53). *Policy:* a refine flag on
+  the width source not in use is a validation error (A127), and
+  `gsasii_parameters_not_varied` reports any remaining silent drop (A128).
+- **Validation errors that replace run-time failures**: wavelength ≤ 0 and
+  crystallite size ≤ 0 (GSAS-II fails with "no reflections" / an SVD
+  failure); a Peak List or background peak outside the fit window (GSAS-II's
+  peak fit failed with a bare `TypeError`, EB-38) (A126).
+
+### topas
+
+- **No defaults**: a block left out is not modelled; everything PowderLine
+  would otherwise choose is a required field (A142).
+- **TCHZ takes the absolute value of its Gaussian term**
+  (ΓG = √|U tan²θ + V tanθ + W + Z/cos²θ|), so a negative sum is used as its
+  magnitude without a message (EB-55); the TR's formula has no `|…|`.
+  Documented, not validated: TOPAS carries the user's value consistently.
+- **`PVII_Peak_Type` differs from the Technical Reference**: TOPAS 7's macro
+  computes h = ha + hb/cosθ + hc·tanθ and m = 0.6 + ma + mb/cosθ + mc·tanθ (the
+  TR prints the tanθ and 1/cosθ terms the other way round), and h1, h2 are
+  half-widths (EB-56). The schema documents the macro's formula.
+- **`CS_L`, `CS_G`, `Strain_L`, `Strain_G` are not sizes or strains**: TOPAS's
+  own documentation says they "have no direct physical interpretation and
+  should not be reported". The interpretable quantities are
+  **LVol-IB** = k / IB with IB = Voigt_Integral_Breadth_GL(1/CS_G, 1/CS_L)
+  (π/2·(1/CS_L) or 1.0645·(1/CS_G) with one component) and
+  **e0** = Voigt_FWHM_GL(Strain_G, Strain_L)·0.25·π/360 (EB-57). *Policy:*
+  PowderLine reports LVol-IB (k = 1) and e0 as derived rows computed by TOPAS
+  and documents that the four input terms are not sizes/strains (A142).
+- **`lam` with `lg` alone crashes TOPAS 6** (EB-64): `lh` is required, `lg`
+  only with it.
+- **Fixed peak-type terms that make a width negative** inside the window
+  (TCHZ X < 0 with Y = 0) validate; TOPAS 6 stops on a negative convolution
+  FWHM, but whether the peak-type macros do is *unverified* (EB-69). Refined
+  widths are validated ≥ 0.
+- **Numbers are written to the INP to 10 significant digits** (`%.10g`), as
+  in the `.xye`.
+
+### easydiffraction
+
+- **No defaults** either: every control is stated (`calculator`, the lmfit
+  tolerances, `max_iterations`); a left-out instrument slot is not modelled.
+- **σ < 1e-4 becomes σ = 1.0 silently** on every input path (EB-73):
+  weights above 1e8 on handed points are refused (A159).
+- **Negative measured intensities are refused** by the library (EB-91): a
+  negative handed point is a validation error (A177).
+- **Negative peak widths give a wrong pattern without a message**: where
+  U tan²θ + V tanθ + W < 0 CrysFML drops the peaks and CrysPy distorts them;
+  where X tanθ + Y/cosθ < 0 both give a finite pattern 12–24 % off (EB-87).
+  *Policy:* a stated profile that makes a width negative on the handed points
+  or on a 0.01° grid over the window widened by 1° plus the position
+  corrections is a validation error; a refined profile that does so gets
+  `easydiffraction_negative_width` (A171, A178). It happens in practice: the
+  LaB6 CrysPy pseudo-Voigt fit refines X to −0.098, negative from 11.2° on.
+- **The ASCII data reader rounds 2θ to 4 decimals** (EB-72): the gateway hands
+  the data as a CIF loop at full precision, every number positional because
+  the CIF loop cannot read exponent notation (EB-89).
+- **Errors can be downgraded to log messages** by the environment variable
+  `ED_LOG_REACTION=WARN` (EB-48): the gateway sets the reaction to `RAISE`
+  itself, whatever the environment.
+- **Importing easydiffraction imports `diffpy.pdffit2`**, whose version
+  module queries PyPI; offline this prints a warning and continues (EB-82).
+
+## The fit window and the data points
+
+GSAS-II fits and scores one point **past** the upper limit when the limit
+falls between data points (EB-54) and starts at the first data point,
+weighted or not, with no limit; TOPAS fits the points **nearest** `start_X`
+and `finish_X` (EB-59); easydiffraction calculates only the points it is
+handed (so reflection tails from beyond the window are lost: ≤ 3e-4 σ at the
+refined scale, EB-70) and maps its Chebyshev basis over them. *Policy
+(A149, A154):* every gateway hands its engine the fit limits moved onto the
+first and last **weighted** data points inside the window, so every engine
+fits exactly the points core scores and spans its Chebyshev basis over the
+same points; GSAS-II's own Rwp then equals core's. easydiffraction receives
+exactly those points (A158). A window with no weighted point is an error.
+
+**TOPAS 6 loses part of an `xo_Is` peak's value at the last fitted point**
+(a background or single peak without an axial convolution: LaB6's background
+peak 1.35 counts low, ≈ 4 %), wherever the window ends; no calculation range,
+step or `exclude` avoids it (EB-66). Documented, no workaround; the
+background-only run carries the same value, so `y_bkg` is consistent with
+`y_calc`. TOPAS 7: *unverified*.
+
+## Requested vs varied parameters, convergence, failures
+
+Every result reports `engine_details.parameters_requested` (independently
+refined parameters in the recipe, a tie group counted once) next to
+`parameters_varied` (what the engine actually varied, read after the run).
+That pair is the visible trace of each engine's auto-applied constraints and
+silent drops (A45); when varied < requested the result warns
+`<engine>_parameters_not_varied` (A128).
+
+- **GSAS-II**: `Refine` returns nothing on success; its messages (frozen
+  limits, parameters dropped as singular, SVD) are only printed and stored
+  in the project (EB-32), so the gateway reads them into
+  `gsasii_refinement_message` warnings. Its parameter count `Nvars` includes
+  parameters it dropped as singular (EB-33), reported as a warning, not
+  subtracted; the SPF count is taken after the drops. GSAS-II's own
+  convergence flag is read into `engine_details.converged` and
+  `gsasii_fit_not_converged` warns when the last cycle's χ² change was above
+  its tolerance (values kept, A172; a Peak List fit keeps no flag, so
+  `converged` is `None` there). The committed DRX_33 examples report
+  `converged: false` after their five cycles.
+- **TOPAS 6**: `tc.exe` returns the same exit code on success and failure and
+  prints its messages only to its console window (EB-60), so **success is
+  judged from the expected output files**, removed before the run; a missing
+  file is an `EngineExecutionError` pointing to the console and `tc.log`. A
+  non-finite term silently zeroes a phase and the background absorbs the
+  pattern (EB-63): a phase with all-zero calculated intensities gets the
+  informative `topas_phase_contributes_nothing` (a zero contribution can be
+  legitimate: a phase absent from the sample). `Get(number_independent_parameters)`
+  works in TOPAS 6 although undocumented and excludes parameters with zero
+  derivative (EB-65): it is `parameters_varied`. TOPAS 6 exposes no
+  convergence signal in its files (EB-85); a TOPAS 7 follow-up is open.
+- **easydiffraction**: lmfit's `success` and message are read; a fit that
+  stops without success (e.g. `max_iterations` reached) is a **success with
+  values reported** and the warning `easydiffraction_fit_not_converged`
+  (A166). `parameters_varied` is lmfit's count (easydiffraction's
+  `n_free_parameters`); a parameter without effect gets no ESD (EB-81).
+- **Divergence is a failure in every engine** (A130): a calculated pattern
+  that is not finite inside the window, or any non-finite number the engine
+  writes (`nan`, `1.#QNAN`, `-nan(ind)`), raises `EngineExecutionError` and
+  the result has no products; the engine's files stay on disk. GSAS-II itself
+  prints wR `nan` and reports 100 % (EB-52); v0.1.1 returned success.
+- **A phase that contributes nothing** gets the informative
+  `<engine>_phase_contributes_nothing` (topas, easydiffraction), never an
+  error; gsasii accepts `scale: 0` for the same reason (recipe reuse).
+
+## Statistics: uniform vs engine-reported
+
+The result's `rwp`, `r_exp`, `gof` and `chi2_red` are **PowderLine's**, computed
+once in core over the points inside the fit window with positive weight
+(N), with P = the engine's varied-parameter count read after the run; Rwp and
+Rexp in percent, GoF = Rwp/Rexp, χ²_red = GoF². The same formula applies to
+every engine, so the values compare how well each model fits the same
+points. The engine's own values stay under `engine_details`, and they differ:
+
+- **GSAS-II's `GOF` means two things**: √(reduced χ²) in a Rietveld refinement
+  and the reduced χ² itself in a Peak List fit (EB-52). GSAS-II caps R and wR
+  at 100 %, so a simulation against placeholder data and a diverged
+  refinement both read 100 % (EB-52). Its `Nobs` counted one point past the
+  window (EB-54); with limits on data points (A149) its Rwp now equals core's
+  on the native path.
+- **TOPAS's `r_wp`** equals core's Rwp once the window is on data points
+  (EB-59).
+- **easydiffraction's `prof_wr_factor`** is 1/σ²-weighted and unchanged
+  between 0.20.1 and 0.21.1; some ESDs changed with lmfit's explicit
+  tolerances (EB-81). **CrysFML's integrated intensities drift −4 % from 3°
+  to 15° 2θ** relative to m·|F|²·Lorentz, biasing `Uiso` by about +0.001 Å²
+  (EB-78); the calculator is recorded in every result.
+- **Comparing engines**: the [cross-engine comparison](cross-engine-comparison.md)
+  shows that lattice parameters agree between GSAS-II and easydiffraction
+  when axial asymmetry is modelled physically (FCJ), and shift +67 to
+  +91 ppm with a symmetric profile whichever calculator runs it (EB-88). Rwp
+  compares models fitted to the same points, not engines.
+
+## Simulations
+
+A simulation is a run that refines nothing: `refinement_cycles: 1` in
+gsasii (every refine flag must be `false`, including polarization and Peak
+List flags), `iters: 0` in topas (every flag `false`), no refine flag set in
+easydiffraction (lmfit is not run). Every native result says
+`simulation_mode: true|false`, and a simulation gets the **same uniform
+statistics** as any run, with P = 0: against real data a one-cycle run tells
+you how good the starting values are; against placeholder data (the
+`example_LaB6_simulation` and `example_DRX_33_simulation` recipes, which
+carry flat observations) the statistics mean nothing, and are large on
+purpose (GSAS-II would print its 100 % cap). A statistic without degrees of
+freedom is `None`, never NaN (A129). The gsasii simulation of a converted
+recipe no longer carries GSAS-II's 1 µm / 1000 sample broadening, so
+simulated peak heights changed at the 0.2.0 re-baseline.
+
+## Calculators (easydiffraction)
+
+- **CrysPy** (default) computes `cwl-pseudo-voigt` and the Bérar–Baldinozzi
+  empirical asymmetry; **CrysFML** computes `cwl-pseudo-voigt` and the
+  Thompson–Cox–Hastings profile with FCJ axial asymmetry. Both "pseudo-Voigts"
+  are the TCH pseudo-Voigt with Caglioti Gaussian and X tanθ + Y/cosθ
+  Lorentzian widths; `cutoff_fwhm` acts in CrysPy only (CrysFML uses a fixed
+  30-FWHM window) (EB-76). The peak type must be one the calculator computes.
+- **CrysFML reports no reflection list** (EB-79): no peak list reports are
+  written with it, and the result warns
+  `easydiffraction_reflections_not_available`.
+- **CrysFML computes in single precision**, below lmfit's finite-difference
+  step, so a CrysFML **refinement** stops at a point that depends on its
+  starting values (starts changed by 1e-6 relative gave Rwp 6.79 vs 6.27 %,
+  cells stable to ~1e-5) (EB-90). *Policy:* every CrysFML refinement carries
+  `easydiffraction_crysfml_start_dependent`; the calculator stays available
+  because the user chooses it and PowderLine states the difference (A175).
+
+## TOPAS platform facts
+
+- `tc.exe` carries no version metadata and prints its version only to its
+  console (EB-67): the installed version is **declared** (`--topas-version` /
+  `topas.version` in `.powderline_config.yaml`) and required to run; the check
+  compares declarations, not the binary (A145).
+- TOPAS 6 cannot output the fit's background (`Get(bkg)` is 0; `phase_out_X`
+  is TOPAS 7 only, EB-61): PowderLine runs a second, background-only INP at
+  the refined values and uses its calculated pattern as `y_bkg`, every
+  convolution included (A152); if that run writes nothing the result stays a
+  success with an empty `y_bkg` and `topas_background_not_calculated`.
+- TOPAS is never executed by PowderLine's own test suite or docs build; the
+  committed TOPAS 6 goldens (`tests/data/topas/native/golden/`) are what the
+  TOPAS machine wrote, and the comparison page rebuilds its TOPAS rows from
+  them.
+
+## Warnings you may see
+
+| Code | Engine | Meaning |
+|---|---|---|
+| `gsasii_broadening_default_applied` | gsasii | size or strain left out; 10 µm / 0 applied, fixed |
+| `gsasii_refinement_message` | gsasii | a message GSAS-II stored with the refinement (correlations, singular parameters, SVD) |
+| `gsasii_fit_not_converged` | gsasii | the last cycle's χ² change was above GSAS-II's tolerance; values kept |
+| `gsasii_parameters_not_varied` | gsasii | GSAS-II varied fewer parameters than requested |
+| `uaniso_not_positive_definite` | core | the stated `Uaniso` has a principal value ≤ 0; used as stated |
+| `topas_adp_converted` | topas | `Uiso` written as `beq = 8π²·Uiso` |
+| `topas_parameter_at_limit` | topas | a refined value ended at a stated bound or a TOPAS default limit |
+| `topas_parameters_not_varied` | topas | TOPAS varied fewer parameters than requested |
+| `topas_phase_contributes_nothing` | topas | a phase's calculated intensities are all zero (informative) |
+| `topas_background_not_calculated` | topas | the background-only run wrote nothing; `y_bkg` empty |
+| `easydiffraction_parameter_at_limit` | easydiffraction | a refined value ended at a bound or physical limit |
+| `easydiffraction_parameters_not_varied` | easydiffraction | lmfit varied fewer parameters than requested |
+| `easydiffraction_phase_contributes_nothing` | easydiffraction | informative, as for topas |
+| `easydiffraction_fit_not_converged` | easydiffraction | lmfit stopped without success; values reported |
+| `easydiffraction_negative_width` | easydiffraction | the refined profile makes a width negative near the window |
+| `easydiffraction_reflections_not_available` | easydiffraction | CrysFML: no peak lists |
+| `easydiffraction_position_translated` | easydiffraction | an atom held in another writing of the same position |
+| `easydiffraction_crysfml_start_dependent` | easydiffraction | every CrysFML refinement (single precision) |
+
+## Upstream status
+
+Problems found in the engines are written up for their developers in the
+maintainers' private devkit (`engine-issues/`, one file per issue with a
+standalone reproduction): 13 for GSAS-II (G2-01 … G2-13: the σ² label, the
+cell-edge multiplicity, `'sp'` sites, the R-centred 2-fold misread, symbol
+spellings, limits applied after the cycles, the Peak List `TypeError`, the two
+GOF meanings and the 100 % cap, ignored SPF flags, the window's extra point,
+the SH/L floors, the background-peak floors, the convergence flag absent from
+the messages), 10 for TOPAS (TP-01 … TP-10: the PVII formula, e0/LVol-IB
+formulas, the TCHZ absolute value, the `lg`-alone crash, silent zeroing and
+the negative-FWHM abort, the limit markers, the last-point loss, the three
+misread settings, exit code/messages/version, the undocumented `Get`) and 14
+for easydiffraction (ED-01 … ED-14: the Uani column bug, special-position
+images, CrysFML's short-symbol setting, CrysFML ignoring `Uaniso`, `P 31`'s
+hand, the monoclinic cell reset, the 53 crashes, silent negative widths, the
+σ replacement, CIF exponent notation, the ASCII rounding, the CrysFML
+intensity drift, starts moved onto bounds, the single-precision Jacobian).
+**None has been posted yet**; whether and when to post is the maintainers'
+call. Until an upstream fix lands and PowderLine's engine pin moves to it,
+every behaviour above stands as documented.

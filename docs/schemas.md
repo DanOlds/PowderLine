@@ -38,8 +38,9 @@ path): copy one into your own directory, fill the blanks (data arrays,
 wavelength, element symbols), and validate the copy.
 
 Field-by-field tables, with units, are on the [fields page](fields.md); how to
-fill the blocks is on the [input guidance page](input-guidance.md). The
-schema changelog is [SCHEMA_HISTORY](SCHEMA_HISTORY.md).
+fill the blocks is on the [input guidance page](input-guidance.md); what each
+engine does with them is on the [engine behaviour page](engine-behavior.md).
+The schema changelog is [SCHEMA_HISTORY](SCHEMA_HISTORY.md).
 
 ## Minimum inputs
 

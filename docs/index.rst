@@ -22,6 +22,7 @@ fresh clone to a finished refinement, on Linux or Windows.
    schemas
    fields
    input-guidance
+   engine-behavior
    integration-guide
    cross-engine-comparison
    mp-simulation

@@ -26,7 +26,7 @@ table on the [support matrix](support-matrix.md) page.
   replaces TOPAS's default limit on that side and `null` keeps TOPAS's own
   default limit; in `easydiffraction.*` a stated bound replaces the engine's
   physical limit and `null` keeps it. Details and the limit-hit warnings are
-  on the engine behaviour page.
+  on the [engine behaviour page](engine-behavior.md#bounds-and-limits).
 - **Units are fixed per field** (the `Unit` column) and never written in a
   recipe. The vocabulary: `degree 2theta`, `degree`, `angstrom`,
   `angstrom^2`, `arbitrary`, `1/intensity^2` (core); `centidegree 2theta`,

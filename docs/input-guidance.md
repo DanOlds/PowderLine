@@ -88,7 +88,8 @@ Each engine then translates the canonical name into its own form and
 **refuses the settings it cannot express**: GSAS-II origin choice 1 and 9
 other settings; TOPAS 6 23 settings; easydiffraction's calculators the
 settings each was verified to compute (the error names a setting of the same
-group that works, or the other calculator). The per-engine lists are on the engine behaviour page.
+group that works, or the other calculator). The per-engine lists are on the
+[engine behaviour page](engine-behavior.md#space-group-spellings-and-settings-per-engine).
 To use a refused setting, transform the structure to a standard setting.
 
 ### Unit cell
