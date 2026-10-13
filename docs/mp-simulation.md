@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `mp-simulate` tool fetches crystal structures from the Materials Project database and generates simulated powder diffraction patterns. Simulation runs through PowderLine's default GSAS-II engine.
+The `mp-simulate` tool fetches crystal structures from the Materials Project database and generates simulated powder diffraction patterns. It builds a `gsasii.rietveld` recipe (schema 1.0.0, a simulation: `refinement_cycles: 1`, nothing refined) and runs it through **GSAS-II**, so it lives in the GSAS-II gateway and its pixi task in the `gsasii` environment (`pixi run -e gsasii mp-simulate ...`). An engine-agnostic simulation tool with its own configuration is a future item.
 
 ## Requirements
 
@@ -25,17 +25,17 @@ nano .powderline_config.yaml
 
 ```bash
 # By Materials Project ID
-pixi run mp-simulate --material-id mp-2680 --output patterns/
+pixi run -e gsasii mp-simulate --material-id mp-2680 --output patterns/
 
 # By chemical formula: lists all matching polymorphs and simulates the most
 # stable one (lowest energy above hull)
-pixi run mp-simulate --formula LaB6 --output patterns/
+pixi run -e gsasii mp-simulate --formula LaB6 --output patterns/
 
 # With custom wavelength
-pixi run mp-simulate --material-id mp-2680 --wavelength 1.54 --output patterns/
+pixi run -e gsasii mp-simulate --material-id mp-2680 --wavelength 1.54 --output patterns/
 
 # Keep intermediate files for inspection
-pixi run mp-simulate --material-id mp-2680 --keep-recipe --keep-output --output patterns/
+pixi run -e gsasii mp-simulate --material-id mp-2680 --keep-recipe --keep-output --output patterns/
 ```
 
 ## Output Files
@@ -43,13 +43,13 @@ pixi run mp-simulate --material-id mp-2680 --keep-recipe --keep-output --output 
 After running `mp-simulate`, you'll get:
 
 - **`{material_id}_{formula}_simulated.chi`**: Simulated diffraction pattern (2θ vs intensity)
-- **`{material_id}_{formula}_recipe.json`** (if `--keep-recipe`): Full PowderLine recipe used
+- **`{material_id}_{formula}_recipe.json`** (if `--keep-recipe`): the full `gsasii.rietveld` recipe used (validates as written; every default stated, canonical space-group name, the conventional cell reduced to its symmetry-unique sites, two-origin groups in origin choice 2)
 - **`{material_id}_{formula}_full_output/`** (if `--keep-output`): Complete GSAS-II output
 
 ## Example: LaB6 (mp-2680)
 
 ```bash
-pixi run mp-simulate --material-id mp-2680 --output patterns/
+pixi run -e gsasii mp-simulate --material-id mp-2680 --output patterns/
 ```
 
 **Output:**
@@ -61,7 +61,7 @@ pixi run mp-simulate --material-id mp-2680 --output patterns/
 ## Example: Al2O3 (Corundum)
 
 ```bash
-pixi run mp-simulate --material-id mp-1143 --output patterns/
+pixi run -e gsasii mp-simulate --material-id mp-1143 --output patterns/
 ```
 
 **Output:**
@@ -78,13 +78,13 @@ Default is 30 keV synchrotron (0.4133 Å). Common alternatives:
 
 ```bash
 # Cu Kα lab source (1.54056 Å)
-pixi run mp-simulate --material-id mp-2680 --wavelength 1.54056 --output output/
+pixi run -e gsasii mp-simulate --material-id mp-2680 --wavelength 1.54056 --output output/
 
 # Mo Kα lab source (0.7107 Å)
-pixi run mp-simulate --material-id mp-2680 --wavelength 0.7107 --output output/
+pixi run -e gsasii mp-simulate --material-id mp-2680 --wavelength 0.7107 --output output/
 
 # 15 keV synchrotron (0.8266 Å)
-pixi run mp-simulate --material-id mp-2680 --wavelength 0.8266 --output output/
+pixi run -e gsasii mp-simulate --material-id mp-2680 --wavelength 0.8266 --output output/
 ```
 
 ### Modify Simulation Parameters
@@ -94,8 +94,9 @@ GSAS-II conventions and units (not TOPAS, which differs for polarization,
 axial divergence, and instrumental broadening). Edit `.powderline_config.yaml`
 to change:
 
-- `instrument_defaults`: wavelength (Å), polarization, zero shift (°2θ),
-  axial divergence (SH/L), TCH instrumental broadening (U–Z)
+- `instrument_defaults`: wavelength (Å), polarization, zero shift (centideg
+  2θ), axial divergence (SH/L; at least 0.002, GSAS-II's own floor — the
+  default), TCH instrumental broadening (U–Z, GSAS-II units)
 - `phase_defaults`: scale; per-phase peak broadening — model, crystallite
   size (**microns**), microstrain (**Δd/d × 10⁻⁶**), and the LG mixing term
   (`LG_eta`, 1 = Lorentzian, 0 = Gaussian) for size and strain independently;
@@ -127,7 +128,7 @@ See `.powderline_config.yaml.example` for the full annotated layout.
 
 **Solution**: Verify material ID on Materials Project website. Try searching by formula instead:
 ```bash
-pixi run mp-simulate --formula LaB6 --output output/
+pixi run -e gsasii mp-simulate --formula LaB6 --output output/
 ```
 
 ### Server Reported Success but No Pattern Was Saved
@@ -143,8 +144,8 @@ and automatically re-runs in-process.
 
 **Solution**: restart the server from your own shell, or skip it entirely:
 ```bash
-pixi run gsas-server restart
-pixi run mp-simulate --material-id mp-2680 --no-server --output output/
+pixi run -e gsasii gsas-server restart
+pixi run -e gsasii mp-simulate --material-id mp-2680 --no-server --output output/
 ```
 
 ### Simulation Failed
@@ -155,13 +156,17 @@ pixi run mp-simulate --material-id mp-2680 --no-server --output output/
 
 **Solution**: Run with `--verbose` to see detailed GSAS-II output:
 ```bash
-pixi run mp-simulate --material-id mp-2680 --verbose --output output/
+pixi run -e gsasii mp-simulate --material-id mp-2680 --verbose --output output/
 ```
 
 Common causes:
 - Invalid structure data from MP
-- Unusual space group that GSAS-II doesn't recognize
-- Extreme unit cell parameters
+- A space-group setting GSAS-II cannot use (the recipe builder states origin
+  choice 2 and the canonical name; a setting GSAS-II refuses is reported at
+  validation)
+- A structure whose listed atoms do not reproduce the symmetry orbits (the
+  builder refuses it rather than emit a wrong pattern)
+- A configured value the gsasii schema rejects (e.g. SH/L below 0.002)
 
 ### Disordered Structures
 
@@ -171,7 +176,7 @@ and a note is printed when the fetched structure is disordered.
 
 ## Notes
 
-- **Deterministic output**: Simulation mode (refinement_cycles=1) with all parameters locked produces identical patterns every run
+- **Deterministic output**: Simulation mode (`refinement_cycles: 1`) with all parameters locked produces identical patterns every run; the result says `simulation_mode: true`, and its `rwp` (against the placeholder observations) means nothing
 - **Conventional cell**: fetched structures are standardized to the conventional unit cell so the space-group setting matches the emitted lattice parameters
 - **No experimental data**: These are calculated patterns only, not fits to observed data
 - **Instrument simulation**: Default parameters simulate high-resolution synchrotron data
