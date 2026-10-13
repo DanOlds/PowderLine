@@ -58,6 +58,7 @@ _VALIDATE_ONLY_CASES = [
     ("DRX_33_simulation", "example_DRX_33_simulation_input", "DRX_33"),
     ("DRX_33_atomrefine", "example_DRX_33_atomrefine_input", "DRX_33"),
     ("DRX_33_anisoADP", "example_DRX_33_anisoADP_input", "DRX_33"),
+    ("DRX_33_strainonly", "example_DRX_33_strainonly_input", "DRX_33"),
 ]
 
 
@@ -115,6 +116,7 @@ UNIFORM_RWP_REFERENCE = {
     "DRX_33": 10.8288,
     "DRX_33_atomrefine": 15.0592,
     "DRX_33_anisoADP": 15.5296,
+    "DRX_33_strainonly": 8.4573,  # 8.457289680786326 (re07-equivalence.md §1/§3); added after the G2 review (S5)
     "LaB6_singlepeakfit": 1.8159,
     # simulations: the uniform statistic of the simulated pattern against the
     # example's placeholder observation (A129; it means nothing physically,
@@ -146,6 +148,11 @@ _STANDARD_RIETVELD_CASES = [
      "example_DRX_33_anisoADP_reference_unit_cell_csvs",
      "example_DRX_33_anisoADP_reference_peak_csvs",
      "example_DRX_33_anisoADP_reference_refined_params_csv", ["DRX_33", "Li4MgWO6_SG12"]),
+    ("DRX_33_strainonly",
+     "example_DRX_33_strainonly_input", "example_DRX_33_strainonly_reference_lst",
+     "example_DRX_33_strainonly_reference_unit_cell_csvs",
+     "example_DRX_33_strainonly_reference_peak_csvs",
+     "example_DRX_33_strainonly_reference_refined_params_csv", ["DRX_33", "Li4MgWO6_SG12"]),
 ]
 
 
