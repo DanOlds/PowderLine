@@ -764,7 +764,7 @@ def _extract_spf_peak_report(
 ) -> tuple[dict, dict]:
     """Extract single peak fitting results and save report files.
 
-    Called only for ``GSASII_SPF`` runs where ``recipe.payload.single_peaks``
+    Called only for ``gsasii.spf`` runs where ``recipe.payload.single_peaks``
     is set. Returns two column-oriented dicts (JSON-serializable) that are
     normalised to DataFrames by ``run()``.
 

@@ -213,8 +213,6 @@ def execute_spf_refinement(
 
 # Schema executor registry
 SCHEMA_EXECUTORS = {
-    'GSASII_Rietveld': execute_rietveld_refinement,
-    'GSASII_SPF': execute_spf_refinement,
     'gsasii.rietveld': execute_rietveld_refinement,
     'gsasii.spf': execute_spf_refinement,
 }
@@ -266,7 +264,7 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
         - ``peak_list_data`` (dict) — ``{phase: list-of-records}``
         - ``refined_parameters`` (list) — list-of-records (9-column schema)
         - ``spf_peaks`` (dict) — column-oriented dict; populated for
-          ``GSASII_SPF`` runs, empty dict otherwise
+          ``gsasii.spf`` runs, empty dict otherwise
         - ``spf_convergence_diagnostics`` (dict) — column-oriented dict;
           populated when SPF peaks have convergence issues, empty dict otherwise
         - ``error`` (str) — present when ``success=False``
@@ -274,8 +272,9 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
 
     Example::
 
-        from powderline.kicker import run_refinement, validate
-        recipe = validate(recipe_dict)  # a gsasii.rietveld recipe dict
+        import powderline
+        from powderline.gateways.gsasii.routing import run_refinement
+        recipe = powderline.validate(recipe_dict).recipe  # a gsasii.rietveld recipe dict
         result = run_refinement(recipe, Path('output'), verbose=True)
         print(f"Rwp: {result['rwp']:.3f}%  [run_id={result['run_id']}]")
     """
@@ -363,7 +362,7 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
             holds = set_phase_parameterization(proj, hist, phases_dict, print_info=verbose)
 
             # 8b. Apply Hold constraints for per-parameter refine flags
-            # (schema 0.26: fixed members of partially-refined DOF groups).
+            # (fixed members of partially-refined DOF groups).
             # The isinstance guard keeps mocked-setter unit tests inert.
             if isinstance(holds, list) and holds:
                 proj.add_HoldConstr(holds)
@@ -388,7 +387,7 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
         # 10. Get refinement controls and set refinement cycles
         controls = recipe.payload.refinement_controls
 
-        # 10a. Validate single_peak_fitting_mode requirements (only for GSASII_SPF)
+        # 10a. Validate single_peak_fitting_mode requirements (only for gsasii.spf)
         if recipe.schema_name == 'gsasii.spf':
             if controls.single_peak_fitting_mode is None:
                 raise ValueError(
@@ -466,7 +465,7 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
         # Only raise if GSAS-II populated a varyList (i.e. parameters were actually varied)
         # but we still got nothing back. An empty param_dict with an empty varyList is
         # expected and correct for simulation mode (refinement_cycles=1, all params locked)
-        # and for GSASII_SPF (no standard covariance matrix produced).
+        # and for gsasii.spf (no standard covariance matrix produced).
         cov_vary_list = (
             proj.data.get('Covariance', {}).get('data', {}).get('varyList', [])
         )

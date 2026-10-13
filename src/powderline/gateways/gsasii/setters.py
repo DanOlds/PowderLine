@@ -447,7 +447,7 @@ def set_phase_unit_cell(proj: Any, phase_name: str, unit_cell_dict: dict, print_
     """
     Set the unit cell parameters in the GSAS-II project for a given phase.
 
-    Schema 0.26 semantics: each cell parameter refines iff it is present with
+    Per-parameter refine semantics: each cell parameter refines iff it is present with
     refine_flag=true; absent or false means fixed. Because GSAS-II has a single
     whole-cell refine flag, per-parameter control is achieved by setting that
     flag when any symmetry degree-of-freedom (DOF) group is requested and
@@ -758,7 +758,7 @@ def set_phase_atom_parameters(proj: Any, phase_name: str, atom_parameters_dict: 
     This function parses atom-specific refinement parameters (coordinates, occupancy, displacement)
     and constructs GSAS-II's refine_flags string ('F', 'X', 'U' combinations).
 
-    Schema 0.26 semantics: each coordinate (x/y/z) and each anisotropic Uij
+    Per-parameter refine semantics: each coordinate (x/y/z) and each anisotropic Uij
     component refines iff present with refine_flag=true; absent or false means
     fixed. GSAS-II's 'X'/'U' flags are per-atom, so per-component control is
     achieved by returning "Hold" constraint variable names (e.g. '0::dAy:3',
@@ -965,7 +965,7 @@ def set_phase_parameterization(proj: Any, hist: Any, phases_dict: dict, print_in
     Returns:
     list[str]
         Accumulated GSAS-II "Hold" variable names from the unit-cell and atom
-        setters (schema 0.26 per-parameter refine flags). The caller applies
+        setters (per-parameter refine flags). The caller applies
         them once via proj.add_HoldConstr.
     """
     holds: list[str] = []

@@ -3,39 +3,41 @@ API Reference
 
 This page provides detailed documentation for PowderLine's Python API.
 
-Schema Module
--------------
+Public API
+----------
 
-Pydantic models for recipe validation.
+The names in ``powderline.__all__`` (v0.2.0, P-06): ``run`` and ``validate``
+dispatch on the recipe's ``schema_name`` through the gateway registry
+(``powderline.registry``); ``validate`` is engine-free and returns a
+``ValidationResult`` (the gateway's validated model plus the structured
+warnings); ``load_recipe_asset`` reads a recipe file; ``support_matrix`` lists
+the installed gateways; the exceptions are ``PowderLineError`` and its
+subclasses. The recipe schemas are the engine-free ``schema`` module of each
+gateway (``powderline.gateways.gsasii.schema``, ``...topas.schema``,
+``...easydiffraction.schema``) over ``powderline.schema_core``.
 
-.. automodule:: powderline.schema
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. TODO re/10: autodoc the public API and the schema modules here (the
+   docs migration); until then this page keeps the GSAS-II helper entries.
 
-Kicker Module
--------------
-
-Main refinement workflow and parameter setting functions.
-
-Key Functions
-~~~~~~~~~~~~~~
-
-Template and Validation
-^^^^^^^^^^^^^^^^^^^^^^^^
+Command Line
+------------
 
 .. autofunction:: powderline.kicker.is_template_file
 
+GSAS-II Gateway Helpers
+-----------------------
+
 Output Generation
-^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~
 
-Functions for exporting refinement results with uncertainty quantification.
+Functions for exporting refinement results with uncertainty quantification
+(``powderline.gateways.gsasii.extractors``).
 
-.. autofunction:: powderline.kicker.export_refined_parameters_csv
+.. autofunction:: powderline.gateways.gsasii.extractors.export_refined_parameters_csv
 
-.. autofunction:: powderline.kicker.calculate_cell_esds_from_A_matrix
+.. autofunction:: powderline.gateways.gsasii.extractors.calculate_cell_esds_from_A_matrix
 
-.. autofunction:: powderline.kicker.extract_refined_params_from_project
+.. autofunction:: powderline.gateways.gsasii.extractors.extract_refined_params_from_project
 
 .. note::
 
@@ -45,31 +47,31 @@ Functions for exporting refinement results with uncertainty quantification.
    metric tensor (A-matrix) to direct lattice parameters via ``calculate_cell_esds_from_A_matrix()``.
 
 Post-Refinement Extraction Helpers (Private)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The four private ``_extract_*`` helpers encapsulate the post-refinement data
 extraction and file-writing logic. They are not part of the public API but are
 documented here for maintainers.
 
-.. autofunction:: powderline.kicker._extract_fit_profile
+.. autofunction:: powderline.gateways.gsasii.extractors._extract_fit_profile
 
-.. autofunction:: powderline.kicker._extract_spf_peak_report
+.. autofunction:: powderline.gateways.gsasii.extractors._extract_spf_peak_report
 
-.. autofunction:: powderline.kicker._extract_phase_reports
+.. autofunction:: powderline.gateways.gsasii.extractors._extract_phase_reports
 
-.. autofunction:: powderline.kicker._extract_refined_parameters
+.. autofunction:: powderline.gateways.gsasii.extractors._extract_refined_parameters
 
 Background Functions
-^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: powderline.kicker.set_chebyshev_background
+.. autofunction:: powderline.gateways.gsasii.setters.set_chebyshev_background
 
-.. autofunction:: powderline.kicker.set_single_peak_background
+.. autofunction:: powderline.gateways.gsasii.setters.set_single_peak_background
 
 Fit Range
-^^^^^^^^^
+~~~~~~~~~
 
-.. autofunction:: powderline.kicker.set_fit_range_hist
+.. autofunction:: powderline.gateways.gsasii.setters.set_fit_range_hist
 
 
 Types
@@ -78,21 +80,22 @@ Types
 Refinement Parameter Format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Throughout the API, parameters use the format::
+Throughout the native schemas, a refinable parameter is a two-element list::
 
-    [value, refine_flag, min, max]
+    [value, refine_flag]
 
 Where:
 
 - ``value`` (float): Current parameter value
 - ``refine_flag`` (bool): True to refine, False to hold fixed
-- ``min`` (float | None): Minimum bound (placeholder, not enforced yet)
-- ``max`` (float | None): Maximum bound (placeholder, not enforced yet)
+
+Engines that support bounds take a four-element ``[value, refine_flag, min, max]``
+(``BoundedRefinableParameter``); ``min``/``max`` may be ``null``.
 
 Example::
 
-    "wavelength": [0.45236, false, null, null]  # Fixed at 0.45236 Å
-    "scale": [1.0, true, null, null]            # Refined starting from 1.0
+    "wavelength": [0.45236, false]  # Fixed at 0.45236 Å
+    "scale": [1.0, true]            # Refined starting from 1.0
 
 Phase vs Histogram Parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

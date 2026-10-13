@@ -78,6 +78,11 @@ nitpick_ignore = [
     # `PlainSerializer(func=<lambda>, ...)` metadata; Sphinx's stringifier
     # renders the lambda's qualname fragment as its own bogus xref target.
     ('py:class', 'lambda'),
+    # The GSAS-II extractors' signatures (ledger R22) name the native recipe
+    # models; api.rst does not autodoc the gsasii schema module yet (re/10),
+    # so the rendered type hints have no link target (re/07, P-22).
+    ('py:class', 'powderline.gateways.gsasii.schema.GsasiiRietveldRecipe'),
+    ('py:class', 'powderline.gateways.gsasii.schema.GsasiiSpfRecipe'),
 ]
 
 

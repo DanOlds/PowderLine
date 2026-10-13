@@ -1,4 +1,4 @@
-"""Per-parameter refine-flag translation for GSAS-II (schema 0.26.0).
+"""Per-parameter refine-flag translation for GSAS-II.
 
 GSAS-II exposes only lumped refine flags for three parameter classes: one flag
 for the whole unit cell (``General['Cell'][0]``), one ``'X'`` flag per atom for
@@ -8,7 +8,7 @@ module computes, for each class, (a) whether the lumped GSAS-II flag must be
 set and (b) which GSAS-II "Hold" constraints must be emitted so that only the
 requested parameters actually refine.
 
-Normative semantics (schema 0.26):
+Normative semantics:
 
 - A parameter is *requested* iff it is present with ``refine_flag=true``.
 - Absent, ``None``, or ``refine_flag=false`` means fixed (held).
