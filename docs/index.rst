@@ -22,7 +22,10 @@ fresh clone to a finished refinement, on Linux or Windows.
    integration-guide
    mp-simulation
    TROUBLESHOOTING
+   migration-0.26-to-1.0
+   support-matrix
    SCHEMA_HISTORY
+   changelog
    api
 
 .. toctree::
