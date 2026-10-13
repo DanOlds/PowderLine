@@ -344,7 +344,7 @@ def _cell_rows(model, build: Build, name: str) -> list[dict]:
 
 
 def validate_only_result(model, validated_warnings: list) -> dict:
-    """The ``validate_only`` summary (the 0.26.0 shape plus native keys)."""
+    """The ``validate_only`` summary (the keys every gateway reports, plus the easydiffraction ones)."""
     p = model.payload
     return {
         "success": True, "rwp": None, "elapsed_time": 0.0, "method": "validate_only",
