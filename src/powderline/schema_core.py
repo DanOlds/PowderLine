@@ -536,22 +536,27 @@ class FitRange(BaseModel):
                              unit=UNIT_DEG_2THETA)
 
 
+#: The fewest weighted data points a fit window may hold (A154 N9, P-04).
+MIN_WEIGHTED_POINTS_IN_WINDOW = 2
+
+
 def check_fit_range_within_data(fit_range: Optional[FitRange], xrd_data: XRDData) -> None:
     """Raise ``ValueError`` unless both ``fit_range`` ends lie within the data's 2theta span
-    and the window holds at least one point with a positive weight.
+    and the window holds at least two points with a positive weight (A154 N9).
 
     A payload-level check (it needs the pattern): engine payload models call it
-    from a model validator (A68). ``None`` (or an open end) means "the data limit".
+    from a model validator (A68). ``None`` (or an open end) means "the data limit";
+    the two-point rule applies to the open window too, so a one-point pattern is
+    refused here rather than by the engine.
     """
-    if fit_range is None:
-        return
-    lo, hi = xrd_data.tth[0], xrd_data.tth[-1]
-    for name, end in (("min", fit_range.min), ("max", fit_range.max)):
-        if end is not None and not lo <= end <= hi:
-            raise ValueError(
-                f"fit_range {name} ({end}) is outside the data's 2theta range [{lo}, {hi}]"
-            )
-    fit_limits_on_data(fit_range, xrd_data)  # the window holds a weighted point
+    if fit_range is not None:
+        lo, hi = xrd_data.tth[0], xrd_data.tth[-1]
+        for name, end in (("min", fit_range.min), ("max", fit_range.max)):
+            if end is not None and not lo <= end <= hi:
+                raise ValueError(
+                    f"fit_range {name} ({end}) is outside the data's 2theta range [{lo}, {hi}]"
+                )
+    fit_limits_on_data(fit_range, xrd_data)  # the window holds two weighted points
 
 
 def fit_limits_on_data(fit_range: Optional[FitRange], xrd_data: XRDData) -> tuple[float, float]:
@@ -567,14 +572,17 @@ def fit_limits_on_data(fit_range: Optional[FitRange], xrd_data: XRDData) -> tupl
     limit between points (EB-54) and starts at the first data point, weighted
     or not, when no limit is set; TOPAS takes the point nearest each limit
     (EB-59) of an ``.xye`` without zero-weight points. Raises ``ValueError``
-    when no weighted point lies in the window.
+    when fewer than two weighted points lie in the window (A154 N9, P-04): a
+    one-point window would give an engine coincident limits (TOPAS
+    ``start_X == finish_X``) and nothing to fit.
     """
     lo = None if fit_range is None else fit_range.min
     hi = None if fit_range is None else fit_range.max
     inside = [t for t, w in zip(xrd_data.tth, xrd_data.Itth_weights)
               if w > 0 and (lo is None or t >= lo) and (hi is None or t <= hi)]
-    if not inside:
-        raise ValueError(f"fit_range [{lo}, {hi}] holds no data point with a positive weight")
+    if len(inside) < MIN_WEIGHTED_POINTS_IN_WINDOW:
+        raise ValueError(f"fit_range [{lo}, {hi}] holds {len(inside)} data point(s) with a positive weight; "
+                         f"at least {MIN_WEIGHTED_POINTS_IN_WINDOW} are required")
     return inside[0], inside[-1]
 
 

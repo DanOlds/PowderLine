@@ -52,6 +52,7 @@ from powderline.gateways.topas.native_writer import (
 from powderline.gateways.topas.peak_list import PEAK_LIST_COLUMNS, parse_peak_list
 from powderline.gateways.topas.runner import discover_tc_exe
 from powderline.gateways.topas.schema import TopasRietveldRecipe
+from powderline.registry import validate_only_summary
 from powderline.schema_core import collect_warnings, parameters_requested
 
 #: Columns of ``spf_peaks`` for ``topas.spf`` (A147 D13): core's shared columns, then TOPAS's.
@@ -74,11 +75,25 @@ def default_base_name(output_dir) -> str:
     return out.parent.name if out.name == "output" and out.parent.name else "topas"
 
 
+def safe_base_name(base_name: str) -> tuple[str, StructuredWarning | None]:
+    """The base name TOPAS gets: ``base_name`` when it is ASCII, else ``topas`` plus the warning
+    ``topas_base_name_sanitized`` (A154 N10, P-04). TOPAS reads the file names in the INP
+    (``xdd "<base>.xye"``, ``out "<base>_results.csv"``) in its console code page, not as UTF-8."""
+    if base_name.isascii():
+        return base_name, None
+    return "topas", StructuredWarning(
+        code="topas_base_name_sanitized",
+        message=(f"the TOPAS base name {base_name!r} is not ASCII, which TOPAS cannot resolve in its file names: "
+                 "the input, data and result files are written as topas.* instead"),
+        field_path=None)
+
+
 def write_input(model, output_dir, base_name: str | None = None) -> NativeInput:
-    """Render and write ``<base>.inp`` and ``<base>.xye`` (UTF-8, LF); return the writer's map."""
+    """Render and write ``<base>.inp`` and ``<base>.xye`` (UTF-8, LF); return the writer's map.
+    A non-ASCII base name is replaced by ``topas`` (:func:`safe_base_name`)."""
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    native = render_native(model, base_name or default_base_name(out))
+    native = render_native(model, safe_base_name(base_name or default_base_name(out))[0])
     base = native.results_file[: -len("_results.csv")]
     (out / f"{base}.inp").write_text(native.inp_text, encoding="utf-8", newline="\n")
     (out / f"{base}.xye").write_text(native.xye_text, encoding="utf-8", newline="\n")
@@ -101,9 +116,12 @@ def run_native(model, output_dir, *, base_name: str | None = None, topas_dir=Non
     """
     started = time.time()
     out = Path(output_dir)
+    base_name, base_warning = safe_base_name(base_name or default_base_name(out))
     native = write_input(model, out, base_name)
     base = native.results_file[: -len("_results.csv")]
     validated_warnings = collect_warnings(warnings_from if warnings_from is not None else model)
+    if base_warning is not None:
+        validated_warnings.append(base_warning)
 
     tc = discover_tc_exe(topas_dir, topas_version)
     if tc is None:
@@ -339,16 +357,13 @@ def _empty_result(out: Path, *, success: bool, method: str, elapsed: float, simu
 
 
 def validate_only_result(model, validated_warnings: list) -> dict:
-    """The ``validate_only`` summary (the keys every gateway reports, plus the TOPAS ones)."""
+    """The ``validate_only`` summary (:func:`powderline.registry.validate_only_summary`, P-28); ``engine`` holds
+    ``iters`` and the recipe's ``engine_version``."""
     p = model.payload
-    return {
-        "success": True, "rwp": None, "elapsed_time": 0.0, "method": "validate_only",
-        "schema_name": model.schema_name, "engine_schema_version": model.engine_schema_version,
-        "engine_version": model.engine_version,
-        "phases": len(p.phases) if isinstance(model, TopasRietveldRecipe) else 0,
-        "iters": p.refinement_controls.iters, "simulation_mode": p.refinement_controls.iters == 0,
-        "warnings": validated_warnings,
-    }
+    return validate_only_summary(
+        model, validated_warnings, phases=len(p.phases) if isinstance(model, TopasRietveldRecipe) else 0,
+        simulation_mode=p.refinement_controls.iters == 0,
+        engine={"iters": p.refinement_controls.iters, "engine_version": model.engine_version})
 
 
 # --- result pieces ------------------------------------------------------------------------
@@ -369,14 +384,19 @@ def _limit_hits(native: NativeInput, values: dict) -> list:
             if lim is None:
                 continue
             tol = LIMIT_HIT_RTOL * abs(lim) if lim != 0 else 1e-12
-            if abs(v - lim) <= tol:
-                whose = "the recipe's stated bound" if source == "stated" else "TOPAS's default limit"
+            beyond = (v < lim) if side == "min" else (v > lim)  # only a window edge can be crossed (A154 N7)
+            if abs(v - lim) <= tol or (source == "window" and beyond):
                 topas = f", TOPAS value {lim:g}" if info.scale != 1.0 else ""  # e.g. Uiso written as beq
-                found.append(StructuredWarning(
-                    code="topas_parameter_at_limit",
-                    message=(f"{info.descriptive} ended at its {side} limit {lim / info.scale:g} ({whose}{topas}): "
-                             "the refinement may have been stopped by the limit"),
-                    field_path=info.path))
+                if source == "window":
+                    message = (f"{info.descriptive} ended at or beyond the fit window's {side} edge {lim:g} "
+                               f"({'start_X' if side == 'min' else 'finish_X'}; final value {v:g}): the peak "
+                               "is not fitted against the data it left")
+                else:
+                    whose = "the recipe's stated bound" if source == "stated" else "TOPAS's default limit"
+                    message = (f"{info.descriptive} ended at its {side} limit {lim / info.scale:g} ({whose}{topas}): "
+                               "the refinement may have been stopped by the limit")
+                found.append(StructuredWarning(code="topas_parameter_at_limit", message=message,
+                                               field_path=info.path))
     return found
 
 

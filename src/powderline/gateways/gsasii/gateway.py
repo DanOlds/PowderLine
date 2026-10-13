@@ -27,7 +27,7 @@ import pandas as pd
 from powderline.exceptions import EngineNotAvailableError
 from powderline.gateways.gsasii import schema
 from powderline.gateways.gsasii.routing import run_refinement
-from powderline.registry import Gateway, check_engine_version
+from powderline.registry import Gateway, check_engine_version, validate_only_summary
 from powderline.schema_core import collect_warnings
 
 NAME = "gsasii"
@@ -160,12 +160,10 @@ def run(
           ``engine_details`` and the structured ``warnings`` list (A125,
           A129, A115)
 
-        **Validate-only** (``validate_only=True``) — a slim summary dict, no
-        refinement executed, no output files written, no ``run_id``:
-        ``success``, ``rwp`` (None), ``elapsed_time`` (0.0), ``method``
-        (``'validate_only'``), ``schema_name``, ``phases``,
-        ``refinement_cycles``, ``simulation_mode``, ``core_schema_version``,
-        ``engine_schema_version`` and ``warnings``.
+        **Validate-only** (``validate_only=True``) — the summary every gateway
+        returns (:func:`powderline.registry.validate_only_summary`, P-28): no
+        refinement executed, no output files written, no ``run_id``;
+        ``engine`` holds ``refinement_cycles``.
 
     Raises:
         pydantic.ValidationError: the recipe fails schema validation.
@@ -198,20 +196,10 @@ def run(
     if validate_only:
         controls = recipe.payload.refinement_controls
         phases = getattr(recipe.payload, 'phases', None)
-        summary = {
-            'success': True,
-            'rwp': None,
-            'elapsed_time': 0.0,
-            'method': 'validate_only',
-            'schema_name': recipe.schema_name,
-            'phases': len(phases) if phases else 0,
-            'refinement_cycles': controls.refinement_cycles,
-            'simulation_mode': controls.refinement_cycles == 1,
-            'core_schema_version': recipe.core_schema_version,
-            'engine_schema_version': recipe.engine_schema_version,
-            'warnings': warnings,
-        }
-        return summary
+        return validate_only_summary(
+            recipe, warnings, phases=len(phases) if phases else 0,
+            simulation_mode=controls.refinement_cycles == 1,  # A88
+            engine={'refinement_cycles': controls.refinement_cycles})
 
     # 4. Ensure output directory exists
     output_dir = Path(output_dir)

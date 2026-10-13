@@ -21,7 +21,6 @@ from powderline.gateways.gsasii.schema import (
     GsasiiSpfRecipe,
     gsasii_space_group,
     gsasii_cell_groups,
-    is_native_recipe,
     validate_recipe,
 )
 from powderline.schema_core import collect_warnings
@@ -149,7 +148,6 @@ def test_mistyped_gsasii_name_reported_against_the_native_schema():
     """A gsasii.* typo gets the gsasii error at schema_name, not another schema's errors (re/04 PR review)."""
     recipe = copy.deepcopy(_rietveld_recipe())
     recipe["schema_name"] = "gsasii.reitveld"
-    assert is_native_recipe(recipe)
     with pytest.raises(ValidationError) as exc:
         powderline.validate(recipe)
     assert _errors(exc) == [(("schema_name",), "schema_name")]
@@ -1027,16 +1025,6 @@ def test_gateway_capabilities_has_expected_keys():
     assert "gsasii.spf" in caps["workflows"]
 
 
-def test_is_native_recipe_gsasii_rietveld():
-    """is_native_recipe({'schema_name': 'gsasii.rietveld'}) is True."""
-    assert is_native_recipe({"schema_name": "gsasii.rietveld"}) is True
-
-
-def test_is_native_recipe_other_engine_false():
-    """is_native_recipe({'schema_name': 'topas.rietveld'}) is False (another engine's name)."""
-    assert is_native_recipe({"schema_name": "topas.rietveld"}) is False
-
-
 def test_powderline_validate_returns_gsasii_rietveld_recipe():
     """powderline.validate(native_recipe).recipe is a GsasiiRietveldRecipe, with its warnings alongside."""
     recipe = copy.deepcopy(_rietveld_recipe())
@@ -1110,7 +1098,8 @@ def test_json_schema_shows_no_null_for_blocks_that_are_never_null(model, pointer
 
 def test_spf_peak_position_outside_fit_window_rejected():
     recipe = copy.deepcopy(_spf_recipe())
-    recipe["payload"]["fit_range"] = [3.0, 15.0]
+    recipe["payload"]["xrd_data"] = {"tth": [1.0, 2.0, 10.0, 15.0], "Itth": [1.0] * 4, "Itth_weights": [1.0] * 4}
+    recipe["payload"]["fit_range"] = [3.0, 15.0]  # two weighted points inside (A154 N9); the peak at 2.29 is not
     with pytest.raises(ValidationError) as exc:
         validate_recipe(recipe)
     assert _errors(exc) == [(("payload", "single_peaks", "positions", 0), "outside_fit_window")]

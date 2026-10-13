@@ -46,13 +46,41 @@ class Gateway:
       returns the validated model (A50). The same explicit keywords on every
       gateway (A59); new options are added to the contract deliberately.
     - ``run(recipe, output_dir, **opts)``: runtime layer; imports the engine
-      lazily; returns the standardized result dict.
+      lazily; returns the standardized result dict. With ``validate_only=True``
+      it returns :func:`validate_only_summary` (the same keys on every gateway).
     """
 
     name: str
     capabilities: Callable[[], Dict[str, Any]]
     validate: Callable[..., Any]
     run: Callable[..., dict]
+
+
+#: The keys of every gateway's ``validate_only`` summary (P-28).
+VALIDATE_ONLY_KEYS = ("success", "rwp", "elapsed_time", "method", "schema_name", "core_schema_version",
+                      "engine_schema_version", "phases", "simulation_mode", "parameters_requested", "warnings",
+                      "engine")
+
+
+def validate_only_summary(model, warnings: list, *, phases: int, simulation_mode: bool, engine: dict) -> dict:
+    """The ``validate_only`` result every gateway returns (P-28): no refinement, nothing written, no ``run_id``.
+
+    Common keys: ``success`` (True), ``rwp`` (None), ``elapsed_time`` (0.0), ``method`` (``"validate_only"``),
+    ``schema_name``, ``core_schema_version``, ``engine_schema_version``, ``phases`` (0 for a peak-fit workflow),
+    ``simulation_mode`` (the engine schema's rule), ``parameters_requested``
+    (:func:`powderline.schema_core.parameters_requested`) and ``warnings`` (the structured warnings of
+    validating the user's recipe, A115). Engine-specific items go under ``engine`` (gsasii
+    ``refinement_cycles``; topas ``iters``, ``engine_version``; easydiffraction ``calculator``).
+    """
+    from powderline.schema_core import parameters_requested  # core; no engine import
+
+    return {
+        "success": True, "rwp": None, "elapsed_time": 0.0, "method": "validate_only",
+        "schema_name": model.schema_name, "core_schema_version": model.core_schema_version,
+        "engine_schema_version": model.engine_schema_version,
+        "phases": phases, "simulation_mode": simulation_mode, "parameters_requested": parameters_requested(model),
+        "warnings": warnings, "engine": dict(engine),
+    }
 
 
 _explicit: Dict[str, Callable[[], Gateway]] = {}

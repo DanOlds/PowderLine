@@ -20,7 +20,6 @@ from powderline.gateways.topas.schema import (
     TOPAS_UNREADABLE_SETTINGS,
     TopasRietveldRecipe,
     TopasSpfRecipe,
-    is_native_recipe,
     topas_space_group,
     topas_symbol,
     validate_recipe,
@@ -124,11 +123,6 @@ def test_valid_recipe_round_trips(build, model):
     assert isinstance(m, model)
     assert validate_recipe(m) is m  # idempotent (A50)
     assert validate_recipe(m.model_dump(mode="json")) == m
-
-
-def test_is_native_recipe_any_topas_name():
-    assert is_native_recipe({"schema_name": "topas.reitveld"})
-    assert not is_native_recipe({"schema_name": "gsasii.rietveld"})
 
 
 def test_unknown_topas_workflow_reported_at_schema_name():

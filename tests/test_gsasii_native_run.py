@@ -97,10 +97,15 @@ def test_warnings_carried_with_full_paths(lab6_result):
 
 
 def test_validate_only_summary():
+    """The uniform summary (registry.validate_only_summary, P-28) with gsasii's engine item."""
+    from powderline.registry import VALIDATE_ONLY_KEYS
     r = powderline.run(_lab6(), "unused", validate_only=True)
     assert (r["schema_name"], r["core_schema_version"], r["engine_schema_version"], r["phases"]) == \
         ("gsasii.rietveld", "1.0.0", "1.0.0", 1)
-    assert "schema_version" not in r and len(r["warnings"]) == 2
+    assert tuple(r) == VALIDATE_ONLY_KEYS
+    assert r["engine"] == {"refinement_cycles": 5} and r["simulation_mode"] is False
+    assert r["parameters_requested"] == 17  # the example's 13 (re07-equivalence.md §3) + this fixture's background peak
+    assert "schema_version" not in r and "refinement_cycles" not in r and len(r["warnings"]) == 2
 
 
 def test_refined_corrections_are_varied(tmp_path):

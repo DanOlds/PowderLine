@@ -523,8 +523,8 @@ class _Payload(CoreModel):
         try:
             check_fit_range_within_data(self.fit_range, self.xrd_data)
         except ValueError as exc:
-            problems.append(InitErrorDetails(type=PydanticCustomError("fit_range", str(exc)),
-                                             loc=("fit_range",), input=self.fit_range.model_dump()))
+            problems.append(InitErrorDetails(type=PydanticCustomError("fit_range", str(exc)), loc=("fit_range",),
+                                             input=None if self.fit_range is None else self.fit_range.model_dump()))
         if self.background.single_peaks is not None:
             problems += self._outside_fit_window(self.background.single_peaks, ("background", "single_peaks"),
                                                  "background peak")
@@ -664,18 +664,6 @@ class GsasiiSpfRecipe(_GsasiiRecipe):
 GsasiiRecipe = Annotated[Union[GsasiiRietveldRecipe, GsasiiSpfRecipe], Field(discriminator="schema_name")]
 _RECIPE = TypeAdapter(GsasiiRecipe, config={"title": "GsasiiRecipe"})
 _RECIPE_MODELS = {"gsasii.rietveld": GsasiiRietveldRecipe, "gsasii.spf": GsasiiSpfRecipe}
-
-
-def is_native_recipe(recipe) -> bool:
-    """True for a ``gsasii.*`` recipe (dict or model); False for anything else.
-
-    Any ``gsasii.`` name counts, so a mistyped one (``gsasii.reitveld``) is
-    reported against the gsasii schema names.
-    """
-    if isinstance(recipe, (GsasiiRietveldRecipe, GsasiiSpfRecipe)):
-        return True
-    name = recipe.get("schema_name") if isinstance(recipe, dict) else None
-    return isinstance(name, str) and name.startswith("gsasii.")
 
 
 def validate_recipe(recipe) -> GsasiiRietveldRecipe | GsasiiSpfRecipe:

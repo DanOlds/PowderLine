@@ -754,7 +754,8 @@ class _Payload(CoreModel):
         try:
             check_fit_range_within_data(self.fit_range, self.xrd_data)
         except ValueError as exc:
-            problems.append(_error("fit_range", str(exc), ("fit_range",), self.fit_range.model_dump()))
+            problems.append(_error("fit_range", str(exc), ("fit_range",),
+                                   None if self.fit_range is None else self.fit_range.model_dump()))
         if self.background is not None and self.background.peaks is not None:
             problems += self._outside_window([p.xo for p in self.background.peaks],
                                              lambda i: ("background", "peaks", i, "xo"), "background peak")
@@ -871,14 +872,6 @@ class TopasSpfRecipe(_TopasRecipe):
 TopasRecipe = Annotated[Union[TopasRietveldRecipe, TopasSpfRecipe], Field(discriminator="schema_name")]
 _RECIPE = TypeAdapter(TopasRecipe, config={"title": "TopasRecipe"})
 _RECIPE_MODELS = {"topas.rietveld": TopasRietveldRecipe, "topas.spf": TopasSpfRecipe}
-
-
-def is_native_recipe(recipe) -> bool:
-    """True for a ``topas.*`` recipe (dict or model); any ``topas.`` name counts, so a typo is reported natively."""
-    if isinstance(recipe, (TopasRietveldRecipe, TopasSpfRecipe)):
-        return True
-    name = recipe.get("schema_name") if isinstance(recipe, dict) else None
-    return isinstance(name, str) and name.startswith("topas.")
 
 
 def validate_recipe(recipe) -> TopasRietveldRecipe | TopasSpfRecipe:

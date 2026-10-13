@@ -222,6 +222,9 @@ def test_check_engine_version_allow_unsupported_bypasses():
     )
 
 
+# The two '>=7,<8' strings below are arbitrary specifier inputs exercising the
+# bare-integer version form, NOT the TOPAS gateway's spec: that is
+# gateways.topas.gateway.ENGINE_VERSION_SPEC ("==6", A143, P-24).
 def test_check_engine_version_topas_bare_int():
     """TOPAS-style bare int '7' against '>=7,<8' passes."""
     registry.check_engine_version(

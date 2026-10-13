@@ -524,3 +524,49 @@ def example_DRX_33_anisoADP_reference_peak_csvs(example_DRX_33_anisoADP_dir):
 def example_DRX_33_anisoADP_reference_refined_params_csv(example_DRX_33_anisoADP_dir):
     """Path to example_DRX_33_anisoADP reference refined_parameters.csv file."""
     return example_DRX_33_anisoADP_dir / "output" / "refined_parameters.csv"
+
+
+# ============================================================================
+# example_DRX_33_strainonly fixtures
+# ============================================================================
+
+@pytest.fixture
+def example_DRX_33_strainonly_dir():
+    """Path to example_DRX_33_strainonly directory."""
+    return Path("examples/example_DRX_33_strainonly")
+
+
+@pytest.fixture
+def example_DRX_33_strainonly_input(example_DRX_33_strainonly_dir):
+    """Path to example_DRX_33_strainonly input.json file."""
+    return example_DRX_33_strainonly_dir / "input.json"
+
+
+@pytest.fixture
+def example_DRX_33_strainonly_reference_lst(example_DRX_33_strainonly_dir):
+    """Path to example_DRX_33_strainonly reference .lst output file."""
+    return example_DRX_33_strainonly_dir / "output" / "dummy.lst"
+
+
+@pytest.fixture
+def example_DRX_33_strainonly_reference_unit_cell_csvs(example_DRX_33_strainonly_dir):
+    """Paths to example_DRX_33_strainonly reference unit cell CSV files (both phases)."""
+    return {
+        "DRX_33": example_DRX_33_strainonly_dir / "output" / "DRX_33_unit_cell_report.csv",
+        "Li4MgWO6_SG12": example_DRX_33_strainonly_dir / "output" / "Li4MgWO6_SG12_unit_cell_report.csv"
+    }
+
+
+@pytest.fixture
+def example_DRX_33_strainonly_reference_peak_csvs(example_DRX_33_strainonly_dir):
+    """Paths to example_DRX_33_strainonly reference peak list CSV files (both phases)."""
+    return {
+        "DRX_33": example_DRX_33_strainonly_dir / "output" / "DRX_33_peak_list_report.csv",
+        "Li4MgWO6_SG12": example_DRX_33_strainonly_dir / "output" / "Li4MgWO6_SG12_peak_list_report.csv"
+    }
+
+
+@pytest.fixture
+def example_DRX_33_strainonly_reference_refined_params_csv(example_DRX_33_strainonly_dir):
+    """Path to example_DRX_33_strainonly reference refined_parameters.csv file."""
+    return example_DRX_33_strainonly_dir / "output" / "refined_parameters.csv"

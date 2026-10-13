@@ -18,7 +18,6 @@ from pydantic import ValidationError
 from powderline.gateways.easydiffraction.schema import (
 
     easydiffraction_space_group,
-    is_native_recipe,
     validate_recipe,
 )
 from powderline.schema_core import parameters_requested
@@ -68,17 +67,6 @@ def test_fixture_validates_and_round_trips(fixture_name, is_simulation):
     dumped = model.model_dump(mode="json")
     assert validate_recipe(dumped) == model
     assert model.payload.simulation_mode() == is_simulation
-
-
-# --- is_native_recipe routing (test 2) ----------------------------------------------
-
-
-def test_is_native_recipe_any_easydiffraction_name():
-    assert is_native_recipe({"schema_name": "easydiffraction.rietveld"})
-    assert is_native_recipe({"schema_name": "easydiffraction.rietvel"})  # typo counts as native
-    assert not is_native_recipe({"schema_name": "gsasii.rietveld"})
-    assert not is_native_recipe({"schema_name": "topas.rietveld"})
-    assert not is_native_recipe({"schema_name": "rietveld"})  # no engine prefix
 
 
 def test_unknown_easydiffraction_workflow_reported_at_schema_name():
