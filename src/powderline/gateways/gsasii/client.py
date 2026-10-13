@@ -391,8 +391,7 @@ class GSASClient:
         peak_list_data, refined_parameters, rwp, etc.).
         """
         import time
-        from powderline.kicker import run_refinement
-        from powderline.gateways.gsasii.routing import model_from_request
+        from powderline.gateways.gsasii.routing import model_from_request, run_refinement
         from pydantic import ValidationError
 
         output_dir.mkdir(parents=True, exist_ok=True)

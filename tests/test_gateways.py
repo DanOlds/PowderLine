@@ -155,38 +155,39 @@ def test_gsasii_installed_engine_version_satisfies_spec():
 def test_gsasii_version_check_raises_when_version_out_of_range(tmp_path, monkeypatch):
     """When the installed version is out of range, run() raises EngineVersionError."""
     monkeypatch.setattr(gsasii_gateway, "installed_engine_version", lambda: "5.8.0")
-    # Mock the kicker.run so it doesn't actually run
-    import powderline.kicker
-
+    # Mock the in-process executor so nothing actually runs
     fake_run = Mock()
-    monkeypatch.setattr(powderline.kicker, "run", fake_run)
+    monkeypatch.setattr(gsasii_gateway, "run_refinement", fake_run)
 
     with pytest.raises(EngineVersionError):
-        gsasii_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=False)
-    assert not fake_run.called, "kicker.run should not be called when version check fails"
+        gsasii_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=False, execution_mode="subprocess")
+    assert not fake_run.called, "run_refinement should not be called when version check fails"
 
 
 def test_gsasii_version_check_bypassed_with_allow_unsupported(tmp_path, monkeypatch):
-    """With allow_unsupported_engine_version=True, the version check is bypassed."""
+    """With allow_unsupported_engine_version=True, the version check is bypassed and the run proceeds."""
     monkeypatch.setattr(gsasii_gateway, "installed_engine_version", lambda: "5.8.0")
-    import powderline.kicker
+    fake_run = Mock(return_value={"success": True, "method": "subprocess"})
+    monkeypatch.setattr(gsasii_gateway, "run_refinement", fake_run)
 
-    fake_run = Mock(return_value={})
-    monkeypatch.setattr(powderline.kicker, "run", fake_run)
-
-    gsasii_gateway.run(
+    result = gsasii_gateway.run(
         _lab6_recipe(),
         str(tmp_path),
         validate_only=False,
         verbose=True,
-        execution_mode="auto",
+        execution_mode="subprocess",
         allow_unsupported_engine_version=True,
     )
     assert fake_run.called
+    recipe_arg, output_arg = fake_run.call_args[0]
+    assert isinstance(recipe_arg, schema.RecipeModel)  # the gateway validated the dict first
+    assert Path(output_arg) == tmp_path
     call_kwargs = fake_run.call_args[1]
     assert call_kwargs["verbose"] is True
-    assert call_kwargs["validate_only"] is False
-    assert call_kwargs["execution_mode"] == "auto"
+    assert call_kwargs["method"] == "subprocess"
+    # the gateway's own result normalisation applied
+    assert result["error"] is None
+    assert result["refined_parameters"].empty
 
 
 def test_gsasii_validate_only_skips_version_check(tmp_path, monkeypatch):
@@ -198,13 +199,13 @@ def test_gsasii_validate_only_skips_version_check(tmp_path, monkeypatch):
         raise AssertionError("version check should not be called for validate_only=True")
 
     monkeypatch.setattr(gsasii_gateway, "installed_engine_version", failing_version_check)
-    import powderline.kicker
-
     fake_run = Mock(return_value={})
-    monkeypatch.setattr(powderline.kicker, "run", fake_run)
+    monkeypatch.setattr(gsasii_gateway, "run_refinement", fake_run)
 
-    gsasii_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=True)
+    result = gsasii_gateway.run(_lab6_recipe(), str(tmp_path), validate_only=True)
     assert not called, "installed_engine_version should not be called for validate_only=True"
+    assert not fake_run.called
+    assert result["method"] == "validate_only" and result["schema_name"] == "GSASII_Rietveld"
 
 
 # --- topas version checking ---

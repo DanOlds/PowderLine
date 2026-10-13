@@ -428,7 +428,7 @@ def test_run_failure_result_normalization(recipe_LaB6_dict, tmp_path):
         "method": "subprocess",
     }
 
-    with patch("powderline.kicker.run_refinement", return_value=minimal_failure):
+    with patch("powderline.gateways.gsasii.gateway.run_refinement", return_value=minimal_failure):
         result = powderline.run(
             recipe_LaB6_dict,
             tmp_path / "out",

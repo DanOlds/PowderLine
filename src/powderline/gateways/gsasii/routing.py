@@ -4,8 +4,8 @@ A native ``gsasii.rietveld`` / ``gsasii.spf`` model runs through
 ``executors.run_refinement``, which consumes the model directly; a 0.26.0
 ``GSASII_*`` ``RecipeModel`` runs through the transient verbatim copy in
 ``_legacy_executor`` until re/07 removes the 0.26.0 schema.
-``powderline.kicker.run_refinement`` (used by ``kicker.run``, the GSAS-II
-server and the client's in-process fallback) is this function.
+The gateway's ``run`` (``execution_mode='subprocess'``), the GSAS-II server and
+the client's in-process fallback all call this function.
 """
 
 from __future__ import annotations
