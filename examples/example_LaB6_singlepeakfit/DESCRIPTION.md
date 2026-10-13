@@ -72,7 +72,7 @@ This single peak fitting analysis produces:
 
 - **dummy.gpx** - GSAS-II project file (reopenable in GUI)
 - **single_peaks_report.txt** - Fitted peak parameters (position, intensity, FWHM, area) for each peak
-- **peak_convergence_diagnostics.txt** - Per-peak convergence tracking across refinement cycles
+- **peak_convergence_diagnostics.txt** - Per-peak convergence diagnostics, written only when a peak has a convergence issue (all 36 peaks of the committed reference converged cleanly, so the reference set has no such file)
 - **fit_profile.txt** - Observed/calculated/background/difference intensities
 
 **Note**: Single peak fitting does not produce `refined_parameters.csv`, human-readable refinement log (.lst), unit cell reports, or peak list reports because there is no structural model - only empirical peak shapes are fitted.

@@ -155,7 +155,7 @@ PowderLine generates fixed output filenames:
 
 **Single peak fitting mode (SPF) additional files:**
 - `single_peaks_report.txt` - Peak fit results (position, width, intensity per peak)
-- `peak_convergence_diagnostics.txt` - Convergence warnings for aphysical parameters
+- `peak_convergence_diagnostics.txt` - Convergence warnings for aphysical parameters; written **only when a peak has a convergence issue** (a clean fit, like the committed `example_LaB6_singlepeakfit` reference, has no such file)
 
 **Note:** Simulation mode (all `refine_flag=false`) does not generate `refined_parameters.csv` since no parameters are refined. Unit cell reports still generated with `esd=0.0`.
 
