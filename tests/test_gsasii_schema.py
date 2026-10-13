@@ -1034,10 +1034,12 @@ def test_is_native_recipe_legacy_schema_false():
 
 
 def test_powderline_validate_returns_gsasii_rietveld_recipe():
-    """powderline.validate(native_recipe) returns GsasiiRietveldRecipe."""
+    """powderline.validate(native_recipe).recipe is a GsasiiRietveldRecipe, with its warnings alongside."""
     recipe = copy.deepcopy(_rietveld_recipe())
-    model = powderline.validate(recipe)
-    assert isinstance(model, GsasiiRietveldRecipe)
+    result = powderline.validate(recipe)
+    assert isinstance(result, powderline.ValidationResult)
+    assert isinstance(result.recipe, GsasiiRietveldRecipe)
+    assert result.warnings == collect_warnings(result.recipe)
 
 
 # --- re/04 PR review: value rules (A126), SPF width source (A127), never-null blocks ---------------

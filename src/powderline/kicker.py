@@ -106,15 +106,8 @@ from powderline.gateways.gsasii.validation import (  # noqa: F401
 )
 
 
-def load_recipe_asset(recipe_path: Path) -> dict:
-    """Load a recipe asset from .json, .yaml/.yml, or .txt (YAML)."""
-    ext = recipe_path.suffix.lower()
-    text = recipe_path.read_text()
-    if ext == ".json":
-        return json.loads(text)
-    if ext in {".yaml", ".yml", ".txt"}:
-        return yaml.safe_load(text) or {}
-    raise ValueError(f"Unsupported recipe format: {recipe_path}")
+# Moved to the engine-free core (re/07, P-06); re-exported for existing imports.
+from powderline.recipes import load_recipe_asset  # noqa: F401
 
 
 def is_template_file(recipe_dict: dict, input_path: Path) -> tuple[bool, str | None]:
