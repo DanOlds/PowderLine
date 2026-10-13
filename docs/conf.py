@@ -57,7 +57,8 @@ intersphinx_mapping = {
 }
 
 templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'dev']  # dev/ = in-repo development dossiers, not user-facing docs
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'dev',  # dev/ = in-repo development dossiers, not user-facing docs
+                    '_generated']  # script-generated fragments pulled in with MyST {include}, not pages of their own
 
 # Treat missing cross-reference targets as warnings (not silently ignored)
 nitpicky = True
@@ -74,10 +75,22 @@ nitpick_ignore = [
     ('py:class', 'annotated_types.Gt'),
     ('py:class', 'annotated_types.Ge'),
     # The GSAS-II extractors' signatures (ledger R22) name the native recipe
-    # models; api.rst does not autodoc the gsasii schema module yet (re/10),
-    # so the rendered type hints have no link target (re/07, P-22).
+    # models. The schema modules are not autodoc'd: documenting them raises
+    # ~100 nitpick warnings from pydantic internals, and the user-facing
+    # contract is the generated field tables (docs/fields.md); so the rendered
+    # type hints have no link target (re/07 P-22; re/10).
     ('py:class', 'powderline.gateways.gsasii.schema.GsasiiRietveldRecipe'),
     ('py:class', 'powderline.gateways.gsasii.schema.GsasiiSpfRecipe'),
+    # Module docstrings of the documented public modules point at modules
+    # api.rst does not render as pages (schema_core, the gateway-internal
+    # schema / native_run modules) and at pydantic's exception, which the
+    # pydantic inventory indexes under pydantic_core.
+    ('py:mod', 'powderline.schema_core'),
+    ('py:data', 'SUPPORTED_CORE_SCHEMAS'),
+    ('py:mod', 'schema'),
+    ('py:func', 'native_run.run_native'),
+    ('py:exc', 'pydantic.ValidationError'),
+    ('py:class', 'powderline.exceptions.StructuredWarning'),
 ]
 
 

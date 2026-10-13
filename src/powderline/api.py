@@ -175,8 +175,9 @@ def run(recipe, output_dir, *, verbose: bool = False, validate_only: bool = Fals
         pydantic.ValidationError: the recipe is invalid, or ``schema_name`` is
             missing or malformed.
         GatewayNotInstalledError: no gateway of that name is installed.
-        EngineNotAvailableError / EngineVersionError / EngineExecutionError:
-            the gateway's engine is missing, unsupported, or failed.
+        EngineNotAvailableError: the gateway's engine is not installed here.
+        EngineVersionError: the installed engine is outside the supported versions.
+        EngineExecutionError: the engine ran and failed (including a diverged refinement).
         TypeError: an option the gateway does not take, or
             ``allow_unsupported_engine_version``.
         ValueError: a gateway option with an invalid value.

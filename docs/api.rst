@@ -1,36 +1,99 @@
 API Reference
 =============
 
-This page provides detailed documentation for PowderLine's Python API.
+The public API is the names in ``powderline.__all__``. ``import powderline``
+imports no engine: ``validate`` runs each gateway's engine-free schema layer,
+and ``run`` imports an engine lazily through the gateway the recipe's
+``schema_name`` names. The recipe contract itself (every field, with its unit)
+is documented on :doc:`fields` (tables generated from the schema modules
+``powderline.schema_core`` and ``powderline.gateways.<engine>.schema``), and
+the result dict on :doc:`schemas`.
 
-Public API
-----------
+Public API (``powderline``)
+---------------------------
 
-The names in ``powderline.__all__`` (v0.2.0, P-06): ``run`` and ``validate``
-dispatch on the recipe's ``schema_name`` through the gateway registry
-(``powderline.registry``); ``validate`` is engine-free and returns a
-``ValidationResult`` (the gateway's validated model plus the structured
-warnings); ``load_recipe_asset`` reads a recipe file; ``support_matrix`` lists
-the installed gateways; the exceptions are ``PowderLineError`` and its
-subclasses. The recipe schemas are the engine-free ``schema`` module of each
-gateway (``powderline.gateways.gsasii.schema``, ``...topas.schema``,
-``...easydiffraction.schema``) over ``powderline.schema_core``.
+.. py:module:: powderline
 
-.. TODO re/10: autodoc the public API and the schema modules here (the
-   docs migration); until then this page keeps the GSAS-II helper entries.
+.. autofunction:: powderline.run
 
-Command Line
+.. autofunction:: powderline.validate
+
+.. autoclass:: powderline.ValidationResult
+   :members:
+
+.. autofunction:: powderline.load_recipe_asset
+
+.. autofunction:: powderline.support_matrix
+
+Exceptions
+~~~~~~~~~~
+
+.. autoexception:: powderline.PowderLineError
+
+.. autoexception:: powderline.GatewayNotInstalledError
+
+.. autoexception:: powderline.EngineNotAvailableError
+
+.. autoexception:: powderline.EngineVersionError
+
+.. autoexception:: powderline.EngineExecutionError
+
+The structured-warning shape shared by validation results and run results:
+
+.. autoclass:: powderline.exceptions.StructuredWarning
+   :members:
+   :undoc-members:
+
+Command line
 ------------
+
+.. py:module:: powderline.kicker
+
+``powderline <recipe.json> [--output DIR] [--validate-only] [--verbose]
+[--use-server | --no-server] [--topas-dir DIR] [--topas-version V]`` (the pixi
+task ``kicker`` runs the same ``main``). The engine is the one the recipe's
+``schema_name`` names; an engine flag given for a recipe of another engine is
+an error; exit status 0 on success, 1 otherwise. The module imports no engine.
+
+.. autofunction:: powderline.kicker.main
 
 .. autofunction:: powderline.kicker.is_template_file
 
-GSAS-II Gateway Helpers
+Gateway registry
+----------------
+
+Gateways are discovered from the ``powderline.gateways`` entry-point group;
+these are the hooks an out-of-tree engine uses.
+
+.. autoclass:: powderline.registry.Gateway
+
+.. autofunction:: powderline.registry.available
+
+.. autofunction:: powderline.registry.get
+
+.. autofunction:: powderline.registry.register_gateway
+
+.. autofunction:: powderline.registry.check_engine_version
+
+Gateway entry points
+--------------------
+
+Each gateway's ``run`` is what ``powderline.run`` forwards to; its keyword
+options are the engine options ``powderline.run`` accepts for that engine.
+
+.. autofunction:: powderline.gateways.gsasii.gateway.run
+
+.. autofunction:: powderline.gateways.topas.gateway.run
+
+.. autofunction:: powderline.gateways.easydiffraction.gateway.run
+
+GSAS-II gateway helpers
 -----------------------
 
-Output Generation
+Output generation
 ~~~~~~~~~~~~~~~~~
 
-Functions for exporting refinement results with uncertainty quantification
+Functions of the frozen extraction path
 (``powderline.gateways.gsasii.extractors``).
 
 .. autofunction:: powderline.gateways.gsasii.extractors.export_refined_parameters_csv
@@ -46,7 +109,7 @@ Functions for exporting refinement results with uncertainty quantification
    (``proj.data['Covariance']``). Unit cell ESDs require conversion from the reciprocal
    metric tensor (A-matrix) to direct lattice parameters via ``calculate_cell_esds_from_A_matrix()``.
 
-Post-Refinement Extraction Helpers (Private)
+Post-refinement extraction helpers (private)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The four private ``_extract_*`` helpers encapsulate the post-refinement data
@@ -61,14 +124,14 @@ documented here for maintainers.
 
 .. autofunction:: powderline.gateways.gsasii.extractors._extract_refined_parameters
 
-Background Functions
+Background functions
 ~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: powderline.gateways.gsasii.setters.set_chebyshev_background
 
 .. autofunction:: powderline.gateways.gsasii.setters.set_single_peak_background
 
-Fit Range
+Fit range
 ~~~~~~~~~
 
 .. autofunction:: powderline.gateways.gsasii.setters.set_fit_range_hist
@@ -77,32 +140,39 @@ Fit Range
 Types
 -----
 
-Refinement Parameter Format
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Refinement parameter format
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Throughout the native schemas, a refinable parameter is a two-element list::
+A refinable parameter is a list, never an object. In the ``gsasii.*`` schemas
+(no bounds)::
 
     [value, refine_flag]
 
+in the ``topas.*`` and ``easydiffraction.*`` schemas::
+
+    [value, refine_flag, min, max]
+
 Where:
 
-- ``value`` (float): Current parameter value
-- ``refine_flag`` (bool): True to refine, False to hold fixed
-
-Engines that support bounds take a four-element ``[value, refine_flag, min, max]``
-(``BoundedRefinableParameter``); ``min``/``max`` may be ``null``.
+- ``value`` (number): the starting value, never ``null``
+- ``refine_flag`` (JSON boolean): ``true`` to refine, ``false`` to hold fixed
+- ``min`` / ``max`` (number or ``null``): bounds, each side optional; what a
+  bound means is the engine's (see :doc:`engine-behavior`)
 
 Example::
 
-    "wavelength": [0.45236, false]  # Fixed at 0.45236 Å
-    "scale": [1.0, true]            # Refined starting from 1.0
+    "wavelength": [0.45236, false]              // gsasii: fixed at 0.45236 Å
+    "scale": [1.0, true, null, null]            // topas / easydiffraction: refined, no bounds
+    "a": [4.157, true, 4.1, 4.2]                // bounded
 
-Phase vs Histogram Parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Phase vs histogram parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- **Phase parameters**: Belong to crystal structure (unit cell, atoms)
-- **Histogram parameters**: Belong to measurement (scale, broadening, background)
+- **Phase parameters**: belong to a crystal structure (space group, unit cell,
+  atoms, scale, sample broadening): the ``phases.<name>`` block
+- **Histogram parameters**: belong to the measurement (instrument profile and
+  corrections, background): the ``instrument`` and ``background`` blocks
 
-In multi-phase refinements, phase parameters are phase-specific,
-while histogram parameters are shared across all phases (except scale factors,
-which are phase-histogram pairs). Multi-phase refinement is fully supported.
+In multi-phase refinements, phase parameters are phase-specific while histogram
+parameters are shared across all phases (the phase ``scale`` factors are per
+phase). Multi-phase refinement is supported by every Rietveld schema.

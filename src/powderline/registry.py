@@ -160,7 +160,7 @@ def _not_installed_message(name: str, eps: Dict[str, Any]) -> str:
 
 def check_engine_version(*, gateway: str, engine: str, installed, spec: str,
                          allow_unsupported: bool = False) -> None:
-    """Raise :class:`EngineVersionError` unless ``installed`` satisfies ``spec`` (A44).
+    """Raise :class:`~powderline.exceptions.EngineVersionError` unless ``installed`` satisfies ``spec`` (A44).
 
     A hard error. ``allow_unsupported=True`` is the explicit test-only bypass
     for compatibility testing of candidate engine versions (A53); gateways

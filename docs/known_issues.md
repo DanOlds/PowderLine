@@ -30,9 +30,17 @@ directly rather than registered (keeps the register lean).
 - Each entry states: what, evidence (`file:line` where applicable), current
   decision, revisit trigger. Reference related issues by id.
 
+**0.2.0 dispositions are proposals.** The multi-engine refactor (PowderLine
+0.2.0, native schemas 1.0.0) changed the ground under several entries. Each
+affected entry below carries a *Disposition (0.2.0, proposed)* paragraph that
+cites the decision which changed it; the heading status is amended with the
+proposal. **The maintainer confirms or amends each one**; no id is retired
+silently, and every id stays listed. The user-facing account of what the
+engines do is the [engine behaviour page](engine-behavior.md).
+
 ---
 
-## KI-01 — Malformed fixed cell computes a wrong pattern silently `accepted · critical`
+## KI-01 — Malformed fixed cell computes a wrong pattern silently `accepted · critical` → proposed: resolved for native recipes (0.2.0)
 
 **What.** A metrically symmetry-illegal cell (e.g. cubic phase with `a≠b≠c`) that
 is *not* refined is used verbatim: GSAS-II computes peak positions from the raw,
@@ -52,9 +60,17 @@ fixed distorted cell.
 validation option is added. If added, it should be *opt-in / warn* so the
 legitimate symmetry-breaking-simulation use survives.
 
+**Disposition (0.2.0, proposed: resolved by A77/A123; maintainer to
+confirm).** Core schema 1.0.0 refuses a cell that does not fit the space group
+(tied lengths and angles equal the first member, fixed angles exact, within
+1e-9), in every engine schema, with a message giving the value to write. The
+pass-through no longer exists for native recipes; the "deliberate
+symmetry-breaking simulation" use would need the future `unsafe_mode` (A38).
+GSAS-II's own behaviour is recorded as EB-06.
+
 ---
 
-## KI-02 — Oblique (monoclinic/triclinic) per-parameter cell holds are limited `implemented (0.26), limitation inherent · minor`
+## KI-02 — Oblique (monoclinic/triclinic) per-parameter cell holds are limited `implemented (schema 0.26, historical) · minor` → proposed: retired (0.2.0)
 
 **What.** Holding a reciprocal-metric A-term equals holding a *direct* cell
 parameter only for orthogonal cells. For monoclinic, only the unique-axis length
@@ -81,9 +97,20 @@ provenance work. True independent oblique direct-parameter holds would
 require a fundamentally different (nonlinear) constraint approach — unlikely to
 change.
 
+**Disposition (0.2.0, proposed: retired by A95, deliberate change 11;
+maintainer to confirm).** The group-OR no longer exists: a `gsasii.*` recipe
+that refines a strict subset of a GSAS-II cell group (monoclinic `{a, c, β}`
+for b-unique; all six for triclinic and rhombohedral axes) or of a symmetry
+tie group is a **validation error** at the offending field, so a flag is never
+silently overridden. The 0.26.0 converter writes v0.1.1's effective flags
+explicitly and reports each change. The GSAS-II limitation itself (the
+reciprocal-metric parameterization) is documented on the engine behaviour
+page; `engine_details.parameters_requested` / `parameters_varied` give the
+transparency this entry asked for.
+
 ---
 
-## KI-03 — Site symmetry & multiplicity are derived, and failures are swallowed `planned-fix · major`
+## KI-03 — Site symmetry & multiplicity are derived, and failures are swallowed `planned-fix · major` → proposed: resolved (0.2.0)
 
 **What.** PowderLine derives each atom's site symmetry and multiplicity at load
 via `G2spc.SytSym`, inside a bare `except Exception: pass`, defaulting to `""`
@@ -99,6 +126,15 @@ interpretation from GSAS-II for future multi-engine support.
 
 **Revisit.** At minimum, stop swallowing the exception when the surrounding area
 is next touched.
+
+**Disposition (0.2.0, proposed: resolved in re/03–re/04; maintainer to
+confirm).** Core derives each atom's site symmetry, multiplicity and tie
+groups with gemmi (engine-free), cross-checks a stated `Multiplicity` (A69 T3,
+A101), and the gsasii gateway compares GSAS-II's reading of every site with
+core's after phase setup, stopping with a clear error that names an
+equivalent position when GSAS-II misreads or cannot name the site (A117,
+EB-40, EB-05). Nothing is swallowed; the recipe does not state site symmetry
+(it is derived and checked, not an input).
 
 ---
 
@@ -117,6 +153,13 @@ output enabling round-trip / sequential refinement. Deferred to dedicated work.
 
 **Revisit.** When designing sequential-refinement support, or when a downstream
 data-management consumer needs machine-readable provenance.
+
+**Disposition (0.2.0, proposed: open, partly addressed; maintainer to
+confirm).** Results now report `engine_details.parameters_requested` (from the
+recipe) against `parameters_varied` (what the engine varied) and a structured
+`warnings` list (parameters not varied, limits hit, convergence) (A45, A128).
+A recipe-shaped output for round-trip / sequential refinement still does not
+exist.
 
 ---
 
@@ -137,9 +180,18 @@ early; fuller provenance later.
 
 **Revisit.** Bundle with the provenance work.
 
+**Disposition (0.2.0, proposed: partly resolved; maintainer to confirm).**
+The native gsasii path reads GSAS-II's stored refinement messages into
+`gsasii_refinement_message` warnings (EB-32), reads its convergence flag into
+`engine_details.converged` with `gsasii_fit_not_converged` (A172), treats a
+non-finite calculated pattern as a **failure** (A130; v0.1.1 returned success
+with Rwp 100 %), and reports a clear `EngineExecutionError` where GSAS-II's
+peak fit failed with a bare `TypeError` (EB-38). Captured console text is not
+collected; keep the id open for that.
+
 ---
 
-## KI-06 — GSAS-II parameter-limit (min/max) semantics are clamp-and-freeze `watch · minor`
+## KI-06 — GSAS-II parameter-limit (min/max) semantics are clamp-and-freeze `watch · minor` → proposed: not exposed (0.2.0)
 
 **What.** GSAS-II enforces `parmMin/parmMaxDict` not as in-loop box constraints
 but by resetting out-of-range variables to the limit *after* a refine and
@@ -156,9 +208,19 @@ not imply hard bounds.
 
 **Revisit.** With the general constraints & limits work.
 
+**Disposition (0.2.0, proposed: not exposed, by A84; maintainer to
+confirm).** The re/04 spike confirmed the clamp-and-freeze semantics in detail
+(EB-30: the reported values, ESDs and Rwp belong to the unclamped fit; EB-31:
+direct-cell boxes map onto A-term limits exactly for four of seven crystal
+systems). gsasii 1.0.0 therefore exposes **no bounds**: a 4-element parameter
+list is a validation error, and the converter reports every bound it drops.
+Bounds may come in a later gsasii schema version with a clamp-freeze-refit
+scheme. `topas.*` and `easydiffraction.*` have bounds with their own,
+documented semantics (A138, A157 B4).
+
 ---
 
-## KI-07 — Space-group setting (hexagonal vs rhombohedral, origin choice) is unvalidated `watch · critical`
+## KI-07 — Space-group setting (hexagonal vs rhombohedral, origin choice) is unvalidated `watch · critical` → proposed: resolved (0.2.0)
 
 **What.** `R -3 c` (hexagonal axes) and `R -3 c R` (rhombohedral axes) are both
 accepted but imply different cell parameterizations and A-term equivalence sets.
@@ -176,9 +238,17 @@ without symmetry operators and better handled in the recipe builder.
 
 **Revisit.** Convention-validation branch, or recipe-builder work.
 
+**Disposition (0.2.0, proposed: resolved by A62/A105, EB-03; maintainer to
+confirm).** Core requires gemmi's canonical extended Hermann–Mauguin name,
+which states the setting (`:1`/`:2`, `:H`/`:R`, the monoclinic axis); any
+other spelling is an error naming the canonical form, and a bare two-origin
+or rhombohedral symbol lists both choices. The gsasii gateway **refuses origin
+choice 1** (GSAS-II silently reads it as origin 2) and 9 further settings; the
+converter stops on a 0.26.0 recipe with `:1`. No setting is inferred any more.
+
 ---
 
-## KI-08 — Sphinx build emits reST warnings from `RecipeModel` docstring `fixed · nit`
+## KI-08 — Sphinx build emits reST warnings from the unified schema's `RecipeModel` docstring `fixed · nit` (historical)
 
 **What.** A clean `pixi run docs` (which runs `sphinx-build -W --keep-going`,
 so this *did* already fail the build) printed **266 warnings**
@@ -267,7 +337,10 @@ and the literal `lambda` fragment inside `RefinementParameter`'s
 auto-generated "alias of ..." line (which, accurately, spells out its real
 `PlainSerializer(func=<lambda>, ...)` metadata).
 
-**Revisit.** Closed; kept for history.
+**Revisit.** Closed; kept for history. The `schema.py` / `RecipeModel` named
+above belonged to the unified 0.26.0 schema, removed in 0.2.0; the
+`missing-reference` hook went with it. The docs build still runs
+`sphinx-build -W` with `nitpicky = True` (`pixi run docs`).
 
 ---
 
@@ -289,8 +362,8 @@ loop usually succeeds), and no test on any platform drives the timeout path —
 the unit tests cover only the graceful sequence
 (`tests/test_gsas_server_unit.py`, `alive_states = iter([True, False])`).
 
-**Evidence.** `src/powderline/gsas_server.py:371`;
-`tests/test_gsas_server_unit.py:157`.
+**Evidence.** `src/powderline/gsas_server.py:371` at the time (now
+`src/powderline/gateways/gsasii/server.py`); `tests/test_gsas_server_unit.py:157`.
 
 **Decision.** Fixed: the escalation now uses
 `getattr(signal, "SIGKILL", signal.SIGTERM)` — on Windows,
@@ -319,14 +392,16 @@ discovery/lifecycle mismatch below remains open.
 `.pid`/`.port` files present and `status` reporting "not running".
 `src/powderline/gsas_server.py:332-347` (`is_server_running` = PID file),
 `src/powderline/gsas_client.py:40-49` (`is_server_available` = port probe),
-`gsas_client.py:180` (the former hardcoded `':'`, now `os.pathsep`).
+`gsas_client.py:180` (the former hardcoded `':'`, now `os.pathsep`). Since
+re/01 the two modules are `src/powderline/gateways/gsasii/server.py` and
+`client.py`.
 
 **Decision.** File for a server-lifecycle robustness pass: align `status`/
 `stop` with the client's probe (e.g. `status` also checks `/health`; add an
 HTTP shutdown endpoint, or have `stop` fall back to the PID reported by
 `/health`).
 
-**Revisit.** Next branch touching `gsas_server.py`/`gsas_client.py`.
+**Revisit.** Next branch touching `gateways/gsasii/server.py` / `client.py`.
 
 ---
 
@@ -340,9 +415,10 @@ output-visibility guard (stat-compare of `fit_profile.txt` before/after the
 run) detects the mismatch and falls back to in-process execution — a
 mitigation, not a fix, and it keeps a (cheap) filesystem check in the client.
 
-**Evidence.** `gsas_server.py` security notes (server resolves `output_dir`
-in its own view); `gsas_client.py` `_server_output_visible` /
-`_submit_to_server_guarded`; `tests/test_gsas_client_visibility.py`.
+**Evidence.** `gateways/gsasii/server.py` security notes (server resolves
+`output_dir` in its own view); `gateways/gsasii/client.py`
+`_server_output_visible` / `_submit_to_server_guarded`;
+`tests/test_gsas_client_visibility.py`.
 mp-simulate's `.chi` export already consumes the in-band `fit_profile` dict,
 showing the in-band path works.
 
@@ -361,10 +437,11 @@ deployment work starts.
 
 ## KI-13 — Engine dispatch depends on install-time entry-point metadata `watch · minor`
 
-**What.** Since re/02, `powderline.run()` resolves every engine through the
-gateway registry. That includes the default `engine="gsasii"` and the in-repo
-gateways. The registry reads the `powderline.gateways` entry points from the
-installed distribution's metadata. If a checkout's editable install predates
+**What.** Since re/02, `powderline.run()` and `powderline.validate()` resolve
+the engine a recipe's `schema_name` names through the gateway registry,
+including the three in-repo gateways. The registry reads the
+`powderline.gateways` entry points from the installed distribution's
+metadata. If a checkout's editable install predates
 the `[project.entry-points]` table, is half-installed, or powderline is
 imported from source (`PYTHONPATH=src`) with no dist-info at all, then every
 `run()` call fails with `GatewayNotInstalledError`. Before re/02 the
@@ -384,17 +461,21 @@ seen during re/02), restore it with that env's own python:
 `pixi run -e <env> python -c "from powderline import registry; print(registry.available())"`
 — an empty list means the metadata is missing.
 
-**Evidence.** `src/powderline/engine.py:53` (`registry.get(...)` for all
-engines); `src/powderline/registry.py` `get` / `_not_installed_message`;
-`CLAUDE.md` (the `pixi reinstall powderline` note); the execution-log re/02
-entry (env notes).
+**Evidence.** `src/powderline/api.py` (`gateway_for` → `registry.get(...)`
+for every engine); `src/powderline/registry.py` `get` /
+`_not_installed_message`; `CLAUDE.md` (the `pixi reinstall powderline` note);
+the execution-log re/02 entry (env notes).
 
 **Decision.** Keep entry points as the **only** discovery path (A17, A58): the
 in-repo gateways use exactly the plugin mechanism a third-party engine will
 use, and a hard-coded fallback would add a second discovery path and hide a
-stale install. The registry's error already names the fix. re/08 adds
-install-health guidance (and possibly a check command); re/10 documents the
-re-install step for contributors.
+stale install. The registry's error already names the fix. re/08 added the
+install-health guidance above; the re-install step is documented for users in
+the [migration guide](migration-0.26-to-1.0.md) and for contributors on the
+[policies page](policies.md) and in `CLAUDE.md`.
 
-**Revisit.** re/08 (entry points finalized) and re/10 (migration guide / dev
-docs).
+**Disposition (0.2.0, proposed: stays `watch`, A58; maintainer to
+confirm).**
+
+**Revisit.** When a check command (`powderline doctor`-style) is added, or if
+a second discovery path is ever considered.

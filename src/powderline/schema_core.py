@@ -404,10 +404,11 @@ def check_element_symbol(symbol: str) -> str:
 
 
 class XRDData(BaseModel):
-    """Measured pattern: 2theta, intensity, weights (ported from schema 0.26 ``XRDDataModel``).
+    """Measured pattern: 2theta, intensity, weights.
 
     Every engine consumes ``tth`` in degrees 2theta and ``Itth_weights`` as
-    1/sigma^2, as-is.
+    1/sigma^2, as-is. (The rules are those of the unified schema's
+    ``XRDDataModel``, see ``docs/SCHEMA_HISTORY.md``.)
     """
 
     model_config = _STRICT
@@ -590,10 +591,11 @@ def fit_limits_on_data(fit_range: Optional[FitRange], xrd_data: XRDData) -> tupl
 
 
 class ChebyshevBackground(BaseModel):
-    """Chebyshev polynomial background (ported from schema 0.26).
+    """Chebyshev polynomial background: ``num_coefficients``, ``coefficients``, ``refine_flag``.
 
     Coefficient semantics (scaling, which polynomial basis) are engine-specific
-    and documented in each engine schema (A22.7), not here.
+    and documented in each engine schema (A22.7), not here. (The shape is the
+    unified schema's, see ``docs/SCHEMA_HISTORY.md``.)
     """
 
     model_config = _STRICT
