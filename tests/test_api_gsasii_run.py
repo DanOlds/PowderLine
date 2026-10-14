@@ -25,7 +25,8 @@ from subprocess_utils import unit_cell_match, extract_rwp_from_lst, REFINED_PARA
 # ─── Constants (must match test_example_LaB6_regression.py tolerances) ────────
 
 RWP_TOLERANCE = 0.1          # percent — same as CLI regression test
-REFERENCE_DIR = Path("examples/example_LaB6/output")
+REPO = Path(__file__).resolve().parent.parent  # the repo, whatever the cwd (review item 17)
+REFERENCE_DIR = REPO / "examples" / "example_LaB6" / "output"
 
 
 # ─── Shared LaB6 subprocess run ───────────────────────────────────────────────
@@ -39,7 +40,7 @@ def lab6_subprocess_run(tmp_path_factory):
     (slow) subprocess refinement. Tests that need a fresh or second independent
     run (e.g. run_id uniqueness) still call powderline.run() themselves.
     """
-    recipe = json.loads(Path("examples/example_LaB6/input.json").read_text())
+    recipe = json.loads((REPO / "examples" / "example_LaB6" / "input.json").read_text(encoding="utf-8"))
     output_dir = tmp_path_factory.mktemp("lab6_shared_run")
     result = powderline.run(recipe, output_dir, execution_mode="subprocess")
     return result, output_dir
@@ -224,7 +225,7 @@ def test_gsasclient_accepts_path(tmp_path):
     """GSASClient.submit_simulation() still accepts a Path (backward compat)."""
     client = GSASClient(fallback_to_subprocess=True)
     result = client.submit_simulation(
-        recipe=Path("examples/example_LaB6/input.json"),
+        recipe=REPO / "examples" / "example_LaB6" / "input.json",
         output_dir=tmp_path / "out",
         auto_start_server=False,
     )

@@ -385,8 +385,8 @@ def test_simulation_determinism(request, tmp_path, input_fixture, obj_label):
         cmd = kicker_command(
             str(recipe_input),
             "--output", str(output_dir),
-        repo_root=REPO
-    )
+            repo_root=REPO,
+        )
         result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=REPO)
         assert result.returncode == 0, f"Simulation failed:\n{result.stderr}"
 

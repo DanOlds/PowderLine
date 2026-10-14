@@ -252,7 +252,7 @@ def example_LaB6_simulation_reference_peak_csv(example_LaB6_simulation_dir):
 @pytest.fixture
 def recipe_LaB6_dict():
     """example_LaB6 recipe loaded as a plain dict (no model validation)."""
-    return json.loads((EXAMPLES / "example_LaB6" / "input.json").read_text())
+    return json.loads((EXAMPLES / "example_LaB6" / "input.json").read_text(encoding="utf-8"))
 
 
 @pytest.fixture
@@ -265,7 +265,7 @@ def recipe_LaB6_model(recipe_LaB6_dict):
 @pytest.fixture
 def recipe_LaB6_singlepeakfit_dict():
     """example_LaB6_singlepeakfit recipe loaded as a plain dict."""
-    return json.loads((EXAMPLES / "example_LaB6_singlepeakfit" / "input.json").read_text())
+    return json.loads((EXAMPLES / "example_LaB6_singlepeakfit" / "input.json").read_text(encoding="utf-8"))
 
 
 # ─── Shared tmp_output_dir ────────────────────────────────────────────────────
