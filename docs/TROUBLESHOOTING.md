@@ -457,17 +457,22 @@ Not necessarily! High correlation is common and often acceptable.
    design, explicit server mode (`--use-server` / `execution_mode='server'`)
    fails, and `gsas-server start` refuses.
 
-6. **Upgrading from v0.1.1 or earlier?** Older servers used fixed, shared
-   files in the temp directory and port 19471, and accepted unauthenticated
-   requests. The current client never uses them, but `gsas-server status|stop`
-   cannot see them either, so one may still be running (it may have been
-   auto-started without you noticing). Stop it once:
+6. **Upgrading from v0.1.1 or a pre-merge 0.2.0 checkout?** Older servers used
+   fixed, shared files in the temp directory and port 19471, and accepted
+   unauthenticated requests. The current client never uses them, but
+   `gsas-server status|stop` cannot see them either, so one may still be
+   running (it may have been auto-started without you noticing). The old
+   server ran as `gsas_server.py` (v0.1.1) or `gateways/gsasii/server.py`
+   (0.2.0 before the v0.1.2 merge), so stop your current server first and
+   then kill every remaining server process of yours once:
    ```bash
-   pkill -u "$USER" -f gsas_server.py     # Linux/macOS
+   pixi run -e gsasii gsas-server stop
+   pkill -u "$USER" -f "gsas_server.py|gsasii[/.]server"     # Linux/macOS
    ```
-   On Windows, end the `python ... gsas_server.py start` process in Task
-   Manager (or `Get-CimInstance Win32_Process | Where-Object CommandLine -like
-   '*gsas_server.py*' | ForEach-Object { Stop-Process -Id $_.ProcessId }`).
+   On Windows, end the `python ... gsas_server.py start` / `... server.py
+   start` processes in Task Manager (or `Get-CimInstance Win32_Process |
+   Where-Object CommandLine -match 'gsas_server.py|gsasii[/\\.]server' |
+   ForEach-Object { Stop-Process -Id $_.ProcessId }`).
 
 **Note on connection reliability:** The client automatically retries connections up to
 3 times with exponential backoff (0.5s, 1s, 2s delays) to handle transient network issues.

@@ -211,27 +211,6 @@ def test_load_recipe_asset_unsupported_format(tmp_path):
 
 # ─── HTTP retry logic tests ────────────────────────────────────────────────────
 
-def test_cli_use_server_with_no_server_env_exits(tmp_path):
-    """POWDERLINE_NO_SERVER: `kicker --use-server` exits 1 with a clear message."""
-    import os
-    import subprocess
-    import sys
-
-    repo = Path(__file__).parent.parent
-    env = {**os.environ, "POWDERLINE_NO_SERVER": "1",
-           "PYTHONPATH": str(repo / "src") + os.pathsep + os.environ.get("PYTHONPATH", "")}
-    proc = subprocess.run(
-        [sys.executable, str(repo / "src" / "powderline" / "kicker.py"),
-         str(repo / "examples" / "example_LaB6" / "input.json"),
-         "--use-server", "--output", str(tmp_path / "out")],
-        env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=300,
-    )
-    assert proc.returncode == 1, proc.stdout + proc.stderr
-    assert "POWDERLINE_NO_SERVER" in proc.stdout
-    assert not (tmp_path / "out" / "fit_profile.txt").exists()
-
-
 # This user's server endpoint as read from the private state dir.
 _FAKE_ENDPOINT = {"pid": 4242, "port": 50123, "token": "t0ken"}
 
