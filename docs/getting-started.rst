@@ -63,7 +63,9 @@ Recipe structure
 A recipe is a JSON file with a fixed frame — ``schema_name``,
 ``core_schema_version``, ``engine_schema_version``, optional ``metadata``, and
 ``payload`` — whose payload is written in the named engine's own terms. Data
-are embedded (no external files). A minimal ``gsasii.rietveld`` recipe:
+are embedded (no external files). A minimal ``gsasii.rietveld`` recipe (three
+data points are shown; a real pattern has thousands, and ``fit_range`` must lie
+inside them):
 
 .. code-block:: json
 
@@ -77,7 +79,7 @@ are embedded (no external files). A minimal ``gsasii.rietveld`` recipe:
           "Itth": [30.6, 30.9, 30.2],
           "Itth_weights": [0.0327, 0.0324, 0.0331]
         },
-        "fit_range": [1.0, 15.0],
+        "fit_range": [1.0, 1.0071],
         "instrument": {
           "description": "28-ID-2",
           "radiation": {"type": "PXC", "wavelength": [0.1665, false]},
