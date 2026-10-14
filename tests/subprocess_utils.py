@@ -29,7 +29,7 @@ REFINED_PARAM_COLUMNS = [
 PIXI_ENV_OVERRIDE_VAR = "POWDERLINE_TEST_PIXI_ENV"
 
 
-def gsasii_pixi_env(repo_root: Path | None = None) -> str | None:
+def gsasii_pixi_env(repo_root: Path | None = None) -> str:
     """Name of the pixi environment to pass as ``-e`` for a GSAS-II `kicker` run.
 
     Since re/08 the default env has no engine, so the regression suites run
@@ -39,10 +39,9 @@ def gsasii_pixi_env(repo_root: Path | None = None) -> str | None:
     2. The env this test process already runs in (``PIXI_ENVIRONMENT_NAME``)
        when GSAS-II is importable here -- ``pixi run test`` in the dev/all/gsasii
        env re-uses itself instead of needing a second installed env.
-    3. ``"gsasii"`` when ``.pixi/envs/gsasii`` is installed.
-    4. ``None`` (no ``-e``): TEMPORARY fallback for checkouts whose installed envs
-       predate the re/08 re-lock (GSAS-II still in the default env). Remove once
-       the maintainer has re-locked and every checkout has a ``gsasii`` env.
+    3. ``"gsasii"`` otherwise: the env that carries GSAS-II since the re/08
+       re-lock (`pixi install -e gsasii` if it is missing; pixi reports an
+       uninstalled env clearly).
     """
     override = os.environ.get(PIXI_ENV_OVERRIDE_VAR)
     if override:
@@ -50,10 +49,7 @@ def gsasii_pixi_env(repo_root: Path | None = None) -> str | None:
     current = os.environ.get("PIXI_ENVIRONMENT_NAME")
     if current and importlib.util.find_spec("GSASII") is not None:
         return current
-    root = repo_root or Path.cwd()
-    if (root / ".pixi" / "envs" / "gsasii").is_dir():
-        return "gsasii"
-    return None
+    return "gsasii"
 
 
 def kicker_command(*args: str, repo_root: Path | None = None) -> list[str]:
@@ -63,10 +59,7 @@ def kicker_command(*args: str, repo_root: Path | None = None) -> list[str]:
     the refinement in-process (no stale server state).
     """
     cmd = ["pixi", "run"]
-    env = gsasii_pixi_env(repo_root)
-    if env is not None:
-        cmd += ["-e", env]
-    cmd += ["kicker", "--no-server", *args]
+    cmd += ["-e", gsasii_pixi_env(repo_root), "kicker", "--no-server", *args]
     return cmd
 
 
