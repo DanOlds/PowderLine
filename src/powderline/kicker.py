@@ -211,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         recipe_dict = load_recipe_asset(args.input_json)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         print(f"\n{CROSS} Cannot read recipe {args.input_json}: {e}\n")
         return 1
 
@@ -264,8 +264,13 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:
         print(f"\n{CROSS} Unexpected error during refinement:")
         print(f"   {str(e)}")
-        print(f"\nTry running with --verbose for more details:")
-        print(f"  pixi run kicker {args.input_json} --verbose\n")
+        if args.verbose:
+            import traceback
+            print()
+            print(traceback.format_exc())
+        else:
+            print(f"\nTry running with --verbose for the full traceback:")
+            print(f"  pixi run kicker {args.input_json} --verbose\n")
         return 1
 
     if args.validate_only:

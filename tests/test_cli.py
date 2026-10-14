@@ -156,6 +156,43 @@ def test_cli_missing_recipe_file_exits_1(tmp_path, capsys):
     assert "Cannot read recipe" in capsys.readouterr().out
 
 
+def test_cli_malformed_json_exits_1_without_traceback(tmp_path, capsys):
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"schema_name": "gsasii.rietveld",}', encoding="utf-8")
+    rc = kicker.main([str(bad), "--validate-only"])
+    out = capsys.readouterr()
+    assert rc == 1
+    assert "Cannot read recipe" in out.out and "not valid JSON" in out.out
+    assert "Traceback" not in out.out + out.err
+
+
+def test_cli_yaml_list_exits_1(tmp_path, capsys):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("- 1\n", encoding="utf-8")
+    rc = kicker.main([str(bad), "--validate-only"])
+    assert rc == 1
+    assert "mapping" in capsys.readouterr().out
+
+
+def test_cli_verbose_prints_traceback_on_unexpected_error(tmp_path, capsys, monkeypatch):
+    """--verbose promises 'more details': the traceback of an unexpected error is printed."""
+    def boom(*a, **k):
+        raise RuntimeError("engine exploded")
+    monkeypatch.setattr(kicker, "run", boom)
+    rc = kicker.main([str(LAB6), "--verbose", "--no-server", "--output", str(tmp_path / "o")])
+    out = capsys.readouterr().out
+    assert rc == 1 and "engine exploded" in out and "Traceback" in out
+
+
+def test_cli_quiet_hides_traceback_on_unexpected_error(tmp_path, capsys, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("engine exploded")
+    monkeypatch.setattr(kicker, "run", boom)
+    rc = kicker.main([str(LAB6), "--no-server", "--output", str(tmp_path / "o")])
+    out = capsys.readouterr().out
+    assert rc == 1 and "engine exploded" in out and "Traceback" not in out
+
+
 def test_cli_template_path_exits_1(capsys):
     rc = kicker.main([str(REPO / "examples" / "example_template" / "input.json"), "--validate-only"])
     assert rc == 1

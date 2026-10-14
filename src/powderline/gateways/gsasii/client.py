@@ -345,15 +345,8 @@ class GSASClient:
         recipe model (serialized via .model_dump). Raises TypeError for unsupported inputs.
         """
         if isinstance(recipe, Path):
-            import json
-            import yaml
-            ext = recipe.suffix.lower()
-            text = recipe.read_text()
-            if ext == '.json':
-                return json.loads(text)
-            if ext in {'.yaml', '.yml', '.txt'}:
-                return yaml.safe_load(text) or {}
-            raise ValueError(f"Unsupported recipe format: {recipe}")
+            from powderline.recipes import load_recipe_asset  # engine-free; the one loader (review item 28)
+            return load_recipe_asset(recipe)
         if isinstance(recipe, dict):
             return recipe
         if hasattr(recipe, 'model_dump'):
