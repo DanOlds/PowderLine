@@ -42,6 +42,9 @@ def gsasii_pixi_env(repo_root: Path | None = None) -> str:
     3. ``"gsasii"`` otherwise: the env that carries GSAS-II since the re/08
        re-lock (`pixi install -e gsasii` if it is missing; pixi reports an
        uninstalled env clearly).
+
+    ``repo_root`` is accepted for symmetry with ``kicker_command`` and unused
+    here (the env name does not depend on it).
     """
     override = os.environ.get(PIXI_ENV_OVERRIDE_VAR)
     if override:
@@ -53,12 +56,15 @@ def gsasii_pixi_env(repo_root: Path | None = None) -> str:
 
 
 def kicker_command(*args: str, repo_root: Path | None = None) -> list[str]:
-    """``["pixi", "run", ("-e", <env>,) "kicker", "--no-server", *args]``.
+    """``["pixi", "run", ("--manifest-path", <repo>/pixi.toml,) "-e", <env>, "kicker", "--no-server", *args]``.
 
     The GSAS-II CLI invocation the regression suites share; ``--no-server`` keeps
-    the refinement in-process (no stale server state).
+    the refinement in-process (no stale server state). ``repo_root`` pins the
+    manifest so the command works from any working directory.
     """
     cmd = ["pixi", "run"]
+    if repo_root is not None:
+        cmd += ["--manifest-path", str(Path(repo_root) / "pixi.toml")]
     cmd += ["-e", gsasii_pixi_env(repo_root), "kicker", "--no-server", *args]
     return cmd
 

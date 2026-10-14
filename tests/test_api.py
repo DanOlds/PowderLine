@@ -195,7 +195,7 @@ def test_run_validate_only_bad_recipe_raises(tmp_path):
 
 def test_load_recipe_asset_json():
     """load_recipe_asset() loads a JSON file and returns a dict."""
-    recipe = powderline.load_recipe_asset(Path("examples/example_LaB6/input.json"))
+    recipe = powderline.load_recipe_asset(REPO / "examples" / "example_LaB6" / "input.json")
     assert isinstance(recipe, dict)
     assert "schema_name" in recipe
     assert "payload" in recipe

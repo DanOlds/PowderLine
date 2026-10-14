@@ -11,6 +11,9 @@ from pathlib import Path
 import tempfile
 import shutil
 
+#: The shipped examples, independent of the working directory (review item 17).
+EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
+
 
 # ─── Suite markers (re/09, A13.6) ─────────────────────────────────────────────
 
@@ -186,7 +189,7 @@ def _private_server_state(request, tmp_path_factory, monkeypatch):
 @pytest.fixture
 def example_LaB6_dir():
     """Path to example_LaB6 directory."""
-    return Path("examples/example_LaB6")
+    return EXAMPLES / "example_LaB6"
 
 
 @pytest.fixture
@@ -223,19 +226,13 @@ def example_LaB6_reference_refined_params_csv(example_LaB6_dir):
 @pytest.fixture
 def example_LaB6_simulation_dir():
     """Path to example_LaB6_simulation directory."""
-    return Path("examples/example_LaB6_simulation")
+    return EXAMPLES / "example_LaB6_simulation"
 
 
 @pytest.fixture
 def example_LaB6_simulation_input(example_LaB6_simulation_dir):
     """Path to example_LaB6_simulation input.json file."""
     return example_LaB6_simulation_dir / "input.json"
-
-
-@pytest.fixture
-def example_LaB6_simulation_reference_lst(example_LaB6_simulation_dir):
-    """Path to example_LaB6_simulation reference .lst output file."""
-    return example_LaB6_simulation_dir / "output" / "dummy.lst"
 
 
 @pytest.fixture
@@ -250,18 +247,12 @@ def example_LaB6_simulation_reference_peak_csv(example_LaB6_simulation_dir):
     return example_LaB6_simulation_dir / "output" / "LaB6_peak_list_report.csv"
 
 
-@pytest.fixture
-def example_LaB6_simulation_reference_refined_params_csv(example_LaB6_simulation_dir):
-    """Path to example_LaB6_simulation reference refined_parameters.csv file."""
-    return example_LaB6_simulation_dir / "output" / "refined_parameters.csv"
-
-
 # ─── API test fixtures ────────────────────────────────────────────────────────
 
 @pytest.fixture
 def recipe_LaB6_dict():
     """example_LaB6 recipe loaded as a plain dict (no model validation)."""
-    return json.loads(Path("examples/example_LaB6/input.json").read_text())
+    return json.loads((EXAMPLES / "example_LaB6" / "input.json").read_text())
 
 
 @pytest.fixture
@@ -274,7 +265,7 @@ def recipe_LaB6_model(recipe_LaB6_dict):
 @pytest.fixture
 def recipe_LaB6_singlepeakfit_dict():
     """example_LaB6_singlepeakfit recipe loaded as a plain dict."""
-    return json.loads(Path("examples/example_LaB6_singlepeakfit/input.json").read_text())
+    return json.loads((EXAMPLES / "example_LaB6_singlepeakfit" / "input.json").read_text())
 
 
 # ─── Shared tmp_output_dir ────────────────────────────────────────────────────
@@ -292,7 +283,7 @@ def tmp_output_dir(tmp_path):
 @pytest.fixture
 def example_DRX_33_dir():
     """Path to example_DRX_33 directory."""
-    return Path("examples/example_DRX_33")
+    return EXAMPLES / "example_DRX_33"
 
 
 @pytest.fixture
@@ -394,19 +385,13 @@ def mp_lab6_structure_data():
 @pytest.fixture
 def example_DRX_33_simulation_dir():
     """Path to example_DRX_33_simulation directory."""
-    return Path("examples/example_DRX_33_simulation")
+    return EXAMPLES / "example_DRX_33_simulation"
 
 
 @pytest.fixture
 def example_DRX_33_simulation_input(example_DRX_33_simulation_dir):
     """Path to example_DRX_33_simulation input.json file."""
     return example_DRX_33_simulation_dir / "input.json"
-
-
-@pytest.fixture
-def example_DRX_33_simulation_reference_lst(example_DRX_33_simulation_dir):
-    """Path to example_DRX_33_simulation reference .lst output file."""
-    return example_DRX_33_simulation_dir / "output" / "dummy.lst"
 
 
 @pytest.fixture
@@ -427,17 +412,11 @@ def example_DRX_33_simulation_reference_peak_csvs(example_DRX_33_simulation_dir)
     }
 
 
-@pytest.fixture
-def example_DRX_33_simulation_reference_refined_params_csv(example_DRX_33_simulation_dir):
-    """Path to example_DRX_33_simulation reference refined_parameters.csv file."""
-    return example_DRX_33_simulation_dir / "output" / "refined_parameters.csv"
-
-
 # LaB6 single-peak-fit example fixtures
 @pytest.fixture
 def example_LaB6_singlepeakfit_dir():
     """Path to example_LaB6_singlepeakfit directory."""
-    return Path("examples/example_LaB6_singlepeakfit")
+    return EXAMPLES / "example_LaB6_singlepeakfit"
 
 
 @pytest.fixture
@@ -458,7 +437,7 @@ def example_LaB6_singlepeakfit_reference_single_peaks_txt(example_LaB6_singlepea
 @pytest.fixture
 def example_DRX_33_atomrefine_dir():
     """Path to example_DRX_33_atomrefine directory."""
-    return Path("examples/example_DRX_33_atomrefine")
+    return EXAMPLES / "example_DRX_33_atomrefine"
 
 
 @pytest.fixture
@@ -504,7 +483,7 @@ def example_DRX_33_atomrefine_reference_refined_params_csv(example_DRX_33_atomre
 @pytest.fixture
 def example_DRX_33_anisoADP_dir():
     """Path to example_DRX_33_anisoADP directory."""
-    return Path("examples/example_DRX_33_anisoADP")
+    return EXAMPLES / "example_DRX_33_anisoADP"
 
 
 @pytest.fixture
@@ -550,7 +529,7 @@ def example_DRX_33_anisoADP_reference_refined_params_csv(example_DRX_33_anisoADP
 @pytest.fixture
 def example_DRX_33_strainonly_dir():
     """Path to example_DRX_33_strainonly directory."""
-    return Path("examples/example_DRX_33_strainonly")
+    return EXAMPLES / "example_DRX_33_strainonly"
 
 
 @pytest.fixture

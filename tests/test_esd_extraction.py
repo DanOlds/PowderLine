@@ -26,6 +26,8 @@ import pytest
 pytestmark = [pytest.mark.gsasii, pytest.mark.slow]
 
 from subprocess_utils import extract_rwp_from_lst, kicker_command, run_subprocess_utf8
+
+REPO = Path(__file__).resolve().parent.parent  # the repo, whatever the cwd (review item 17)
 from test_example_LaB6_regression import UNIFORM_RWP_REFERENCE, UNIFORM_RWP_TOLERANCE, extract_rwp_from_stdout
 
 
@@ -33,10 +35,10 @@ from test_example_LaB6_regression import UNIFORM_RWP_REFERENCE, UNIFORM_RWP_TOLE
 
 def _run_kicker(input_json: Path, output_dir: Path) -> subprocess.CompletedProcess:
     result = run_subprocess_utf8(
-        kicker_command(str(input_json), "--output", str(output_dir)),
+        kicker_command(str(input_json), "--output", str(output_dir), repo_root=REPO),
         capture_output=True,
         text=True,
-        cwd=Path.cwd(),
+        cwd=REPO,
     )
     return result
 

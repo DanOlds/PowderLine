@@ -31,6 +31,8 @@ from subprocess_utils import (
     REFINED_PARAM_COLUMNS,
 )
 
+REPO = Path(__file__).resolve().parent.parent  # the repo, whatever the cwd (review item 17)
+
 
 def extract_rwp_from_stdout(stdout_text: str) -> float | None:
     """
@@ -75,9 +77,10 @@ def test_validate_only_example(request, input_fixture, expected_marker):
     cmd = kicker_command(
         str(recipe_input),
         "--validate-only",
+        repo_root=REPO
     )
 
-    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
+    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=REPO)
 
     assert result.returncode == 0, f"Validation failed:\n{result.stderr}"
     assert "Recipe validation successful" in result.stdout
@@ -94,8 +97,8 @@ def test_cli_reports_recipe_validation_errors(example_LaB6_input, tmp_path):
     bad_recipe = tmp_path / "invalid_cycles.json"
     bad_recipe.write_text(json.dumps(recipe))
 
-    cmd = kicker_command(str(bad_recipe), "--validate-only")
-    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
+    cmd = kicker_command(str(bad_recipe), "--validate-only", repo_root=REPO)
+    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=REPO)
 
     assert result.returncode == 1
     assert "Recipe validation failed" in result.stdout
@@ -187,9 +190,10 @@ def test_example_regression(request, tmp_output_dir, case_id, input_fixture, lst
     cmd = kicker_command(
         str(recipe_input),
         "--output", str(tmp_output_dir),
+        repo_root=REPO
     )
 
-    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
+    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=REPO)
 
     # Check that refinement completed successfully
     assert result.returncode == 0, f"Refinement failed with error:\n{result.stderr}"
@@ -299,9 +303,10 @@ def test_example_simulation_regression(request, tmp_output_dir, case_id, input_f
     cmd = kicker_command(
         str(recipe_input),
         "--output", str(tmp_output_dir),
+        repo_root=REPO
     )
 
-    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
+    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=REPO)
 
     # Check that simulation completed successfully
     assert result.returncode == 0, f"Simulation failed with error:\n{result.stderr}"
@@ -380,8 +385,9 @@ def test_simulation_determinism(request, tmp_path, input_fixture, obj_label):
         cmd = kicker_command(
             str(recipe_input),
             "--output", str(output_dir),
-        )
-        result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
+        repo_root=REPO
+    )
+        result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=REPO)
         assert result.returncode == 0, f"Simulation failed:\n{result.stderr}"
 
     # Compare fit_profile.txt outputs (contains y_calc)
@@ -453,9 +459,10 @@ def test_simulation_validation_catches_refine_violation(
     cmd = kicker_command(
         str(bad_recipe_path),
         "--validate-only",
+        repo_root=REPO
     )
 
-    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
+    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=REPO)
 
     # CRITICAL: Should exit with error code 1 (validation failed)
     assert result.returncode == 1, (
@@ -499,9 +506,10 @@ def test_refined_parameters_csv_structure(tmp_output_dir, example_LaB6_input):
     cmd = kicker_command(
         str(example_LaB6_input),
         "--output", str(tmp_output_dir),
+        repo_root=REPO
     )
 
-    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
+    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=REPO)
     assert result.returncode == 0, f"Refinement failed: {result.stderr}"
 
     # Load refined_parameters.csv
@@ -553,9 +561,10 @@ def test_refined_parameters_csv_multiphase(tmp_output_dir, example_DRX_33_atomre
     cmd = kicker_command(
         str(example_DRX_33_atomrefine_input),
         "--output", str(tmp_output_dir),
+        repo_root=REPO
     )
 
-    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
+    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=REPO)
     assert result.returncode == 0, f"Refinement failed: {result.stderr}"
 
     # Load refined_parameters.csv
@@ -628,9 +637,10 @@ def test_example_LaB6_singlepeakfit_regression(example_LaB6_singlepeakfit_input,
     cmd = kicker_command(
         str(example_LaB6_singlepeakfit_input),
         "--output", str(tmp_output_dir),
+        repo_root=REPO
     )
 
-    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=Path.cwd())
+    result = run_subprocess_utf8(cmd, capture_output=True, text=True, cwd=REPO)
 
     # Check that refinement completed successfully
     assert result.returncode == 0, f"Refinement failed with error:\n{result.stderr}"
