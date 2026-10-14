@@ -81,7 +81,7 @@ Each gateway is a package with the same two layers:
 
 | Gateway | Runtime modules |
 |---|---|
-| `gsasii/` (GSAS-II 5.7.9) | the **frozen** setup/execution code moved verbatim from the pre-refactor `kicker.py`: `helpers.py`, `project.py`, `setters.py`, `executors.py`, `extractors.py`, `constraints.py` (code-hashed; see [policies](policies.md#frozen-gsas-ii-code-and-the-edits-ledger)); non-frozen additions `routing.py` (one entry for in-process, server and client), `fit_report.py` (uniform statistics, `engine_details`, convergence, divergence), `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`; `server.py` / `client.py` (the persistent FastAPI server and `GSASClient`); the Materials Project simulation tool `mp_simulate.py`, `simulation_builder.py`, `pattern_exporter.py` |
+| `gsasii/` (GSAS-II 5.7.9) | the **frozen** setup/execution code moved verbatim from the pre-refactor `kicker.py`: `helpers.py`, `project.py`, `setters.py`, `executors.py`, `extractors.py`, `constraints.py` (code-hashed; see [policies](policies.md#frozen-gsas-ii-code-and-the-edits-ledger)); non-frozen additions `routing.py` (one entry for in-process, server and client), `fit_report.py` (uniform statistics, `engine_details`, convergence, divergence), `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`; `server.py` / `client.py` (the persistent FastAPI server and `GSASClient`: per-user, loopback, ephemeral port, signed requests and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2); the Materials Project simulation tool `mp_simulate.py`, `simulation_builder.py`, `pattern_exporter.py` |
 | `topas/` (TOPAS 6) | `native_writer.py` (model → INP + `.xye`), `native_run.py` (run `tc.exe`, read TOPAS's files strictly, build the result; the background-only second run), `peak_list.py`, `conversions.py`, `runner.py` (find `tc.exe`, read `.powderline_config.yaml`), `errors.py` |
 | `easydiffraction/` (0.21.1) | `native_builder.py` (model → easydiffraction `Project`; the CrysPy template rule; anisotropic atoms first), `native_run.py` (calculate or lmfit fit, the result), `space_group_table.py` / `space_group_support.py` (the 531 settings and the per-calculator verified sets), `errors.py` |
 
@@ -408,9 +408,50 @@ set `PYTHONPATH` through the task-level `env` dict (cross-platform;
 
 The server amortizes GSAS-II's import (~2.6 s) over many runs (batch jobs:
 0.1–0.3 s per run against 1–2 s in-process). It **caches code**: restart it
-after editing anything under `src/` it executes. Port: `POWDERLINE_SERVER_PORT`;
-log: `powderline_gsas_server.log` in the platform temp directory
-(`pixi run -e gsasii gsas-server logs`).
+after editing anything under `src/` it executes.
+
+**Server state and security (per user, v0.1.2):** the server binds `127.0.0.1`
+on a free ephemeral port and writes its lock, PID, log, and an endpoint file
+(port + random secret token) — all mode 0600 — to a private per-user state
+directory: `$XDG_RUNTIME_DIR/powderline` (if it is a real directory owned by
+you), else `<tempdir>/powderline-<uid>` on POSIX (mode 0700; refused if it is a
+symlink, owned by someone else, or group/other-accessible, or if the temp
+directory would let others replace it), and `%LOCALAPPDATA%\powderline` on
+Windows. On POSIX the files are opened relative to a re-verified, no-follow
+directory handle.
+
+The token never travels over the wire: every request carries a fresh nonce, a
+timestamp and an HMAC-SHA256 over method, path, nonce, timestamp and body, and
+the server rejects anything unsigned, wrongly signed, stale, or replayed — on
+every route, including 404/405/422 — before reading the body. Every response
+is signed back over the nonce, status and body, and the client discards
+unsigned responses. Other users on a shared host therefore can neither submit
+jobs to your server nor impersonate it (e.g. by taking over the port of a
+crashed server). `gsas-server start` takes a kernel-held lock (`flock` /
+`msvcrt.locking` on `server.lock`) for the server's lifetime; the OS releases
+it when the process exits, so concurrent auto-starts never spawn duplicates
+and leftover PID files can never make a dead server look alive.
+
+**Pin the server port** (only if needed — the default ephemeral port avoids
+collisions between users):
+```bash
+export POWDERLINE_SERVER_PORT=19472
+pixi run -e gsasii gsas-server start
+pixi run -e gsasii kicker input.json  # the client reads the port from your state directory
+```
+
+**Disable the server entirely** (shared workstations, locked-down deployments):
+```bash
+export POWDERLINE_NO_SERVER=1   # also: true / yes / on
+```
+With it set, `execution_mode='auto'` (and the CLI default) runs in-process and
+never starts a server, `execution_mode='server'` / `--use-server` fail with a
+clear error, and `pixi run -e gsasii gsas-server start|restart` refuse.
+
+**View server logs** (`server.log` in the state directory; `status` prints the path):
+```bash
+pixi run -e gsasii gsas-server logs
+```
 
 ### Adding a new recipe field (any engine)
 

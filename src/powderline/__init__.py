@@ -14,7 +14,7 @@ helpers live under ``powderline.gateways.<engine>`` (e.g.
 ``powderline.gateways.gsasii.client.GSASClient``).
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from powderline.api import run, validate, ValidationResult
 from powderline.recipes import load_recipe_asset

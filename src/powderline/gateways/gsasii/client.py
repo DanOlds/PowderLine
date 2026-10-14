@@ -5,19 +5,43 @@ Automatically falls back to in-process execution when the server is not
 running, or when a "successful" server run produced output files that are
 not visible to this process (server with a divergent filesystem view, e.g.
 on another node or inside a sandbox with a private /tmp).
+
+Only the calling user's own server is ever used: its port and secret token
+are read from the user's private state directory. The token itself is never
+sent; every request is signed with it and every response must carry a valid
+signature, so a listener that does not hold the token (e.g. another user's
+process on the port of a crashed server) is never trusted — it learns nothing
+it could replay and cannot fake a result. ``POWDERLINE_NO_SERVER`` disables
+server use entirely (see :func:`powderline.gateways.gsasii.server.server_disabled`).
 """
 
+import json
+import secrets
 import subprocess
 import sys
 import os
 from pathlib import Path
-from typing import Dict, Any
-import tempfile
+from typing import Dict, Any, Optional
 
-HOST = "127.0.0.1"
-DEFAULT_PORT = 19471
-PORT = int(os.environ.get('POWDERLINE_SERVER_PORT', DEFAULT_PORT))
-PORT_FILE = Path(tempfile.gettempdir()) / 'powderline_gsas_server.port'
+from powderline.gateways.gsasii import server as gsas_server
+from powderline.gateways.gsasii.server import (
+    HOST,
+    NO_SERVER_ENV,
+    NO_SERVER_MESSAGE,
+    NONCE_HEADER,
+    RESPONSE_SIGNATURE_HEADER,
+    SIGNATURE_HEADER,
+    TIMESTAMP_HEADER,
+    ServerStateError,
+    read_endpoint,
+    server_disabled,
+    sign_request,
+    sign_response,
+)
+
+
+class ServerIdentityError(RuntimeError):
+    """A response was not signed with this user's server token."""
 
 
 class GSASClient:
@@ -30,26 +54,86 @@ class GSASClient:
             fallback_to_subprocess: If True, use subprocess when server unavailable
         """
         self.fallback_to_subprocess = fallback_to_subprocess
+        self._state_warning_shown = False
 
-    def _get_port(self) -> int:
-        """Read the server port from the port file."""
-        if PORT_FILE.exists():
-            try:
-                return int(PORT_FILE.read_text().strip())
-            except (ValueError, OSError):
-                pass
-        return PORT
+    def _endpoint(self) -> Optional[Dict[str, Any]]:
+        """This user's live server endpoint (``pid``/``port``/``token``), or None.
+
+        An endpoint whose recorded server process is gone is stale (the server
+        crashed without cleaning up) and is ignored.
+        """
+        try:
+            endpoint = read_endpoint()
+        except ServerStateError as e:
+            if not self._state_warning_shown:
+                print(f"   WARNING: {e}")
+                self._state_warning_shown = True
+            return None
+        if endpoint is not None and not gsas_server._pid_alive(endpoint['pid']):
+            return None
+        return endpoint
+
+    @staticmethod
+    def _signed_request(endpoint: Dict[str, Any], method: str, path: str,
+                        payload: Optional[dict] = None, timeout: float = 2.0):
+        """Send a request signed with the endpoint's token; verify the response.
+
+        The token never leaves this process: the request carries a fresh
+        nonce, a timestamp and an HMAC, and the response must be signed over
+        that nonce, its status and its body.
+
+        Raises:
+            ServerIdentityError: If the response is not signed by the token holder.
+            httpx.HTTPError: On connection/transport errors.
+        """
+        import httpx
+        import time
+
+        body = b'' if payload is None else json.dumps(payload).encode()
+        nonce = secrets.token_hex(16)
+        timestamp = str(int(time.time()))
+        token = endpoint['token']
+        headers = {
+            NONCE_HEADER: nonce,
+            TIMESTAMP_HEADER: timestamp,
+            SIGNATURE_HEADER: sign_request(token, method, path, b'', nonce, timestamp, body),
+        }
+        url = f"http://{HOST}:{endpoint['port']}{path}"
+        # trust_env=False: loopback only, never route via a proxy
+        if method == 'GET':
+            resp = httpx.get(url, headers=headers, timeout=timeout, trust_env=False)
+        else:
+            headers['Content-Type'] = 'application/json'
+            resp = httpx.post(url, content=body, headers=headers, timeout=timeout,
+                              trust_env=False)
+        got = resp.headers.get(RESPONSE_SIGNATURE_HEADER, '')
+        expected = sign_response(token, nonce, resp.status_code, resp.content)
+        if not secrets.compare_digest(got.encode('utf-8', 'replace'), expected.encode()):
+            raise ServerIdentityError(
+                f"The listener on port {endpoint['port']} did not prove it is your "
+                f"GSAS-II server (HTTP {resp.status_code}); not using it.")
+        return resp
 
     def is_server_available(self) -> bool:
-        """Check if server is running and accepting connections."""
+        """Check that THIS user's server is up and holds this user's token.
+
+        ``/health`` is sent as a signed request and its response must be
+        signed with the token, so a listener that does not know the token
+        (e.g. another user's process on a recycled port) is never treated as
+        available. Always False when ``POWDERLINE_NO_SERVER`` is set.
+        """
         import httpx
 
-        port = self._get_port()
-        try:
-            resp = httpx.get(f"http://{HOST}:{port}/health", timeout=2.0)
-            return resp.status_code == 200
-        except (httpx.ConnectError, httpx.TimeoutException, OSError):
+        if server_disabled():
             return False
+        endpoint = self._endpoint()
+        if endpoint is None:
+            return False
+        try:
+            resp = self._signed_request(endpoint, 'GET', '/health', timeout=2.0)
+        except (httpx.HTTPError, OSError, ServerIdentityError):
+            return False
+        return resp.status_code == 200
 
     @staticmethod
     def _stat_fit_profile(output_dir: Path) -> tuple | None:
@@ -153,6 +237,10 @@ class GSASClient:
             execution with a warning — or, when fallback_to_subprocess is
             False, returns a structured error explaining the filesystem-view
             mismatch.
+
+            With ``POWDERLINE_NO_SERVER`` set, the server is never probed or
+            started: the run goes in-process, or — when fallback is disabled
+            (``execution_mode='server'``) — returns a structured error.
         """
         result = self._dispatch(recipe, output_dir, verbose, auto_start_server, use_server)
         return _with_validation_warnings(recipe, result)
@@ -162,7 +250,15 @@ class GSASClient:
         """Run the recipe on the server or in this process (see :meth:`submit_simulation`)."""
         recipe_dict = self._normalize_recipe(recipe)
 
-        if not use_server:
+        if use_server and server_disabled():
+            if not self.fallback_to_subprocess:
+                return {
+                    'success': False,
+                    'error': NO_SERVER_MESSAGE,
+                    'method': 'none'
+                }
+            print(f"   Using in-process mode ({NO_SERVER_ENV} is set)")
+        elif not use_server:
             if not verbose:
                 print("   Using in-process mode (use_server=False)")
         # Try server first
@@ -276,6 +372,15 @@ class GSASClient:
         import os
         import time
 
+        if server_disabled():
+            return False
+        try:
+            gsas_server.state_dir()  # a server could not start with an unsafe state dir
+        except ServerStateError as e:
+            if verbose:
+                print(f"   Could not auto-start server: {e}")
+            return False
+
         # Check if already running
         if self.is_server_available():
             return True
@@ -337,7 +442,6 @@ class GSASClient:
         import httpx
         import time
 
-        port = self._get_port()
         payload = {
             'recipe_data': recipe_dict,
             'output_dir': str(output_dir.absolute()),
@@ -349,12 +453,13 @@ class GSASClient:
 
         last_error = None
         for attempt in range(max_retries):
+            # Re-read each attempt: a restarted server has a new port and token.
+            endpoint = self._endpoint()
             try:
-                resp = httpx.post(
-                    f"http://{HOST}:{port}/simulate",
-                    json=payload,
-                    timeout=300.0,
-                )
+                if endpoint is None:
+                    raise httpx.ConnectError("No GSAS-II server endpoint for this user")
+                resp = self._signed_request(endpoint, 'POST', '/simulate',
+                                            payload, timeout=300.0)
                 resp.raise_for_status()
                 return resp.json()
             except httpx.ConnectError as e:

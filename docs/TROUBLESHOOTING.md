@@ -445,10 +445,29 @@ Not necessarily! High correlation is common and often acceptable.
    pixi run -e gsasii kicker input.json --use-server
    ```
 
-4. **Check server logs if it's not working** — `powderline_gsas_server.log` lives in the platform temp directory (e.g. `/tmp` on Linux, `%TEMP%` on Windows):
+4. **Check server logs if it's not working** — `server.log` lives in your
+   private per-user state directory (`pixi run -e gsasii gsas-server status`
+   prints the path):
    ```bash
    pixi run -e gsasii gsas-server logs
    ```
+
+5. **Check that the server isn't disabled** — if `POWDERLINE_NO_SERVER` is set
+   (e.g. by a facility launcher), default (`auto`) runs are in-process by
+   design, explicit server mode (`--use-server` / `execution_mode='server'`)
+   fails, and `gsas-server start` refuses.
+
+6. **Upgrading from v0.1.1 or earlier?** Older servers used fixed, shared
+   files in the temp directory and port 19471, and accepted unauthenticated
+   requests. The current client never uses them, but `gsas-server status|stop`
+   cannot see them either, so one may still be running (it may have been
+   auto-started without you noticing). Stop it once:
+   ```bash
+   pkill -u "$USER" -f gsas_server.py     # Linux/macOS
+   ```
+   On Windows, end the `python ... gsas_server.py start` process in Task
+   Manager (or `Get-CimInstance Win32_Process | Where-Object CommandLine -like
+   '*gsas_server.py*' | ForEach-Object { Stop-Process -Id $_.ProcessId }`).
 
 **Note on connection reliability:** The client automatically retries connections up to
 3 times with exponential backoff (0.5s, 1s, 2s delays) to handle transient network issues.
@@ -463,7 +482,18 @@ If you see "Server communication failed" errors, check the server logs.
 ❌ Server mode failed: Server not available and fallback disabled
 ```
 
-**Cause:** Server process failed to start or port already in use.
+**Cause:** Server process failed to start, the server is disabled
+(`POWDERLINE_NO_SERVER`), or your per-user state directory is unusable.
+
+**How the server is found:** each user's server binds `127.0.0.1` on a free
+(ephemeral) port and records its port, PID and a random secret token in a
+private per-user state directory — `$XDG_RUNTIME_DIR/powderline` or
+`<tempdir>/powderline-<uid>` on Linux/macOS, `%LOCALAPPDATA%\powderline` on
+Windows. Clients read only their own user's directory, sign every request
+with the token (the token itself is never sent), and only accept responses
+signed with it — so another user's server, or another process that took over
+the port of a crashed server, is never used. An endpoint whose server process
+is gone is ignored.
 
 **Solution:**
 
@@ -475,25 +505,28 @@ If you see "Server communication failed" errors, check the server logs.
 2. **Stop any hung server processes:**
    ```bash
    pixi run -e gsasii gsas-server stop
-   # Or manually kill:
-   pkill -f powderline.gateways.gsasii.server
+   # Or manually kill your own server (started by the task or auto-started by a client):
+   pkill -u "$USER" -f "gsasii[/.]server"
    ```
 
-3. **Check if the port is in use:**
-   ```bash
-   ss -tlnp | grep 19471
-   ```
+3. **"Refusing to use GSAS-II server state directory ..."** — the directory is
+   a symlink, owned by another user, or readable/writable by others (e.g.
+   pre-created in a shared `/tmp`). The server and auto-start are skipped:
+   default runs fall back to in-process, explicit server mode fails. Remove the
+   directory named in the message (if it is not yours, ask an administrator)
+   and it is recreated privately on the next start. **"Refusing to keep the
+   GSAS-II server state under ..."** means the parent (your `TMPDIR`) would let
+   other users replace that directory — world-writable without the sticky bit,
+   or owned by someone else; point `TMPDIR` (or `XDG_RUNTIME_DIR`) at a private
+   directory.
 
-4. **Use a different port if 19471 is unavailable:**
+4. **Pin a port only if you must** (e.g. a firewall rule): by default the
+   server uses a free ephemeral port, so users never collide. To force one:
    ```bash
    export POWDERLINE_SERVER_PORT=19472
    pixi run -e gsasii gsas-server start
-   pixi run -e gsasii kicker input.json  # the client reads the port file automatically
+   pixi run -e gsasii kicker input.json  # the client finds the port automatically
    ```
-
-   The server writes its port to `powderline_gsas_server.port` in the platform temp
-   directory (e.g. `/tmp` on Linux, `%TEMP%` on Windows), which the client reads
-   automatically.
 
 5. **Start server in foreground to see errors:**
    ```bash

@@ -134,9 +134,17 @@ through a persistent server that keeps GSAS-II resident in memory
 directly, or opt out per run with `--no-server`:
 
 ```bash
-pixi run -e gsasii gsas-server status                 # start | status | stop | restart
+pixi run -e gsasii gsas-server status                 # start | status | stop | restart | logs
 pixi run -e gsasii kicker <recipe.json> --no-server   # force an isolated in-process run
 ```
+
+The server is per-user: it listens on loopback only and accepts only requests
+signed with a secret token kept in a directory only you can read; your client
+in turn only accepts results signed with that token, so other users on the
+same machine can neither use your server nor impersonate it. To switch it off
+— e.g. on a shared workstation — set `POWDERLINE_NO_SERVER=1`: default
+(`auto`) runs then go in-process, explicit server mode (`--use-server` /
+`execution_mode='server'`) fails, and nothing is auto-started.
 
 **Simulate a pattern from Materials Project** (requires an MP API key in
 `.powderline_config.yaml` — see `.powderline_config.yaml.example` — or in the

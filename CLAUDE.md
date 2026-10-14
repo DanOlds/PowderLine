@@ -68,7 +68,8 @@ imported lazily from `run()`):
   (uniform statistics, `engine_details`, convergence, divergence = failure),
   `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`;
   `server.py` / `client.py` (persistent FastAPI server + `GSASClient`, the
-  `auto`/`server` execution modes); `mp_simulate.py`, `simulation_builder.py`,
+  `auto`/`server` execution modes; per-user state dir, token-signed requests
+  and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2, KI-14); `mp_simulate.py`, `simulation_builder.py`,
   `pattern_exporter.py` (Materials Project simulation, emits `gsasii.rietveld`).
 - `topas/` (TOPAS 6; recipes state `engine_version: "6"`, runs need the
   installed version declared): `native_writer.py` (model → INP + `.xye`;

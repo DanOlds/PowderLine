@@ -211,6 +211,31 @@ def test_load_recipe_asset_unsupported_format(tmp_path):
 
 # ─── HTTP retry logic tests ────────────────────────────────────────────────────
 
+def test_cli_use_server_with_no_server_env_exits(tmp_path):
+    """POWDERLINE_NO_SERVER: `kicker --use-server` exits 1 with a clear message."""
+    import os
+    import subprocess
+    import sys
+
+    repo = Path(__file__).parent.parent
+    env = {**os.environ, "POWDERLINE_NO_SERVER": "1",
+           "PYTHONPATH": str(repo / "src") + os.pathsep + os.environ.get("PYTHONPATH", "")}
+    proc = subprocess.run(
+        [sys.executable, str(repo / "src" / "powderline" / "kicker.py"),
+         str(repo / "examples" / "example_LaB6" / "input.json"),
+         "--use-server", "--output", str(tmp_path / "out")],
+        env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=300,
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "POWDERLINE_NO_SERVER" in proc.stdout
+    assert not (tmp_path / "out" / "fit_profile.txt").exists()
+
+
+# This user's server endpoint as read from the private state dir.
+_FAKE_ENDPOINT = {"pid": 4242, "port": 50123, "token": "t0ken"}
+
+
 def test_submit_to_server_retries_on_connect_error(recipe_LaB6_dict, tmp_path):
     """_submit_to_server() retries up to 3 times on ConnectError before raising."""
     import httpx
@@ -218,7 +243,8 @@ def test_submit_to_server_retries_on_connect_error(recipe_LaB6_dict, tmp_path):
     client = GSASClient()
     connect_error = httpx.ConnectError("Simulated connection refused")
 
-    with patch("httpx.post", side_effect=connect_error) as mock_post:
+    with patch.object(GSASClient, "_endpoint", return_value=_FAKE_ENDPOINT), \
+         patch("httpx.post", side_effect=connect_error) as mock_post:
         with pytest.raises(httpx.ConnectError):
             client._submit_to_server(recipe_LaB6_dict, tmp_path / "out")
 
@@ -240,7 +266,8 @@ def test_submit_to_server_does_not_retry_on_http_status_error(
         "500 Server Error", request=MagicMock(), response=mock_response
     )
 
-    with patch("httpx.post", side_effect=http_error) as mock_post:
+    with patch.object(GSASClient, "_endpoint", return_value=_FAKE_ENDPOINT), \
+         patch("httpx.post", side_effect=http_error) as mock_post:
         with pytest.raises(httpx.HTTPStatusError):
             client._submit_to_server(recipe_LaB6_dict, tmp_path / "out")
 

@@ -101,7 +101,8 @@ def engine_options_from_args(args: argparse.Namespace, gateway_name: str) -> dic
     ``--topas-dir`` / ``--topas-version`` → topas ``topas_dir`` / ``topas_version``.
 
     Raises:
-        ValueError: a flag that belongs to a gateway other than ``gateway_name``.
+        ValueError: a flag that belongs to a gateway other than ``gateway_name``;
+            ``--use-server`` while ``POWDERLINE_NO_SERVER`` disables the server.
     """
     given = {dest: getattr(args, dest, None) for dest in _FLAG_GATEWAYS}
     for dest, value in given.items():
@@ -113,6 +114,12 @@ def engine_options_from_args(args: argparse.Namespace, gateway_name: str) -> dic
     if given["no_server"]:
         options["execution_mode"] = "subprocess"
     elif given["use_server"]:
+        # POWDERLINE_NO_SERVER (v0.1.2): an explicit server request is refused up front, before any
+        # engine is touched. The server module is engine-free (stdlib + pydantic); imported here, not
+        # at module top, so the CLI module itself imports no gateway module.
+        from powderline.gateways.gsasii.server import NO_SERVER_MESSAGE, server_disabled
+        if server_disabled():
+            raise ValueError(f"--use-server: {NO_SERVER_MESSAGE}")
         options["execution_mode"] = "server"
     if given["topas_dir"] is not None:
         options["topas_dir"] = given["topas_dir"]
@@ -131,6 +138,7 @@ Engine flags (accepted only for a recipe of that engine):
   gsasii.*  default:      try the GSAS-II server, auto-start it, fall back to in-process
             --use-server: server only (fail if it cannot be started)
             --no-server:  in-process only (skip the server)
+            POWDERLINE_NO_SERVER=1 (env): never use a server; the default mode runs in-process
   topas.*   --topas-dir DIR / --topas-version V: the TOPAS installation to run
             (a run needs a declared version: --topas-version or .powderline_config.yaml)
 

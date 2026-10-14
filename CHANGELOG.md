@@ -290,8 +290,10 @@ recipes do not validate; see the
 
 ## 0.1.2 — 2026-10-10
 
-Tagged on `main` after the refactor branch was cut; not part of the 0.2.0
-branch history at the time of this draft.
+Tagged on `main` after the refactor branch was cut; merged into the 0.2.0
+branch on 2026-10-14 (the server and client live at
+`src/powderline/gateways/gsasii/server.py` / `client.py` there; the
+known-issue entry is `KI-14` on 0.2.0 because `KI-13` was already taken).
 <!-- git: b38c73e, tag v0.1.2 -->
 
 ### Fixed

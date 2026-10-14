@@ -127,6 +127,12 @@ def run(
                 Skip the server entirely; always run in this process.
                 Suitable for batch/HPC workflows where each refinement is
                 isolated.
+
+            Only the calling user's own server is used (per-user state
+            directory, signed requests and responses; v0.1.2). If the
+            ``POWDERLINE_NO_SERVER`` environment variable is truthy
+            (``1``/``true``/``yes``/``on``), ``'auto'`` runs in-process without
+            starting a server and ``'server'`` returns an error result.
         allow_unsupported_engine_version: test-only bypass of the engine
             version check (A53). Not reachable through ``powderline.run()``.
 

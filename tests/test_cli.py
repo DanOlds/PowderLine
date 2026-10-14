@@ -234,3 +234,15 @@ print("OK")
     assert proc.returncode == 0, f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
     assert "OK" in proc.stdout
 
+
+
+# --- POWDERLINE_NO_SERVER (v0.1.2): --use-server is refused before any engine is touched ----------
+
+def test_use_server_with_no_server_env_exits(tmp_path, monkeypatch, capsys):
+    """`powderline <gsasii recipe> --use-server` exits 1 with a clear message when the server is disabled."""
+    monkeypatch.setenv("POWDERLINE_NO_SERVER", "1")
+    out_dir = tmp_path / "out"
+    rc = kicker.main([str(LAB6), "--use-server", "--output", str(out_dir)])
+    assert rc == 1
+    assert "POWDERLINE_NO_SERVER" in capsys.readouterr().out
+    assert not out_dir.exists()

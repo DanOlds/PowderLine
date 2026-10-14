@@ -360,3 +360,42 @@ def test_run_spf_returns_rwp_directly(recipe_LaB6_singlepeakfit_dict, tmp_path):
     assert 1.6 < result["rwp"] < 2.0, (
         f"SPF Rwp ({result['rwp']:.3f}%) outside expected range [1.6, 2.0]"
     )
+
+
+# ─── POWDERLINE_NO_SERVER (deployment off switch, v0.1.2) ─────────────────────
+
+def _no_server_paths():
+    """Patches that fail the test if any server path is touched."""
+    from powderline.gateways.gsasii import client as _gc
+
+    def _fail(*a, **k):
+        raise AssertionError("server path used despite POWDERLINE_NO_SERVER")
+
+    return (patch.object(_gc.GSASClient, "is_server_available", side_effect=_fail),
+            patch.object(_gc.GSASClient, "_start_server_background", side_effect=_fail),
+            patch.object(_gc.GSASClient, "_submit_to_server", side_effect=_fail))
+
+
+def test_run_auto_mode_with_no_server_env_runs_in_process(
+    recipe_LaB6_dict, tmp_path, monkeypatch
+):
+    """POWDERLINE_NO_SERVER: run(execution_mode='auto') never probes or starts a server."""
+    monkeypatch.setenv("POWDERLINE_NO_SERVER", "1")
+    probe, start, submit = _no_server_paths()
+    with probe, start, submit:
+        result = powderline.run(recipe_LaB6_dict, tmp_path / "out", execution_mode="auto")
+
+    assert result["success"] is True, f"Refinement failed: {result.get('error')}"
+    assert result["method"] == "subprocess"
+
+
+def test_run_server_mode_with_no_server_env_errors(recipe_LaB6_dict, tmp_path, monkeypatch):
+    """POWDERLINE_NO_SERVER: run(execution_mode='server') returns a clear error result."""
+    monkeypatch.setenv("POWDERLINE_NO_SERVER", "true")
+    probe, start, submit = _no_server_paths()
+    with probe, start, submit:
+        result = powderline.run(recipe_LaB6_dict, tmp_path / "out", execution_mode="server")
+
+    assert result["success"] is False
+    assert "POWDERLINE_NO_SERVER" in result["error"]
+    assert isinstance(result["fit_profile"], pd.DataFrame)
