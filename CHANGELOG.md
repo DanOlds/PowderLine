@@ -278,6 +278,16 @@ recipes do not validate; see the
 - The v0.1.1 easydiffraction path's unit conversions (polarization sign,
   Lorentzian X/Y, FCJ S/L and H/L) and its 4-decimal 2θ rounding (row 26,
   EB-72/EB-75/EB-76).
+- Recipe files are read as UTF-8 (BOM tolerated); malformed JSON/YAML or a
+  non-mapping document is a `ValueError` naming the file, and the CLI reports
+  it as "Cannot read recipe" instead of a traceback. `--verbose` prints the
+  traceback of an unexpected error.
+- `.powderline_config.yaml` is read as UTF-8; a malformed file is an error
+  (previously: defaults / "TOPAS not configured" silently).
+- Documentation corrected to the code: TOPAS 6 (not v7), no default engine,
+  nothing translated between engines; a fit window needs two weighted points;
+  a gsasii simulation writes no `refined_parameters.csv`; example commands
+  name the `gsasii` env; the getting-started recipe validates (and is tested).
 
 ### Known limitations carried into 0.2.0
 
