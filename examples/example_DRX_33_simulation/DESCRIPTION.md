@@ -69,13 +69,13 @@ With all parameters locked and `refinement_cycles = 1`:
 
 ```bash
 # Run simulation
-pixi run kicker examples/example_DRX_33_simulation/input.json
+pixi run -e gsasii kicker examples/example_DRX_33_simulation/input.json
 
 # Validate without running
 pixi run kicker examples/example_DRX_33_simulation/input.json --validate-only
 
 # Verbose output (see all GSAS-II logs)
-pixi run kicker examples/example_DRX_33_simulation/input.json --verbose
+pixi run -e gsasii kicker examples/example_DRX_33_simulation/input.json --verbose
 ```
 
 Expected runtime: **~1 second** (single cycle, all phases locked)
@@ -86,9 +86,9 @@ This two-phase simulation produces:
 
 - **dummy.gpx** - GSAS-II project file
 - **dummy.lst** - Log file (shows 1 cycle with no parameter changes)
-- **DRX_33_unit_cell_report.csv** - Phase 1 unit cell parameters (unchanged from input, ESDs are null/NaN)
+- **DRX_33_unit_cell_report.csv** - Phase 1 unit cell parameters (unchanged from input, the `esd` column is empty)
 - **DRX_33_peak_list_report.csv** - Phase 1 reflection list (hkl, d-spacing, 2θ, intensities)
-- **Li4MgWO6_SG12_unit_cell_report.csv** - Phase 2 unit cell parameters (unchanged from input, ESDs are null/NaN)
+- **Li4MgWO6_SG12_unit_cell_report.csv** - Phase 2 unit cell parameters (unchanged from input, the `esd` column is empty)
 - **Li4MgWO6_SG12_peak_list_report.csv** - Phase 2 reflection list (hkl, d-spacing, 2θ, intensities)
 - **fit_profile.txt** - Calculated pattern (2θ, Iobs, Iweight, Icalc, Ibackground, Idifference)
 

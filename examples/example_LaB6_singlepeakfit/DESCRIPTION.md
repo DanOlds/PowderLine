@@ -38,10 +38,11 @@ With `use_instrument_profile: false`, the peak widths are refined directly rathe
 
 ## Expected Output Files
 
-- `single_peaks_report.txt`: Tab-separated file with 10 columns per peak:
-  - position_2theta, intensity, sigma, gamma
+- `single_peaks_report.txt`: tab-separated, one comment line (peaks converged / aphysical) then 14 columns per peak:
+  - position_2theta, intensity, sigma, sigma_squared, gamma
   - fwhm_gaussian, fwhm_lorentzian, fwhm_pseudovoigt
   - integral_breadth_gaussian, integral_breadth_lorentzian, integral_breadth_pseudovoigt
+  - fwhm_gsas_verification, converged, convergence_detail
 - Standard outputs: GPX project file, LST log file, fit_profile.txt
 
 ## Schema Features Demonstrated

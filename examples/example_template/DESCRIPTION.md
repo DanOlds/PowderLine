@@ -74,9 +74,10 @@ Document any quirks, edge cases, or special considerations:
 
 ## Reference Files
 
-After running this example successfully with `powderline input.json` (or `pixi run kicker input.json`), the `output/` directory should contain:
+After running this example successfully with `powderline input.json` (or `pixi run -e gsasii kicker input.json` for a gsasii recipe), the `output/` directory should contain:
 - `.gpx`: GSAS-II project file (can be reopened in GUI)
 - `.lst`: Refinement log with final parameters and Rwp
+- `refined_parameters.csv`: every refined parameter with its ESD (9 columns); absent for a simulation
 - `*_unit_cell_report.csv`: Refined unit cell parameters
 - `*_peak_list_report.csv`: Reflection list with intensities
 - `fit_profile.txt`: Observed/calculated/difference profile data

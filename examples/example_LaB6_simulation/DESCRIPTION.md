@@ -52,10 +52,10 @@ This example demonstrates simulation mode capabilities:
 
 ```bash
 # Standard invocation
-pixi run kicker examples/example_LaB6_simulation/input.json
+pixi run -e gsasii kicker examples/example_LaB6_simulation/input.json
 
 # With verbose output
-pixi run kicker examples/example_LaB6_simulation/input.json --verbose
+pixi run -e gsasii kicker examples/example_LaB6_simulation/input.json --verbose
 
 # Validate without running
 pixi run kicker examples/example_LaB6_simulation/input.json --validate-only
@@ -67,7 +67,7 @@ This simulation produces:
 
 - **dummy.gpx** - GSAS-II project file
 - **dummy.lst** - Log file (shows 1 cycle with no parameter changes)
-- **LaB6_unit_cell_report.csv** - Unit cell parameters (unchanged from input, ESDs are null/NaN)
+- **LaB6_unit_cell_report.csv** - Unit cell parameters (unchanged from input, the `esd` column is empty)
 - **LaB6_peak_list_report.csv** - Reflection list (hkl, d-spacing, 2θ, intensities)
 - **fit_profile.txt** - Calculated pattern (2θ, Iobs, Iweight, Icalc, Ibackground, Idifference)
 
@@ -90,14 +90,7 @@ To convert any refinement recipe to simulation mode:
 
 ## Technical Details
 
-**Simulation Method**: PowderLine implements simulation by setting all refinement parameters to `false` and running GSAS-II with `refinement_cycles = 1`. This leverages the existing refinement infrastructure:
-
-```python
-# In kicker.py, the workflow is identical
-# All refine_flag = false → GSAS-II sees parameters as locked
-# refinement_cycles = 1 → single pass (no iteration occurs)
-# Result: y_calc = theoretical pattern; the fit statistics are meaningless
-```
+**Simulation Method**: all `refine_flag` are `false` and `refinement_cycles` is 1, so the gsasii gateway runs one GSAS-II pass with nothing varied; `y_calc` is the theoretical pattern and the fit statistics against the placeholder data are meaningless (`simulation_mode: true`).
 
 **Why Reuse the Refinement Workflow**:
 - GSAS-II's pattern calculation is part of the refinement cycle

@@ -105,8 +105,7 @@ Same standardized outputs as `example_DRX_33`:
 ## Reproduce
 
 ```
-pixi run kicker examples/example_DRX_33_strainonly/input.json \
-    --no-server --output examples/example_DRX_33_strainonly/output
+pixi run -e gsasii kicker examples/example_DRX_33_strainonly/input.json --no-server --output examples/example_DRX_33_strainonly/output
 ```
 
 ## Known Issues
