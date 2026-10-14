@@ -60,13 +60,16 @@ class ConfigLoader:
             return
         
         try:
-            with open(config_file, 'r') as f:
-                self.config = yaml.safe_load(f) or {}
-            print(f"{CHECK} Loaded config from: {config_file}")
-        except Exception as e:
-            print(f"{WARN}  Error loading config file: {e}")
-            print("   Using defaults")
-            self.config = self._get_defaults()
+            with open(config_file, 'r', encoding='utf-8') as f:
+                loaded = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            raise ValueError(f"{config_file}: not valid YAML ({e})") from e
+        if loaded is None:
+            loaded = {}
+        if not isinstance(loaded, dict):
+            raise ValueError(f"{config_file}: the config must be a mapping, got {type(loaded).__name__}")
+        self.config = loaded
+        print(f"{CHECK} Loaded config from: {config_file}")
     
     def _get_defaults(self) -> Dict[str, Any]:
         """Get default configuration values (GSAS-II conventions/units)."""

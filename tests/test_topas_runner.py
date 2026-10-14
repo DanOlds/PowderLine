@@ -89,3 +89,23 @@ def test_run_topas_nonzero_is_failed(tmp_path):
     )
     assert res.status == "failed"
     assert res.returncode == 2
+
+
+def test_read_topas_config_malformed_raises(tmp_path, monkeypatch):
+    cfg = tmp_path / ".powderline_config.yaml"
+    cfg.write_text("topas: {version: 6, dir: [oops\n", encoding="utf-8")
+    monkeypatch.setattr(runner, "_CONFIG_PATHS", [str(cfg)])
+    with pytest.raises(ValueError, match=r"powderline_config\.yaml.*not valid YAML"):
+        runner._read_topas_config()
+
+
+def test_read_topas_config_absent_is_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "_CONFIG_PATHS", [str(tmp_path / "nope.yaml")])
+    assert runner._read_topas_config() == {}
+
+
+def test_read_topas_config_utf8_dir(tmp_path, monkeypatch):
+    cfg = tmp_path / ".powderline_config.yaml"
+    cfg.write_text("topas:\n  version: '6'\n  dir: 'C:/Progrämme/TOPAS6'\n", encoding="utf-8")
+    monkeypatch.setattr(runner, "_CONFIG_PATHS", [str(cfg)])
+    assert runner._read_topas_config() == {"version": "6", "dir": "C:/Progrämme/TOPAS6"}

@@ -25,7 +25,7 @@ pytestmark = pytest.mark.core
 # ---------------------------------------------------------------------------
 
 def _write_yaml(path: Path, data: dict) -> Path:
-    path.write_text(yaml.dump(data))
+    path.write_text(yaml.dump(data), encoding="utf-8")
     return path
 
 
@@ -130,7 +130,7 @@ class TestConfigLoaderContent:
     def test_empty_yaml_file_uses_defaults(self, tmp_path, monkeypatch):
         monkeypatch.delenv("MP_API_KEY", raising=False)
         cfg_file = tmp_path / "empty.yaml"
-        cfg_file.write_text("")
+        cfg_file.write_text("", encoding="utf-8")
         loader = ConfigLoader(config_path=cfg_file)
         assert isinstance(loader.config, dict)
         assert loader.get_mp_api_key() is None
@@ -179,3 +179,23 @@ class TestConfigLoaderEnvFallback:
         })
         loader = ConfigLoader(config_path=cfg_file)
         assert loader.get_mp_api_key() == "YOUR_API_KEY_HERE"
+
+
+def test_malformed_config_raises_naming_the_file(tmp_path):
+    cfg = tmp_path / ".powderline_config.yaml"
+    cfg.write_text("materials_project:\n  api_key: [unclosed\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"powderline_config\.yaml.*not valid YAML"):
+        ConfigLoader(config_path=cfg)
+
+
+def test_list_shaped_config_raises(tmp_path):
+    cfg = tmp_path / ".powderline_config.yaml"
+    cfg.write_text("- not\n- a mapping\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="mapping"):
+        ConfigLoader(config_path=cfg)
+
+
+def test_config_reads_utf8(tmp_path):
+    cfg = tmp_path / ".powderline_config.yaml"
+    cfg.write_text("simulation_defaults:\n  note: 'λ Å'\n", encoding="utf-8")
+    assert ConfigLoader(config_path=cfg).config["simulation_defaults"]["note"] == "λ Å"

@@ -48,15 +48,18 @@ def _read_topas_config() -> dict:
     """Return the ``topas:`` section of the first ``.powderline_config.yaml`` found.
 
     Quiet (unlike ``ConfigLoader``, which prints) so the CLI stays clean when no
-    config is present.
+    config is present. Raises ``ValueError`` when the file is present but
+    malformed: a typo must not silently become "TOPAS not configured".
     """
     for candidate in _CONFIG_PATHS:
         path = Path(candidate).expanduser()
         if path.exists():
             try:
-                data = yaml.safe_load(path.read_text()) or {}
-            except Exception:
-                return {}
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError as exc:
+                raise ValueError(f"{path}: not valid YAML ({exc})") from exc
+            if not isinstance(data, dict):
+                raise ValueError(f"{path}: the config must be a mapping, got {type(data).__name__}")
             return data.get("topas", {}) or {}
     return {}
 
