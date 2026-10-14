@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 name = "powderline"
 dynamic = ["version"]
 requires-python = ">=3.10"
-description = "Automated powder X-ray diffraction refinement from a declarative JSON recipe — runs GSAS-II (default), TOPAS v7, or easydiffraction"
+description = "Automated powder X-ray diffraction refinement from a declarative JSON recipe, on GSAS-II, TOPAS 6 or easydiffraction, with standardized results"
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]

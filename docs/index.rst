@@ -5,9 +5,10 @@ PowderLine Documentation
 
 PowderLine automates powder X-ray diffraction refinement from a declarative
 JSON "recipe". It is the application layer over interchangeable refinement
-engines — GSAS-II by default, or Bruker TOPAS v7 or the open-source
-easydiffraction — returning standardized, machine-readable result tables. The
-same recipe runs on any engine, which makes PowderLine a natural fit for
+engines — GSAS-II, Bruker TOPAS 6, or the open-source easydiffraction. A recipe
+names one engine and one workflow and is written in that engine's own
+conventions; PowderLine runs it and returns standardized, machine-readable
+result tables with uniform fit statistics, which makes it a natural fit for
 interactive, scripted, high-throughput, and autonomous workflows.
 
 New to PowderLine? Start with the :doc:`quickstart` — the shortest path from a

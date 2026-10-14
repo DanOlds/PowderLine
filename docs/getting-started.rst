@@ -170,9 +170,10 @@ the output directory:
   per-peak position, intensity, widths
 - ``peak_convergence_diagnostics.txt`` (gsasii) — only when a peak did not converge
 
-**Note:** a simulation (nothing refined) writes an empty
-``refined_parameters.csv``; unit cell reports are still generated with
-``esd = 0.0``.
+**Note:** a simulation (nothing refined) writes no ``refined_parameters.csv``
+for ``gsasii.*`` (there is nothing to list), while ``topas.*`` and
+``easydiffraction.*`` write one with no rows; unit cell reports are generated
+in every case, with an empty ``esd``.
 
 Programmatic API
 ----------------

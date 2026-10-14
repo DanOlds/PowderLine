@@ -446,6 +446,7 @@ simulated peak heights changed at the 0.2.0 re-baseline.
 | `topas_parameter_at_limit` | topas | a refined value ended at a stated bound or a TOPAS default limit |
 | `topas_parameters_not_varied` | topas | TOPAS varied fewer parameters than requested |
 | `topas_phase_contributes_nothing` | topas | a phase's calculated intensities are all zero (informative) |
+| `topas_base_name_sanitized` | topas | the recipe's base name is not ASCII-safe for TOPAS; files are written as `topas.*` |
 | `topas_background_not_calculated` | topas | the background-only run wrote nothing; `y_bkg` empty |
 | `easydiffraction_parameter_at_limit` | easydiffraction | a refined value ended at a bound or physical limit |
 | `easydiffraction_parameters_not_varied` | easydiffraction | lmfit varied fewer parameters than requested |

@@ -42,7 +42,7 @@ strictly increasing, a negative weight, and all-zero weights.
 
 `[min, max]` in degrees 2θ, either end `null` (open). Both ends must lie
 inside the data's 2θ span, `max > min`, and the window must contain at least
-one point with a positive weight. Every engine fits **exactly** the data points
+**two** points with a positive weight. Every engine fits **exactly** the data points
 with min ≤ 2θ ≤ max and positive weight: PowderLine hands each engine its
 limits moved onto the first and last such points, so GSAS-II, TOPAS and
 easydiffraction score the same points, the uniform statistics use the same

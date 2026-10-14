@@ -313,6 +313,13 @@ Windows does not support `SIGTERM` or `SIGKILL`. Specifically:
 > Note: `psutil` is already imported optionally in `get_server_info()` (inside
 > a `try/except`) but it is **not** a declared dependency in `pixi.toml`.
 
+> **Superseded (v0.1.2 / 0.2.0).** The fix below was written against the
+> PID-file server of v0.1.1. The current server (`gateways/gsasii/server.py`)
+> holds a kernel lock on `server.lock` for its lifetime and `status`/`stop`
+> consult that lock, so none of the PID-file code shown here exists any more;
+> see the last section of this page and KI-14 in the known issues. Kept as the
+> record of the analysis.
+
 ### Fix: Platform-conditional process management (recommended)
 
 Add `import platform as _platform` alongside the existing imports, then apply
