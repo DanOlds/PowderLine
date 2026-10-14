@@ -10,7 +10,6 @@ Coverage:
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -305,10 +304,23 @@ def test_easydiff_version_in_range_calls_engine(tmp_path, monkeypatch):
     assert Path(output_arg) == tmp_path
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("easydiffraction") is not None,
-    reason="easydiffraction is installed",
+def _easydiffraction_distribution_installed() -> bool:
+    """What the gateway itself checks (installed_engine_version): the distribution, not an import."""
+    import importlib.metadata
+    try:
+        importlib.metadata.version("easydiffraction")
+    except importlib.metadata.PackageNotFoundError:
+        return False
+    return True
+
+
+easydiffraction_absent_only = pytest.mark.skipif(
+    _easydiffraction_distribution_installed(),
+    reason="easydiffraction is installed in this env; the not-installed path is exercised in the default env",
 )
+
+
+@easydiffraction_absent_only
 def test_easydiff_not_installed_raises_engine_not_available_error(tmp_path):
     """When easydiffraction is not installed, run() raises EngineNotAvailableError."""
     with pytest.raises(EngineNotAvailableError) as exc_info:
@@ -317,10 +329,7 @@ def test_easydiff_not_installed_raises_engine_not_available_error(tmp_path):
     assert "pixi install -e easydiffraction" in str(exc_info.value)
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("easydiffraction") is not None,
-    reason="easydiffraction is installed",
-)
+@easydiffraction_absent_only
 def test_easydiff_not_installed_validate_only_does_not_raise(tmp_path):
     """When easydiffraction is not installed, validate_only=True returns the summary without the engine."""
     result = easydiff_gateway.run(_load(EASY_LAB6), str(tmp_path), validate_only=True)
