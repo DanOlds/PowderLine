@@ -739,3 +739,42 @@ def test_response_model_keeps_warning_level():
         {"code": "gsasii_background_default_applied", "message": "n", "field_path": "payload.background"}]}
     dumped = gsas_server.SimulationResponse(**native).model_dump()
     assert dumped["warnings"] == native["warnings"]
+
+
+# --- re/14: one refinement at a time -----------------------------------------------------------------
+
+def test_simulate_requests_are_serialized(app_client, tmp_path):
+    """Two concurrent /simulate requests run strictly one after another: GSAS-II's module-level state is
+    not thread-safe, and the module docstring promises sequential processing (re/14 item 1)."""
+    import threading
+    import time as _time
+    from powderline import results
+    client, calls = app_client
+    windows = []
+
+    def slow_run(req):
+        start = _time.monotonic()
+        _time.sleep(0.3)
+        windows.append((start, _time.monotonic()))
+        return results.failure_envelope("backend", "backend_error", "stub", method="server")
+
+    # the fixture installed a stub on the GSASServer instance captured by the app's closures; replace it
+    import inspect
+    simulate_route = next(r for r in client.app.app.routes if getattr(r, "path", None) == "/simulate")
+    srv = inspect.getclosurevars(simulate_route.endpoint).nonlocals["server"]
+    srv._run_simulation = slow_run
+
+    body = _job_body(tmp_path / "out")
+
+    def post():
+        _, headers = _signed_headers("POST", "/simulate", body)
+        client.post("/simulate", content=body, headers=headers)
+
+    threads = [threading.Thread(target=post) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert len(windows) == 2
+    (s1, e1), (s2, e2) = sorted(windows)
+    assert s2 >= e1, f"the two refinements overlapped: {windows}"

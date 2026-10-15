@@ -1,7 +1,8 @@
 """GSAS-II persistent server for fast simulations.
 
 This server keeps GSAS-II loaded in memory to eliminate startup overhead.
-Listens on an HTTP port via FastAPI and processes simulation requests sequentially.
+Listens on an HTTP port via FastAPI and processes simulation requests **sequentially** (a lock around
+the refinement: GSAS-II's module-level state is not thread-safe; concurrent requests queue).
 
 Security notes:
     - The server binds exclusively to ``127.0.0.1`` (loopback) on an ephemeral
@@ -62,6 +63,7 @@ import logging
 import hashlib
 import hmac
 import secrets
+import threading
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 import tempfile
@@ -716,14 +718,18 @@ class GSASServer:
         app = FastAPI(title="PowderLine GSAS-II Server",
                       docs_url=None, redoc_url=None, openapi_url=None)
         server = self  # capture for closures
+        # One refinement at a time (re/14): the handler is synchronous and FastAPI runs it in a thread
+        # pool, but GSAS-II's module-level state is not thread-safe, so concurrent requests queue here.
+        run_lock = threading.Lock()
 
         @app.post("/simulate", response_model=SimulationResponse)
         def simulate(req: SimulationRequest):
-            server.request_count += 1
-            schema_name = req.recipe_data.get('schema_name', 'unknown') if isinstance(req.recipe_data, dict) else 'unknown'
-            server.logger.info(f"Request #{server.request_count}: schema={schema_name}")
-
-            result = server._run_simulation(req.model_dump())
+            with run_lock:
+                server.request_count += 1
+                schema_name = (req.recipe_data.get('schema_name', 'unknown')
+                               if isinstance(req.recipe_data, dict) else 'unknown')
+                server.logger.info(f"Request #{server.request_count}: schema={schema_name}")
+                result = server._run_simulation(req.model_dump())
 
             elapsed = result.get('elapsed_time') or 0
             run_id = result.get('run_id', 'n/a')
