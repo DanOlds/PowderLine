@@ -822,3 +822,70 @@ def test_bind_failure_is_a_state_error_before_the_endpoint_is_written(monkeypatc
                         lambda *a, **k: pytest.fail("no endpoint for a server that could not bind"))
     with pytest.raises(gsas_server.ServerStateError, match="Address already in use"):
         server.start()
+
+
+# --- re/14 item 4: nothing but /simulate may carry a large body; unknown paths are refused unread --------
+
+def test_body_limit_per_path():
+    assert gsas_server._body_limit("/simulate") == gsas_server.MAX_BODY_BYTES
+    assert gsas_server._body_limit("/health") == gsas_server.MAX_HEALTH_BODY_BYTES
+    assert gsas_server._body_limit("/anything-else") == gsas_server.MAX_HEALTH_BODY_BYTES  # small, then a signed 404
+
+
+def test_unknown_path_with_an_oversized_body_is_refused(app_client, tmp_path):
+    client, calls = app_client
+    body = b"x" * (gsas_server.MAX_HEALTH_BODY_BYTES + 1)
+    _, headers = _signed_headers("POST", "/unknown", body)
+    resp = client.post("/unknown", content=body, headers=headers)
+    assert resp.status_code == 413 and calls == []
+
+
+def test_health_with_an_oversized_body_is_refused(app_client):
+    client, calls = app_client
+    body = b"x" * (gsas_server.MAX_HEALTH_BODY_BYTES + 1)
+    _, headers = _signed_headers("GET", "/health", body)
+    resp = client.request("GET", "/health", content=body, headers=headers)
+    assert resp.status_code == 413
+
+
+# --- re/14 item 5: Windows file races are retried, then reported ------------------------------------------
+
+def test_retry_on_sharing_violation_retries_then_succeeds():
+    attempts = []
+
+    def op():
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise PermissionError("[WinError 32] The process cannot access the file")
+        return "ok"
+    assert gsas_server._retry_file_op(op, "replace server.json", delay=0.0) == "ok"
+    assert len(attempts) == 3
+
+
+def test_retry_on_sharing_violation_gives_up_as_a_state_error():
+    def op():
+        raise PermissionError("[WinError 32] The process cannot access the file")
+    with pytest.raises(gsas_server.ServerStateError, match="replace server.json"):
+        gsas_server._retry_file_op(op, "replace server.json", attempts=3, delay=0.0)
+
+
+# --- re/14 item 6: status while starting; log tail ----------------------------------------------------
+
+def test_status_while_starting_says_so(monkeypatch, capsys):
+    monkeypatch.setattr(gsas_server, "is_server_running", lambda: True)
+    monkeypatch.setattr(gsas_server, "read_pid", lambda: None)
+    monkeypatch.setattr(gsas_server, "_server_url", lambda: "(not listening yet)")
+    monkeypatch.setattr(gsas_server, "log_file", lambda: "server.log")
+    info = gsas_server.get_server_info()
+    assert info["pid"] is None and info["starting"] is True
+    gsas_server._run_action("status")
+    out = capsys.readouterr().out
+    assert "starting" in out.lower() and "PID: None" not in out
+
+
+def test_tail_lines_reads_only_the_end(tmp_path):
+    p = tmp_path / "server.log"
+    p.write_text("".join(f"line {i}\n" for i in range(1000)), encoding="utf-8")
+    tail = gsas_server._tail_lines(p, 50)
+    assert len(tail) == 50 and tail[-1] == "line 999" and tail[0] == "line 950"
+    assert gsas_server._tail_lines(p, 5000)[0] == "line 0"

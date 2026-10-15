@@ -68,6 +68,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 import tempfile
 import atexit
+import contextlib
 from datetime import datetime
 
 from pydantic import BaseModel
@@ -92,7 +93,18 @@ TIMESTAMP_HEADER = 'X-PowderLine-Timestamp'
 SIGNATURE_HEADER = 'X-PowderLine-Signature'
 RESPONSE_SIGNATURE_HEADER = 'X-PowderLine-Response-Signature'
 MAX_CLOCK_SKEW = 120                   # seconds a signed request stays valid
-MAX_BODY_BYTES = 64 * 1024 * 1024      # larger requests are refused unread
+MAX_BODY_BYTES = 64 * 1024 * 1024      # /simulate: larger requests are refused unread
+MAX_HEALTH_BODY_BYTES = 4096           # /health, and any path that is not /simulate (re/14)
+
+
+def _body_limit(path: str) -> int:
+    """How much request body a path may carry before the HMAC check: only ``/simulate`` carries a job (re/14).
+
+    Every other path -- ``/health`` and anything unknown -- is capped small, so an unauthenticated
+    sender can make the server buffer at most a few kilobytes; the request is still verified and
+    answered with a *signed* 401/404 as before.
+    """
+    return MAX_BODY_BYTES if path == "/simulate" else MAX_HEALTH_BODY_BYTES
 
 # File names inside the per-user state directory
 PID_NAME = 'server.pid'
@@ -260,11 +272,23 @@ def _read_state_file(name: str) -> Optional[str]:
         return f.read().decode('utf-8', 'replace')
 
 
+def _retry_file_op(op, what: str, *, attempts: int = 10, delay: float = 0.05):
+    """Run ``op()``; on ``PermissionError`` (Windows: another process holds the file open) retry briefly,
+    then raise :class:`ServerStateError` naming the operation (re/14)."""
+    for attempt in range(attempts):
+        try:
+            return op()
+        except PermissionError as e:
+            if attempt == attempts - 1:
+                raise ServerStateError(f"could not {what}: {e} (another process holds the file open)") from e
+            time.sleep(delay)
+
+
 def _unlink_state_file(name: str) -> None:
     """Remove a state file if present."""
     try:
         if os.name == 'nt':
-            (state_dir() / name).unlink()
+            _retry_file_op(lambda: (state_dir() / name).unlink(), f"remove {name}")
             return
         dfd = _open_state_dir()
         try:
@@ -284,7 +308,7 @@ def _write_private(name: str, text: str) -> None:
         f.write(text)
     if os.name == 'nt':
         d = state_dir()
-        os.replace(d / tmp, d / name)
+        _retry_file_op(lambda: os.replace(d / tmp, d / name), f"replace {name}")
         return
     dfd = _open_state_dir()
     try:
@@ -352,7 +376,10 @@ class SignedRequestMiddleware:
     response it produces is signed.
 
     It wraps the whole application, so 404/405/422 and error responses are
-    covered too, and unsigned requests are refused before their body is read.
+    covered too. Requests with malformed signing headers are refused before
+    their body is read; any path but ``/simulate`` may carry at most
+    ``MAX_HEALTH_BODY_BYTES`` of body, so only a real job can make the server
+    buffer a large body before the HMAC check.
     """
 
     def __init__(self, app, token: str):
@@ -382,6 +409,7 @@ class SignedRequestMiddleware:
                 and all(c in '0123456789abcdef' for c in nonce)
                 and signature and nonce not in self._seen_nonces):
             return await self._reject(send, 401)
+        limit = _body_limit(scope['path'])
 
         parts, size, more = [], 0, True
         while more:
@@ -391,7 +419,7 @@ class SignedRequestMiddleware:
             parts.append(message.get('body', b''))
             size += len(parts[-1])
             more = message.get('more_body', False)
-            if size > MAX_BODY_BYTES:
+            if size > limit:
                 return await self._reject(send, 413)
         body = b''.join(parts)
 
@@ -554,18 +582,31 @@ def _claim_server_lock(attempts: int = 20, delay: float = 0.05) -> bool:
     return False
 
 
+@contextlib.contextmanager
+def _probe_lock():
+    """Open the lock file, try to take the lock without blocking, yield whether we got it, release and close.
+
+    The one copy of the probe protocol (re/14); :func:`_claim_server_lock` keeps its descriptor for the
+    server's lifetime and so stays separate.
+    """
+    fd = _open_state_file(LOCK_NAME, os.O_RDWR | os.O_CREAT)
+    try:
+        acquired = _try_lock(fd)
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                _unlock(fd)
+    finally:
+        os.close(fd)
+
+
 def _lock_held() -> bool:
     """True if some process (this one included) holds the start lock."""
     if _lock_fd is not None:
         return True
-    fd = _open_state_file(LOCK_NAME, os.O_RDWR | os.O_CREAT)
-    try:
-        if _try_lock(fd):
-            _unlock(fd)
-            return False
-        return True
-    finally:
-        os.close(fd)
+    with _probe_lock() as acquired:
+        return not acquired
 
 
 def _clear_stale_state_files() -> bool:
@@ -578,18 +619,12 @@ def _clear_stale_state_files() -> bool:
     """
     if _lock_fd is not None:
         return False
-    fd = _open_state_file(LOCK_NAME, os.O_RDWR | os.O_CREAT)
-    try:
-        if not _try_lock(fd):
+    with _probe_lock() as acquired:
+        if not acquired:
             return False
-        try:
-            _unlink_state_file(ENDPOINT_NAME)
-            _unlink_state_file(PID_NAME)
-        finally:
-            _unlock(fd)
+        _unlink_state_file(ENDPOINT_NAME)
+        _unlink_state_file(PID_NAME)
         return True
-    finally:
-        os.close(fd)
 
 
 def _release_state_files() -> None:
@@ -985,9 +1020,9 @@ def get_server_info() -> Optional[Dict[str, Any]]:
         return None
 
     pid = read_pid()
+    if pid is None:  # the lock is held but the PID is not written yet: the server is loading GSAS-II
+        return {'pid': None, 'starting': True, 'url': _server_url(), 'log_file': str(log_file())}
     try:
-        if pid is None:
-            raise LookupError("no PID recorded yet (server starting)")
         # Try to get process info
         import psutil
         proc = psutil.Process(pid)
@@ -995,6 +1030,7 @@ def get_server_info() -> Optional[Dict[str, Any]]:
 
         return {
             'pid': pid,
+            'starting': False,
             'url': _server_url(),
             'log_file': str(log_file()),
             'uptime': str(uptime).split('.')[0],  # Remove microseconds
@@ -1002,12 +1038,31 @@ def get_server_info() -> Optional[Dict[str, Any]]:
             'memory_mb': proc.memory_info().rss / 1024 / 1024,
         }
     except Exception:
-        # psutil not available (or no PID recorded yet), return basic info
+        # psutil not available: return basic info
         return {
             'pid': pid,
+            'starting': False,
             'url': _server_url(),
             'log_file': str(log_file()),
         }
+
+
+def _tail_lines(path, n: int) -> list:
+    """The last ``n`` lines of a text file, read from the end (the server log is never rotated; re/14)."""
+    path = Path(path)
+    with open(path, 'rb') as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        chunk = 8192
+        data = b''
+        while size > 0 and data.count(b'\n') <= n:
+            step = min(chunk, size)
+            size -= step
+            f.seek(size)
+            data = f.read(step) + data
+            chunk *= 2
+    lines = data.decode('utf-8', 'replace').splitlines()
+    return lines[-n:]
 
 
 def _start_foreground() -> None:
@@ -1065,7 +1120,12 @@ def _run_action(action: str) -> None:
 
     elif action == 'status':
         info = get_server_info()
-        if info:
+        if info and info.get('starting'):
+            print("Server is starting (loading GSAS-II; no PID recorded yet)")
+            print(f"   URL: {info['url']}")
+            print(f"   Log file: {info['log_file']}")
+            print(f"\n   To view logs: pixi run gsas-server logs")
+        elif info:
             print(f"Server is running")
             print(f"   PID: {info['pid']}")
             print(f"   URL: {info['url']}")
@@ -1092,12 +1152,7 @@ def _run_action(action: str) -> None:
 
     elif action == 'logs':
         path = log_file()
-        try:
-            text = _read_state_file(LOG_NAME)
-        except OSError as e:
-            print(f"Failed to read log file: {e}")
-            sys.exit(1)
-        if text is None:
+        if not path.exists():
             print(f"Log file not created yet: {path}")
             sys.exit(0)
 
@@ -1106,10 +1161,9 @@ def _run_action(action: str) -> None:
         print("-" * 60)
 
         try:
-            # Show last 50 lines
-            for line in text.splitlines()[-50:]:
+            for line in _tail_lines(path, 50):  # read from the end: the log is never rotated
                 print(line.rstrip())
-        except Exception as e:
+        except OSError as e:
             print(f"Failed to read log file: {e}")
             sys.exit(1)
 
