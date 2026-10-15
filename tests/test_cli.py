@@ -77,8 +77,9 @@ def _no_tc_exe(monkeypatch):
 def test_cli_topas_default_output_path_is_beside_the_recipe(tmp_path, monkeypatch, capsys):
     """No --output: the run writes to <recipe dir>/output, the base name is the recipe's directory.
 
-    Without tc.exe the native runner generates the INP and xye only and reports
-    the run as failed (tc.exe not found), so the CLI exits 1 with that message.
+    Without a declared TOPAS location the native runner generates the INP and xye
+    only and reports the run as failed (TOPAS is not configured), so the CLI exits
+    1 with that message (P-35).
     """
     _no_tc_exe(monkeypatch)
     case_dir = tmp_path / "example_case"
@@ -87,7 +88,7 @@ def test_cli_topas_default_output_path_is_beside_the_recipe(tmp_path, monkeypatc
     rc = kicker.main([str(case_dir / "input.json"), "--topas-version", "6"])
     out = capsys.readouterr().out
     assert rc == 1
-    assert "Refinement failed" in out and "tc.exe not found" in out
+    assert "Refinement failed" in out and "TOPAS is not configured" in out and "--topas-dir" in out
     assert (case_dir / "output" / "example_case.inp").exists()
     assert (case_dir / "output" / "example_case.xye").exists()
 

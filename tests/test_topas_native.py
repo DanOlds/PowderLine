@@ -1202,3 +1202,21 @@ def test_runner_non_ascii_base_name_is_sanitized(tmp_path, monkeypatch):
                                    runner=_fake_topas_runner(results_csv, profile, {"LaB6": _make_peak_list()}))
     assert (tmp_path / "plain" / "example_LaB6.inp").is_file()
     assert "topas_base_name_sanitized" not in [w["code"] for w in result["warnings"]]
+
+
+def test_run_native_records_the_executable_that_ran(tmp_path, monkeypatch):
+    """P-35: a real run states which tc.exe ran (engine_details.tc_path), so the provenance is explicit."""
+    import json as _json
+    from powderline.gateways.topas.schema import validate_recipe as _validate
+    model = _validate(_json.loads((Path(__file__).parent / "data" / "topas" / "native" / "lab6_rietveld.json")
+                                  .read_text(encoding="utf-8")))
+    tth = model.payload.xrd_data.tth
+    lo, hi = model.payload.window()
+    profile_tth = [t for t in tth if lo <= t <= hi]
+    profile = _make_profile(profile_tth, [100.0] * len(profile_tth), [99.0] * len(profile_tth))
+    runner = _fake_topas_runner(_make_results_csv({}), profile, {"LaB6": _make_peak_list()})
+    fake_tc = tmp_path / "declared" / "tc.exe"
+    monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe", lambda *a, **kw: fake_tc)
+    result = native_run.run_native(model, tmp_path, runner=runner)
+    assert result["success"] is True
+    assert result["engine_details"]["tc_path"] == str(fake_tc)

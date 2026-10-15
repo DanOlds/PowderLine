@@ -304,7 +304,7 @@ own python: `pip install --no-deps --no-build-isolation --no-index -e .`.
 ❌ Refinement failed:
    GSAS-II cannot use these atom positions as stated: ... state the equivalent position (1/3, 0, 1/6) ...
 ❌ GSAS-II's refinement diverged: the calculated pattern is not finite at 212 of 3767 points in the fit window, so no result is reported ...
-❌ tc.exe not found: wrote LaB6.inp and LaB6.xye only (set topas_dir or topas.dir in .powderline_config.yaml to run TOPAS)
+❌ TOPAS is not configured: wrote LaB6.inp and LaB6.xye only (generate-only). To run TOPAS, set --topas-dir (the folder containing tc.exe) or topas.dir in .powderline_config.yaml, and declare its version ...
 ```
 
 **Causes and solutions:**
@@ -315,7 +315,7 @@ own python: `pip install --no-deps --no-build-isolation --no-index -e .`.
 2. **Divergence** (a non-finite calculated pattern): a **failure** in every
    engine (0.1.1 returned success with Rwp 100 %). Reduce the refined set,
    start closer, check correlations in `dummy.lst` (gsasii).
-3. **TOPAS not found**: the INP and `.xye` were written; run them on a
+3. **TOPAS not configured** (PowderLine never guesses where `tc.exe` is, P-35): the INP and `.xye` were written; run them on a
    machine with TOPAS 6, or pass `--topas-dir`.
 4. **TOPAS wrote no output**: TOPAS 6 reports nothing through its exit code,
    so a missing output file is the error; its messages are in its console

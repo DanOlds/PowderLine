@@ -6,9 +6,12 @@ exercisable on a box without TOPAS: point discovery at a directory containing a
 dummy ``tc.exe``, pass a fake ``runner`` that drops the expected output files,
 and the CLI's generate → run → parse path runs end to end (see test_topas_runner).
 
-Discovery precedence (D-runner, 2026-07-27): explicit ``topas_dir`` argument →
-``.powderline_config.yaml`` (``topas.dir`` / ``topas.version``) → a version's
-default install dir → the default Windows dirs (newest first). No GSAS-II import.
+Where ``tc.exe`` is looked for (P-35, 2026-10-15): the explicit ``topas_dir``
+argument, else ``.powderline_config.yaml`` ``topas.dir`` -- and nowhere else.
+The former sweep of ``C:/TOPAS8 … 5`` and the ``C:/TOPAS<version>`` guess are
+gone: TOPAS carries no readable version, so a guessed directory could silently
+run a different TOPAS than the one the recipe is written for (A145). With no
+directory declared a run is generate-only. No GSAS-II import.
 """
 
 from __future__ import annotations
@@ -18,9 +21,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-
-#: Default Windows TOPAS install directories, newest first.
-_DEFAULT_TOPAS_DIRS = ("C:/TOPAS8", "C:/TOPAS7", "C:/TOPAS6", "C:/TOPAS5")
 
 #: Same files ConfigLoader searches (config_loader.ConfigLoader.DEFAULT_CONFIG_PATHS).
 _CONFIG_PATHS = (".powderline_config.yaml", "~/.powderline_config.yaml")
@@ -72,22 +72,23 @@ def _tc_in(directory: Path) -> Path | None:
     return None
 
 
-def discover_tc_exe(topas_dir=None, topas_version=None) -> Path | None:
-    """Locate a ``tc`` executable, or ``None`` if TOPAS is not installed here."""
-    cfg = _read_topas_config()
-    if topas_version is None:
-        topas_version = cfg.get("version")
-
-    candidates: list[Path] = []
+def _candidate_dirs(topas_dir, cfg: dict) -> list[Path]:
+    """The only directories ``tc.exe`` is looked for in (P-35): the explicit one, else the configured one."""
     if topas_dir:
-        candidates.append(Path(topas_dir).expanduser())
-    if not topas_dir and cfg.get("dir"):
-        candidates.append(Path(str(cfg["dir"])).expanduser())
-    if topas_version is not None:
-        candidates.append(Path(f"C:/TOPAS{topas_version}"))
-    candidates.extend(Path(d) for d in _DEFAULT_TOPAS_DIRS)
+        return [Path(topas_dir).expanduser()]
+    if cfg.get("dir"):
+        return [Path(str(cfg["dir"])).expanduser()]
+    return []
 
-    for directory in candidates:
+
+def discover_tc_exe(topas_dir=None, topas_version=None) -> Path | None:
+    """Locate ``tc.exe`` in the declared TOPAS directory; ``None`` when none is declared or it has no ``tc``.
+
+    ``topas_version`` is accepted for signature compatibility and does not take
+    part in discovery (P-35): the version is checked against the recipe by the
+    gateway (A145), never used to guess a directory.
+    """
+    for directory in _candidate_dirs(topas_dir, _read_topas_config()):
         tc = _tc_in(directory)
         if tc is not None:
             return tc

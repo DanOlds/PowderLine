@@ -27,8 +27,7 @@ def test_discover_explicit_dir(tmp_path):
 
 
 def test_discover_returns_none_when_absent(tmp_path, monkeypatch):
-    # no config, no default dirs on a Linux box -> None
-    monkeypatch.setattr(runner, "_DEFAULT_TOPAS_DIRS", ())
+    # nothing declared -> None (P-35: no default directories are ever probed)
     monkeypatch.setattr(runner, "_read_topas_config", lambda: {})
     assert runner.discover_tc_exe() is None
     assert runner.discover_tc_exe(topas_dir=tmp_path / "nope") is None
@@ -48,11 +47,22 @@ def test_explicit_dir_beats_config(tmp_path, monkeypatch):
     assert cfg_tc.exists()  # (sanity: config path is real but not chosen)
 
 
+def test_discovery_consults_only_declared_locations(tmp_path, monkeypatch):
+    """P-35: tc.exe runs only from --topas-dir / config topas.dir. No default-directory sweep, no
+    C:/TOPAS<version> guess: a declared version alone finds nothing, so a recipe for TOPAS 6 can never
+    silently run on a TOPAS 7 that happens to be installed."""
+    assert not hasattr(runner, "_DEFAULT_TOPAS_DIRS")
+    monkeypatch.setattr(runner, "_read_topas_config", lambda: {"version": "6"})
+    assert runner.discover_tc_exe(topas_version="6") is None
+    assert runner._candidate_dirs(None, {"version": "6"}) == []
+    assert runner._candidate_dirs(None, {"dir": str(tmp_path)}) == [tmp_path]
+    assert runner._candidate_dirs(tmp_path / "arg", {"dir": str(tmp_path)}) == [tmp_path / "arg"]
+
+
 # --- run_topas (injected subprocess) ---------------------------------------
 
 
 def test_run_topas_not_found(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner, "_DEFAULT_TOPAS_DIRS", ())
     monkeypatch.setattr(runner, "_read_topas_config", lambda: {})
     res = runner.run_topas(tmp_path / "x.inp")
     assert res.status == "tc_not_found"

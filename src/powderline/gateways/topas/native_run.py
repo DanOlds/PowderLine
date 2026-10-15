@@ -127,8 +127,10 @@ def run_native(model, output_dir, *, base_name: str | None = None, topas_dir=Non
     if tc is None:
         return _empty_result(out, success=False, method="topas_generate_only", elapsed=time.time() - started,
                              simulation=native.simulation, warnings=validated_warnings,
-                             error=f"tc.exe not found: wrote {base}.inp and {base}.xye only (set topas_dir or "
-                                   ".powderline_config.yaml topas.dir to run TOPAS)")
+                             error=(f"TOPAS is not configured: wrote {base}.inp and {base}.xye only (generate-only). "
+                                    "To run TOPAS, set --topas-dir (the folder containing tc.exe) or topas.dir in "
+                                    ".powderline_config.yaml, and declare its version (--topas-version / "
+                                    "topas.version); PowderLine never guesses where TOPAS is (P-35)"))
     if engine_version_check is not None:
         engine_version_check(tc)
     expected = (native.results_file, native.profile_file, *native.phase_files.values())
@@ -142,7 +144,7 @@ def run_native(model, output_dir, *, base_name: str | None = None, topas_dir=Non
             "TOPAS reports the reason only in its console window; run the INP in a terminal to see it. The "
             f"expanded input is in {tc.parent / 'tc.log'}.")
     _run_background(model, native, out, tc, runner)
-    return build_result(model, native, out, validated_warnings, elapsed=time.time() - started)
+    return build_result(model, native, out, validated_warnings, elapsed=time.time() - started, tc_path=str(tc))
 
 
 def _run_background(model, native: NativeInput, out: Path, tc: Path, runner) -> None:
@@ -228,8 +230,13 @@ def _diverged(what: str) -> EngineExecutionError:
     return EngineExecutionError(f"the refinement diverged: {what} is not finite (A130)")
 
 
-def build_result(model, native: NativeInput, out: Path, validated_warnings: list, *, elapsed: float) -> dict:
-    """The result dict from the files TOPAS wrote (tested without TOPAS from recorded files)."""
+def build_result(model, native: NativeInput, out: Path, validated_warnings: list, *, elapsed: float,
+                 tc_path: str | None = None) -> dict:
+    """The result dict from the files TOPAS wrote (tested without TOPAS from recorded files).
+
+    ``tc_path`` is the executable that ran (``engine_details.tc_path``, P-35); ``None`` when the
+    result is rebuilt from recorded files.
+    """
     p = model.payload
     stats, values = _read_results(out / native.results_file)
     bad = [name for name, v in stats.items() if not math.isfinite(v)]
@@ -325,6 +332,7 @@ def build_result(model, native: NativeInput, out: Path, validated_warnings: list
             "n_points": fs.n_points,
             "parameters_requested": requested,
             "parameters_varied": varied,
+            "tc_path": tc_path,
         },
         "warnings": warnings,
         "elapsed_time": elapsed,
