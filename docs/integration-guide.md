@@ -146,7 +146,7 @@ except ValidationError as exc:
         print(f"[{error['type']}] {loc}: {error['msg']}")
 else:
     model = checked.recipe            # e.g. GsasiiRietveldRecipe, TopasRietveldRecipe
-    for w in checked.warnings:        # {code, message, field_path}: defaults applied, symmetry remarks
+    for w in checked.warnings:        # {code, message, field_path[, level]}: defaults applied, symmetry remarks
         print(w["code"], w["field_path"])
 ```
 
@@ -169,7 +169,7 @@ result = powderline.run(recipe, Path("output/"))
 # result['rwp'], ['r_exp'], ['gof'], ['chi2_red']   PowderLine's uniform statistics (None where undefined)
 # result['simulation_mode']          bool
 # result['engine_details']           dict: the engine's own statistics, parameters_requested / parameters_varied, ...
-# result['warnings']                 list of {code, message, field_path}
+# result['warnings']                 list of {code, message, field_path[, level]}  (level absent = "warning", or "info")
 # result['elapsed_time']             float
 # result['method']                   str  (which execution path was used)
 # result['fit_profile']              DataFrame

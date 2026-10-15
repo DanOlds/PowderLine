@@ -314,7 +314,10 @@ class Background(CoreModel):
     the Chebyshev polynomial of order *i* (A22.7).
     """
 
-    chebyshev: ChebyshevBackground = Field(default_factory=_no_background)
+    chebyshev: ChebyshevBackground = Field(
+        default_factory=_no_background,
+        description="Left out: one fixed Chebyshev term 0.0 (no background), with the warning "
+                    "gsasii_background_default_applied (P-33)")
     single_peaks: Optional[BackgroundPeaks] = Field(default=None, json_schema_extra=absent_not_null_schema(),
                                                    description="Left out: no background peaks")
 

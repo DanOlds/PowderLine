@@ -125,6 +125,14 @@ derives it).
   position, or move the atom at least 2e-3 off it. The validated model holds
   the exact derived values; a Python dump prints 1/3 as
   `0.3333333333333333`, which means the same and validates the same.
+- **Values held in derived form** are reported: every coordinate, cell value
+  or `Uij` the model holds as its exact symmetry-derived value gives one
+  `symmetry_value_derived` warning at level `info` (stated value, held value,
+  the relation): `y = 0.666667` on a 2c site gives one, `z = 0.25` gives none
+  because it is already exact. The note is **evidence** that a value is
+  symmetry-determined, never a statement of it — an exactly typed special
+  position produces no note. Which sites are special is the symmetry
+  analysis's answer, not the warnings list's.
 - **`Multiplicity`** is optional; when stated it must equal the value derived
   from the space group (the converter drops a wrong one and reports it).
 - **`occupancy`** is required and between 0 and 1 inclusive, even where an
@@ -140,13 +148,6 @@ derives it).
 - **Atoms at the same position** (a mixed-occupancy site) are independent
   atoms with their own flags; PowderLine never ties them. User-defined ties
   between atoms are a future feature.
-  Every value the model holds in derived form is reported as a
-  `symmetry_value_derived` warning at level `info` (stated value, held value,
-  the relation): `y = 0.666667` on a 2c site gives one, `z = 0.25` gives none
-  because it is already exact. The note is **evidence** that a value is
-  symmetry-determined, never a statement of it — an exactly typed special
-  position produces no note. Which sites are special is the symmetry analysis's
-  answer, not the warnings list's.
 
 ### Refine flags and the symmetry
 

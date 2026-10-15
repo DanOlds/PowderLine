@@ -26,7 +26,7 @@
 | `payload.instrument.broadening.Z` | engine | `[value, flag]` | `centidegree 2theta` | yes |  |
 | `payload.fit_range` | core | fit_range (core block) | `degree 2theta` | no | Left out: the data's full 2theta range |
 | `payload.background` | engine | block |  | no | Background: a Chebyshev polynomial (GSAS-II `chebyschev-1`) and optional single peaks. |
-| `payload.background.chebyshev` | core | Chebyshev background (core block) |  | no | Chebyshev polynomial background: `num_coefficients`, `coefficients`, `refine_flag`. |
+| `payload.background.chebyshev` | core | Chebyshev background (core block) |  | no | Left out: one fixed Chebyshev term 0.0 (no background), with the warning gsasii_background_default_applied (P-33) |
 | `payload.background.single_peaks` | engine | block |  | no | Left out: no background peaks |
 | `payload.background.single_peaks.positions` | engine | list of `[value, flag]` | `degree 2theta` | yes |  |
 | `payload.background.single_peaks.intensities` | engine | list of `[value, flag]` | `arbitrary` | yes |  |

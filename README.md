@@ -84,7 +84,7 @@ decides where it runs:
 pixi run kicker <recipe.json> --validate-only     # check a recipe; needs no engine
 pixi run -e gsasii kicker <recipe.json>           # run a gsasii.* recipe
 pixi run -e easydiffraction kicker <recipe.json>  # run an easydiffraction.* recipe
-pixi run kicker <recipe.json> --topas-version 6   # run a topas.* recipe (tc.exe on Windows)
+pixi run kicker <recipe.json> --topas-dir C:/TOPAS6 --topas-version 6   # run a topas.* recipe (tc.exe on Windows)
 ```
 
 After `pixi reinstall powderline` the same program is the installed command
@@ -160,7 +160,7 @@ pixi run -e gsasii mp-simulate --material-id mp-2680 --output patterns/
 | Engine | Schemas | Environment | Notes |
 |---|---|---|---|
 | **GSAS-II 5.7.9** | `gsasii.rietveld`, `gsasii.spf` | `gsasii` | The reference engine; the committed examples carry its outputs as regression references. |
-| **TOPAS 6** (Bruker) | `topas.rietveld`, `topas.spf` | any (writing the INP); Windows + `tc.exe` (running) | The recipe states `engine_version: "6"`; the run needs the installed version declared (`--topas-version 6`). |
+| **TOPAS 6** (Bruker) | `topas.rietveld`, `topas.spf` | any (writing the INP); Windows + `tc.exe` (running) | The recipe states `engine_version: "6"`; the run needs the installed version and location declared (`--topas-version 6 --topas-dir DIR`, or `topas.version` / `topas.dir` in `.powderline_config.yaml`); PowderLine never guesses where `tc.exe` is. |
 | **easydiffraction 0.21.1** | `easydiffraction.rietveld` | `easydiffraction` | The recipe states the calculator (`cryspy` or `crysfml`); no single-peak fitting. |
 
 The structural part of a recipe (space group, cell, atoms) is identical in

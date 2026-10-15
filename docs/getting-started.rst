@@ -27,7 +27,7 @@ that runs it (``gsasii.rietveld``, ``gsasii.spf``, ``topas.rietveld``,
 
     pixi run -e gsasii kicker examples/example_LaB6/input.json             # GSAS-II
     pixi run -e easydiffraction kicker examples/example_LaB6/easydiffraction/input.json
-    pixi run kicker examples/example_LaB6/topas/input.json --topas-version 6   # TOPAS (tc.exe on Windows)
+    pixi run kicker examples/example_LaB6/topas/input.json --topas-dir C:/TOPAS6 --topas-version 6   # TOPAS (tc.exe on Windows)
 
 Validate a recipe without running anything — no engine needed, so the default
 environment suffices::

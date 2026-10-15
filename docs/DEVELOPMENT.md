@@ -152,7 +152,7 @@ tables), [input guidance](input-guidance.md), [SCHEMA_HISTORY](SCHEMA_HISTORY.md
   recipe's values plus documented defaults and the symmetry-derived values; a
   value an engine would silently replace (a floor, a snapped coordinate, a
   limit) is an **error naming the value to write**, never an adjustment.
-- **Structured warnings** (`{code, message, field_path}`) are collected once
+- **Structured warnings** (`{code, message, field_path[, level]}`; `level` absent = `"warning"`, or `"info"`) are collected once
   from the validated model (`collect_warnings`) and travel with it: a default
   applied, a symmetry remark, a unit conversion the gateway will make. They
   never change what the recipe means, so re-validating reproduces them.
