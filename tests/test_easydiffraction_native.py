@@ -520,7 +520,7 @@ def test_run_cryspy_refines_uaniso(tmp_path):
     """A refined Uij is varied and moves with CrysPy although La (Uiso) precedes B in the recipe (A169, EB-86)."""
     result = gateway.run(_b_uaniso(_load_fixture("lab6_cryspy_pv.json"), refine=True), str(tmp_path))
     d = result["engine_details"]
-    assert result["success"] and d["fit_success"], d
+    assert result["status"] == "ok" and d["fit_success"], d
     assert d["parameters_varied"] == d["parameters_requested"]
     rows = result["refined_parameters"].set_index("parameter_name")
     for name in ("LaB6_B_U11", "LaB6_B_U22"):
@@ -552,7 +552,7 @@ def test_matches_template_unit_cases():
 def test_run_lab6_crysfml_tch_success(lab6_crysfml_tch_result):
     """CrysFML TCH fit succeeds and says that its result can depend on the starting values (EB-90, A175)."""
     result = lab6_crysfml_tch_result
-    assert result["success"]
+    assert result["status"] == "ok"
     assert result["simulation_mode"] is False
     hits = [w for w in result["warnings"] if w["code"] == "easydiffraction_crysfml_start_dependent"]
     assert len(hits) == 1 and hits[0]["field_path"] == "payload.refinement_controls.calculator"
@@ -567,7 +567,7 @@ def test_crysfml_calculation_has_no_start_warning(lab6_crysfml_calculation_resul
 def test_run_lab6_cryspy_pv_success(lab6_cryspy_pv_result):
     """CrysPy PV fit succeeds."""
     result = lab6_cryspy_pv_result
-    assert result["success"]
+    assert result["status"] == "ok"
     assert result["simulation_mode"] is False
 
 
@@ -729,7 +729,7 @@ def test_run_max_iterations_3_fit_not_converged(tmp_path):
     recipe = _load_fixture("lab6_crysfml_tch.json")
     recipe["payload"]["refinement_controls"]["max_iterations"] = 3
     result = gateway.run(recipe, str(tmp_path))
-    assert result["success"] is True
+    assert result["status"] == "ok"
     assert result["engine_details"]["fit_success"] is False
     warnings = [w for w in result["warnings"] if w["code"] == "easydiffraction_fit_not_converged"]
     assert len(warnings) == 1 and warnings[0]["field_path"] == "payload.refinement_controls"
@@ -771,7 +771,7 @@ def test_run_validate_only(tmp_path):
     result = gateway.run(recipe, str(tmp_path), validate_only=True)
 
     assert result["method"] == "validate_only"
-    assert result["success"] is True
+    assert result["status"] == "ok"
     assert result["rwp"] is None
     assert "schema_name" in result
     assert "engine_schema_version" in result
@@ -999,7 +999,7 @@ def test_two_phases_built_and_refined(drx33_two_phase_build, drx33_two_phase_res
     assert {"drx_33", "li4mgwo6_sg12"} <= {ls.structure_id.value for ls in linked}
     result, out = drx33_two_phase_result
     d = result["engine_details"]
-    assert result["success"] and d["fit_success"] and d["parameters_varied"] == d["parameters_requested"] == 18
+    assert result["status"] == "ok" and d["fit_success"] and d["parameters_varied"] == d["parameters_requested"] == 18
     rows = result["refined_parameters"].set_index("parameter_name")
     assert rows.loc["DRX_33_scale", "phase_idx"] == 0 and rows.loc["Li4MgWO6_SG12_scale", "phase_idx"] == 1
     assert np.isfinite(rows["esd"].astype(float)).all()
@@ -1099,3 +1099,29 @@ def test_run_matches_golden(name, _build, result_fixture, request):
         assert (refined[n][1] is None) == (esd is None), n
         if esd is not None:
             assert refined[n][1] == pytest.approx(esd, rel=GOLDEN_RTOL), n
+
+
+# --- re/12: engine exceptions become engine_crashed; status and converged on every result -------------
+
+def test_lmfit_error_is_engine_crashed(tmp_path, monkeypatch):
+    """An exception inside easydiffraction's fit is reported as engine_crashed, chained, not as a raw error."""
+    recipe = _load_fixture("lab6_cryspy_pv.json")
+    model = schema.validate_recipe(recipe)
+    build = native_run.build_project(model)
+
+    def boom(*a, **k):
+        raise ValueError("The model function generated NaN values")
+    monkeypatch.setattr(type(build.project.analysis), "fit", boom)  # the class: Analysis refuses new instance attrs
+    monkeypatch.setattr(native_run, "build_project", lambda m: build)
+    with pytest.raises(EngineExecutionError) as e:
+        native_run.run_native(model, tmp_path)
+    assert e.value.reason == "engine_crashed" and isinstance(e.value.__cause__, ValueError)
+
+
+def test_converged_follows_lmfit_and_is_none_for_simulation(tmp_path):
+    fitted = gateway.run(_load_fixture("lab6_cryspy_pv.json"), str(tmp_path / "fit"))
+    assert fitted["status"] == "ok" and fitted["converged"] in (True, False)
+    assert fitted["converged"] == fitted["engine_details"]["fit_success"]
+    assert "error" not in fitted and "traceback" not in fitted and fitted["envelope_version"] == "1"
+    sim = gateway.run(_load_fixture("lab6_slots_simulation.json"), str(tmp_path / "sim"))
+    assert sim["converged"] is None and sim["simulation_mode"] is True and sim["status"] == "ok"

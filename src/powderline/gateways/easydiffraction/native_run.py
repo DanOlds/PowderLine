@@ -50,6 +50,7 @@ import numpy as np
 import pandas as pd
 
 from powderline import reports
+from powderline import results as envelopes
 from powderline.exceptions import EngineExecutionError, StructuredWarning
 from powderline.fitstats import compute_fit_statistics
 from powderline.gateways.easydiffraction.native_builder import Build, build_project, structure_name
@@ -66,7 +67,8 @@ PEAK_LIST_COLUMNS = ("h", "k", "l", "d_spacing", "2theta", "F_calc_squared", "ph
 
 
 def _diverged(what: str) -> EngineExecutionError:
-    return EngineExecutionError(f"the refinement diverged: easydiffraction returned a non-finite value ({what})")
+    return EngineExecutionError(f"the refinement diverged: easydiffraction returned a non-finite value ({what})",
+                                reason="diverged")
 
 
 def _float(v) -> float | None:
@@ -85,16 +87,23 @@ def run_native(model, output_dir, *, validated_warnings: list | None = None) -> 
     warnings += _translations(model, build)
     analysis = build.project.analysis
     fit_info = {}
-    if simulation:
-        analysis.calculate()
-    else:
-        rc = p.refinement_controls
-        analysis.minimizer.type = rc.minimizer
-        analysis.minimizer.max_iterations = rc.max_iterations
-        analysis.minimizer.chi_square_change_tolerance = rc.chi_square_change_tolerance
-        analysis.minimizer.parameter_change_tolerance = rc.parameter_change_tolerance
-        analysis.minimizer.gradient_tolerance = rc.gradient_tolerance
-        analysis.fit()
+    try:
+        if simulation:
+            analysis.calculate()
+        else:
+            rc = p.refinement_controls
+            analysis.minimizer.type = rc.minimizer
+            analysis.minimizer.max_iterations = rc.max_iterations
+            analysis.minimizer.chi_square_change_tolerance = rc.chi_square_change_tolerance
+            analysis.minimizer.parameter_change_tolerance = rc.parameter_change_tolerance
+            analysis.minimizer.gradient_tolerance = rc.gradient_tolerance
+            analysis.fit()
+    except EngineExecutionError:
+        raise
+    except Exception as exc:  # lmfit / CrysPy / CrysFML: the engine failed (re/12 §6.4)
+        raise EngineExecutionError(f"easydiffraction failed during the {'calculation' if simulation else 'fit'}: "
+                                   f"{type(exc).__name__}: {exc}", reason="engine_crashed") from exc
+    if not simulation:
         results = analysis.fit_results
         fit_info = {"success": bool(results.success), "message": str(results.message),
                     "iterations": results.iterations}
@@ -130,7 +139,8 @@ def build_result(model, build: Build, out: Path, warnings: list, *, elapsed: flo
             raise _diverged(fp.path)
     x_window = build.tth[build.mask]
     if not np.array_equal(arrays["x"], x_window):
-        raise EngineExecutionError("easydiffraction returned a pattern on other 2theta points than it was given")
+        raise EngineExecutionError("easydiffraction returned a pattern on other 2theta points than it was given",
+                                   reason="output_malformed")
 
     tth = build.tth
     yobs = np.asarray(p.xrd_data.Itth, dtype=float)
@@ -214,8 +224,7 @@ def build_result(model, build: Build, out: Path, warnings: list, *, elapsed: flo
         "parameters_varied": varied,
         **({f"fit_{k}": v for k, v in fit_info.items()}),
     }
-    return {
-        "success": True,
+    return envelopes.with_status_fields({
         "run_id": str(uuid.uuid4()),
         "rwp": undefined(fs.rwp),
         "r_exp": undefined(fs.rexp),
@@ -231,9 +240,7 @@ def build_result(model, build: Build, out: Path, warnings: list, *, elapsed: flo
         "unit_cell_data": {k: pd.DataFrame(v, columns=list(reports.UNIT_CELL_COLUMNS)) for k, v in unit_cells.items()},
         "peak_list_data": {k: pd.DataFrame(v, columns=list(PEAK_LIST_COLUMNS)) for k, v in peak_lists.items()},
         "refined_parameters": pd.DataFrame(refined_rows, columns=list(reports.REFINED_PARAMETERS_COLUMNS)),
-        "error": None,
-        "traceback": None,
-    }
+    }, status="ok", converged=None if simulation else fit_info.get("success"))
 
 
 def _refln_arrays(refln) -> dict:
