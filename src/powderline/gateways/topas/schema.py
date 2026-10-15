@@ -75,7 +75,6 @@ from powderline.schema_core import (
     raise_problems,
     recipe_validator,
     refined_flag_problems,
-    refined_flags,
     unique_phase_names,
     unit_schema,
 )

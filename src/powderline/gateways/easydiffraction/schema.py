@@ -476,12 +476,7 @@ class RietveldPayload(CoreModel):
     @model_validator(mode="after")
     def _easydiffraction_payload(self) -> "RietveldPayload":
         problems = fit_range_problems(self.fit_range, self.xrd_data)
-        try:
-            mask = None if problems else self.window_mask()
-        except ValueError as exc:
-            problems.append(custom_error("fit_range", str(exc), ("fit_range",),
-                                         None if self.fit_range is None else self.fit_range.model_dump()))
-            mask = None
+        mask = None if problems else self.window_mask()  # the window check passed, so the mask cannot fail
         if mask is not None:
             heavy = np.flatnonzero(mask & (np.asarray(self.xrd_data.Itth_weights, dtype=float) > MAX_WEIGHT))
             for i in heavy[:20]:
