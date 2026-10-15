@@ -149,10 +149,11 @@ recipes do not validate; see the
   directory. `GSASClient.run_simulation` (unused) is removed. All five
   exception classes pickle (`ProcessPoolExecutor`).
 - **GSAS-II server robustness** (re/14). Requests to `/simulate` run one at a
-  time (a lock; GSAS-II's module state is not thread-safe); a bad
-  `POWDERLINE_SERVER_PORT` or a busy port is reported before the lock and the
-  GSAS-II import, and the client refuses to auto-start a server that cannot
-  bind (`server_unavailable`, naming the variable); the server's unsigned 401
+  time (a lock; GSAS-II's module state is not thread-safe); a malformed
+  `POWDERLINE_SERVER_PORT` is refused before the lock and the GSAS-II import,
+  a busy port fails the start before the import with the port named, and a
+  client reports an auto-started server that exits at start (pointing at its
+  log) or a malformed variable (`server_unavailable`); the server's unsigned 401
   and 413 refusals are reported as a rejected or too-large request rather than
   as an impostor listener; only `/simulate` may carry a large body before the
   HMAC check (4 KiB elsewhere); Windows sharing violations on the state files

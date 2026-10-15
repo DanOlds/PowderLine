@@ -886,6 +886,37 @@ def test_status_while_starting_says_so(monkeypatch, capsys):
 def test_tail_lines_reads_only_the_end(tmp_path):
     p = tmp_path / "server.log"
     p.write_text("".join(f"line {i}\n" for i in range(1000)), encoding="utf-8")
-    tail = gsas_server._tail_lines(p, 50)
+    with open(p, "rb") as f:
+        tail = gsas_server._tail_lines(f, 50)
     assert len(tail) == 50 and tail[-1] == "line 999" and tail[0] == "line 950"
-    assert gsas_server._tail_lines(p, 5000)[0] == "line 0"
+    with open(p, "rb") as f:
+        assert gsas_server._tail_lines(f, 5000)[0] == "line 0"
+
+
+def test_health_is_served_while_a_job_holds_the_lock(app_client):
+    """The lock serializes /simulate only; /health keeps answering (re/14 review)."""
+    import threading
+    import time as _time
+    import inspect
+    client, calls = app_client
+    simulate_route = next(r for r in client.app.app.routes if getattr(r, "path", None) == "/simulate")
+    srv = inspect.getclosurevars(simulate_route.endpoint).nonlocals["server"]
+    started = threading.Event()
+
+    def slow_run(req):
+        started.set()
+        _time.sleep(0.6)
+        return {"status": "failed", "failure": {"kind": "backend", "reason": "backend_error", "message": "stub",
+                                                "traceback": None, "engine_details": None}}
+    srv._run_simulation = slow_run
+    body = _job_body("out")
+    _, headers = _signed_headers("POST", "/simulate", body)
+    t = threading.Thread(target=lambda: client.post("/simulate", content=body, headers=headers))
+    t.start()
+    assert started.wait(5)
+    t0 = _time.monotonic()
+    _, h = _signed_headers("GET", "/health", b"")
+    resp = client.get("/health", headers=h)
+    elapsed = _time.monotonic() - t0
+    t.join(10)
+    assert resp.status_code == 200 and elapsed < 0.4, f"/health waited {elapsed:.2f}s behind a job"

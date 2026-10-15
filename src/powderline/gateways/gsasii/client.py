@@ -387,6 +387,7 @@ class GSASClient:
         import os
         import time
 
+        self._start_error = None
         if server_disabled():
             return False
         try:
@@ -437,6 +438,12 @@ class GSASClient:
             # Give server time to start
             for attempt in range(30):  # Wait up to 3 seconds
                 time.sleep(0.1)
+                if proc.poll() is not None:  # the child died at start (busy port, import error, ...)
+                    self._start_error = (f"the server exited at start (exit code {proc.returncode}); see its log: "
+                                         f"{gsas_server.log_file()}")
+                    if verbose:
+                        print(f"   Could not auto-start server: {self._start_error}")
+                    return False
                 if self.is_server_available():
                     if verbose:
                         print("   Server started in background")
@@ -447,6 +454,7 @@ class GSASClient:
             return True  # Started even if not responding immediately
 
         except Exception as e:
+            self._start_error = f"could not spawn the server: {e}"
             if verbose:
                 print(f"   Could not auto-start server: {e}")
             return False

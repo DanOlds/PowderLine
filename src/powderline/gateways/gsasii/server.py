@@ -775,25 +775,24 @@ class GSASServer:
         def simulate(req: SimulationRequest):
             with run_lock:
                 server.request_count += 1
+                number = server.request_count  # captured under the lock: the next job increments it as we log
                 schema_name = (req.recipe_data.get('schema_name', 'unknown')
                                if isinstance(req.recipe_data, dict) else 'unknown')
-                server.logger.info(f"Request #{server.request_count}: schema={schema_name}")
+                server.logger.info(f"Request #{number}: schema={schema_name}")
                 result = server._run_simulation(req.model_dump())
 
             elapsed = result.get('elapsed_time') or 0
             run_id = result.get('run_id', 'n/a')
             if result.get('status') == 'ok':
-                server.logger.info(f"Request #{server.request_count} (run_id={run_id}) completed in {elapsed:.1f}s")
+                server.logger.info(f"Request #{number} (run_id={run_id}) completed in {elapsed:.1f}s")
             else:
                 failure = result.get('failure') or {}
                 server.logger.warning(
-                    f"Request #{server.request_count} (run_id={run_id}) failed "
+                    f"Request #{number} (run_id={run_id}) failed "
                     f"({failure.get('kind')}/{failure.get('reason')}): {failure.get('message', 'Unknown error')}"
                 )
                 if failure.get('traceback'):
-                    server.logger.debug(
-                        f"Request #{server.request_count} traceback:\n{failure['traceback']}"
-                    )
+                    server.logger.debug(f"Request #{number} traceback:\n{failure['traceback']}")
             return SimulationResponse(**result)
 
         @app.get("/health")
@@ -808,8 +807,8 @@ class GSASServer:
 
         return SignedRequestMiddleware(app, self.token)
 
-    def start(self):
-        """Start the server with uvicorn."""
+    def start(self, sock: Optional[socket.socket] = None):
+        """Start the server with uvicorn on ``sock`` (bound by :func:`_listen`; bound here when not given)."""
         import uvicorn
 
         self.start_time = datetime.now()
@@ -817,15 +816,10 @@ class GSASServer:
         self.logger.info("GSAS-II Server Starting")
         self.logger.info("=" * 60)
 
-        # Bind first so the endpoint file records the real (ephemeral) port
-        # and connections queue from the moment clients can discover it.
-        requested = _requested_port()
-        try:
-            sock = _bind_listener(requested)
-        except OSError as e:
-            self.logger.error(f"cannot listen on {HOST}:{requested or '<ephemeral>'}: {e}")
-            raise ServerStateError(f"cannot listen on {HOST}:{requested or '<ephemeral>'}: {e} (set {PORT_ENV} "
-                                   "to a free port, or unset it)") from e
+        # The listener is bound before GSAS-II is imported (so a busy or bad port fails fast) and before
+        # the endpoint file is written (so it records the real, possibly ephemeral, port).
+        if sock is None:
+            sock = _listen(self.logger)
         port = sock.getsockname()[1]
         _write_private(ENDPOINT_NAME, json.dumps(
             {'pid': os.getpid(), 'port': port, 'token': self.token}))
@@ -1047,26 +1041,35 @@ def get_server_info() -> Optional[Dict[str, Any]]:
         }
 
 
-def _tail_lines(path, n: int) -> list:
-    """The last ``n`` lines of a text file, read from the end (the server log is never rotated; re/14)."""
-    path = Path(path)
-    with open(path, 'rb') as f:
-        f.seek(0, os.SEEK_END)
-        size = f.tell()
-        chunk = 8192
-        data = b''
-        while size > 0 and data.count(b'\n') <= n:
-            step = min(chunk, size)
-            size -= step
-            f.seek(size)
-            data = f.read(step) + data
-            chunk *= 2
+def _tail_lines(f, n: int) -> list:
+    """The last ``n`` lines of an open binary file, read from the end (the server log is never rotated; re/14)."""
+    f.seek(0, os.SEEK_END)
+    size = f.tell()
+    chunk = 8192
+    data = b''
+    while size > 0 and data.count(b'\n') <= n:
+        step = min(chunk, size)
+        size -= step
+        f.seek(size)
+        data = f.read(step) + data
+        chunk *= 2
     lines = data.decode('utf-8', 'replace').splitlines()
     return lines[-n:]
 
 
+def _listen(logger: logging.Logger) -> socket.socket:
+    """Bind the listener on ``HOST`` and the requested port; a busy or bad port is a :class:`ServerStateError`."""
+    requested = _requested_port()
+    try:
+        return _bind_listener(requested)
+    except OSError as e:
+        logger.error(f"cannot listen on {HOST}:{requested or '<ephemeral>'}: {e}")
+        raise ServerStateError(f"cannot listen on {HOST}:{requested or '<ephemeral>'}: {e} (set {PORT_ENV} "
+                               "to a free port, or unset it)") from e
+
+
 def _start_foreground() -> None:
-    """Take the start lock, load GSAS-II and serve until stopped."""
+    """Take the start lock, bind the port, load GSAS-II and serve until stopped."""
     if not _claim_server_lock():
         print("Server is already running")
         print(f"   PID: {read_pid() or '(starting)'}")
@@ -1078,8 +1081,9 @@ def _start_foreground() -> None:
 
     print("Starting GSAS-II server...")
     logger = setup_logging()
+    sock = _listen(logger)  # bind first: a busy or bad port fails here, before GSAS-II is imported (re/14)
     server = GSASServer(logger)
-    server.start()
+    server.start(sock)
 
 
 def main():
@@ -1152,20 +1156,22 @@ def _run_action(action: str) -> None:
 
     elif action == 'logs':
         path = log_file()
-        if not path.exists():
+        try:
+            fd = _open_state_file(LOG_NAME, os.O_RDONLY)  # never through a symlink, like every state-file read
+        except FileNotFoundError:
             print(f"Log file not created yet: {path}")
             sys.exit(0)
+        except OSError as e:
+            print(f"Failed to read log file: {e}")
+            sys.exit(1)
 
         print(f"Recent logs from {path}:")
         print("   (showing last 50 lines)")
         print("-" * 60)
 
-        try:
-            for line in _tail_lines(path, 50):  # read from the end: the log is never rotated
+        with os.fdopen(fd, 'rb') as f:
+            for line in _tail_lines(f, 50):  # read from the end: the log is never rotated
                 print(line.rstrip())
-        except OSError as e:
-            print(f"Failed to read log file: {e}")
-            sys.exit(1)
 
         print("-" * 60)
         print(f"   To follow logs in real-time: tail -f {path}")

@@ -509,3 +509,38 @@ def test_unsigned_401_is_reported_as_rejected(monkeypatch, own_endpoint, tmp_pat
     result = c.submit_simulation(RECIPE, tmp_path / "out", auto_start_server=False)
     assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
     assert "rejected" in result["failure"]["message"] and "did not prove" not in result["failure"]["message"]
+
+
+# --- re/14 review: a child that dies at start is noticed and explained ---------------------------------
+
+def test_auto_start_notices_a_child_that_exits(monkeypatch, tmp_path):
+    """A spawned server that exits during the start wait (e.g. a busy pinned port) ends the wait at once and
+    the server_unavailable failure says so, pointing at the log."""
+    import subprocess
+    monkeypatch.delenv("POWDERLINE_NO_SERVER", raising=False)
+    monkeypatch.delenv("POWDERLINE_SERVER_PORT", raising=False)
+    monkeypatch.setattr(gsas_server, "state_dir", lambda: tmp_path)
+    monkeypatch.setattr(gsas_server, "log_file", lambda: tmp_path / "server.log")
+    monkeypatch.setattr("time.sleep", lambda s: None)
+
+    class DeadChild:
+        pid = 4242
+        returncode = 1
+
+        def poll(self):
+            return 1
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: DeadChild())
+    c = GSASClient(fallback_to_subprocess=False)
+    monkeypatch.setattr(c, "is_server_available", lambda: False)
+    result = c.submit_simulation(RECIPE, tmp_path, auto_start_server=True)
+    assert result["status"] == "failed" and result["failure"]["reason"] == "server_unavailable"
+    msg = result["failure"]["message"]
+    assert "exited" in msg and "server.log" in msg
+
+
+def test_start_error_is_reset_between_attempts(monkeypatch, tmp_path):
+    c = GSASClient()
+    c._start_error = "stale"
+    monkeypatch.setenv("POWDERLINE_NO_SERVER", "1")
+    assert c._start_server_background(verbose=False) is False
+    assert c._start_error is None  # the disabled case is not an error worth repeating

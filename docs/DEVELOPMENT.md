@@ -441,11 +441,13 @@ and leftover PID files can never make a dead server look alive.
 
 **One refinement at a time:** the server runs `/simulate` requests strictly in
 sequence (GSAS-II's module-level state is not thread-safe); concurrent clients
-queue. **Port problems are reported, not crashed:** a bad
-`POWDERLINE_SERVER_PORT` or a busy port fails `gsas-server start` with one
-line before GSAS-II is imported, and a client never auto-starts a server that
-cannot bind (`ExecutionBackendError`, `server_unavailable`, naming the
-variable).
+queue (up to the ASGI thread pool's size, 40 by default; `/health` is not
+behind the lock). **Port problems are reported, not crashed:** a malformed
+`POWDERLINE_SERVER_PORT` is refused up front by `gsas-server start` and by a
+client about to auto-start (`ExecutionBackendError`, `server_unavailable`,
+naming the variable); a busy port fails the start before GSAS-II is imported,
+with the port named, and a client whose auto-started server exits at start
+reports the exit and points at the server log.
 
 **Pin the server port** (only if needed — the default ephemeral port avoids
 collisions between users):
