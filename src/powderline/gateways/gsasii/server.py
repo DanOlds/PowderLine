@@ -615,8 +615,6 @@ class SimulationResponse(BaseModel):
     rwp: Optional[float] = None
     elapsed_time: Optional[float] = None
     method: Optional[str] = None
-    error: Optional[str] = None
-    traceback: Optional[str] = None
     output_files: Optional[List[str]] = None
     fit_profile: Optional[dict] = None
     unit_cell_data: Optional[dict] = None
@@ -832,12 +830,12 @@ class GSASServer:
         try:
             result = run_refinement(recipe, output_dir, verbose=verbose, method='server')
         except EngineExecutionError as e:  # R30: PowderLine's own failure (divergence, site, peak fit)
+            import traceback
             return e.result or envelopes.failure_envelope("engine", e.reason, str(e), method="server",
-                                                          output_files=files())
+                                                          output_files=files(), traceback=traceback.format_exc())
         if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
             return envelopes.legacy_failure(result)
-        return envelopes.with_status_fields(result, status="ok",
-                                            converged=(result.get('engine_details') or {}).get('converged'))
+        return envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals."""

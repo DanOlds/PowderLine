@@ -346,3 +346,28 @@ def test_refinement_through_authenticated_server(test_server, server_state_root,
     assert result["envelope_version"] == "1" and result["converged"] in (True, False, None)
     assert result["method"] == "server"
     assert (tmp_path / "fit_profile.txt").exists()
+
+
+def test_engine_failure_through_authenticated_server(test_server, server_state_root, monkeypatch,
+                                                     recipe_LaB6_dict, tmp_path):
+    """R30 inside the server process: a site GSAS-II misreads (EB-40) raises in the server's run_refinement,
+    the server answers a failed envelope, and the client returns it (no fallback) — re/12 spec §7."""
+    import copy
+    monkeypatch.delenv("POWDERLINE_NO_SERVER", raising=False)
+    monkeypatch.setattr(gsas_server, "state_dir", lambda: server_state_root / "powderline")
+    recipe = copy.deepcopy(recipe_LaB6_dict)
+    recipe["payload"]["background"].pop("single_peaks", None)
+    p = lambda v, f=False: [v, f]  # noqa: E731
+    recipe["payload"]["phases"] = {"P": {
+        "space_group": "R -3 m:H",
+        "unit_cell": {k: p(v) for k, v in zip(("a", "b", "c", "alpha", "beta", "gamma"), (5.0, 5.0, 12.0, 90.0, 90.0, 120.0))},
+        "atoms": {"Fe": {"element": "Fe", "x": p(0.0), "y": p(0.333333), "z": p(0.166667),
+                         "occupancy": p(1.0), "ADP": "Uiso", "Uiso": p(0.01)}},
+        "scale": p(1.0)}}
+    client = GSASClient(fallback_to_subprocess=False)
+    result = client.submit_simulation(recipe, tmp_path, auto_start_server=False)
+    assert result["status"] == "failed" and result["method"] == "server"
+    assert result["failure"]["kind"] == "engine" and result["failure"]["reason"] == "unusable_site"
+    assert "state the equivalent position" in result["failure"]["message"]
+    assert result["failure"]["traceback"]  # the raise site travels with the envelope
+    assert not (tmp_path / "dummy.lst").exists()  # refused before GSAS-II refined anything

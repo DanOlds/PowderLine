@@ -799,8 +799,9 @@ def test_builder_site_mismatch_raises(monkeypatch):
         return Mock(multiplicity=s.multiplicity * 2) if label == "B" else s
 
     monkeypatch.setattr(phase_class, "site", site)
-    with pytest.raises(EngineExecutionError, match=r"payload\.phases\.LaB6\.atoms\.B: .*core has multiplicity 12 \(EB-47\)"):
+    with pytest.raises(EngineExecutionError, match=r"payload\.phases\.LaB6\.atoms\.B: .*core has multiplicity 12 \(EB-47\)") as e:
         native_builder.build_project(model)
+    assert e.value.reason == "unusable_site"  # re/12: the engine's reading of a site differs from core's
 
 
 def test_builder_interior_zero_weights_not_handed():

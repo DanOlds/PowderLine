@@ -127,7 +127,7 @@ tables are dicts keyed by phase name.
 | Reason | Kind | Meaning |
 |---|---|---|
 | `diverged` | engine | a non-finite calculated pattern or value inside the fit window (A130) |
-| `unusable_site` | engine | GSAS-II reads an atom's site differently from core (A117); the run stops before refining |
+| `unusable_site` | engine | the engine reads an atom's site or a symmetry tie differently from core (gsasii A117 / EB-40, EB-05; easydiffraction EB-47); the run stops before refining |
 | `peak_fit_failed` | engine | GSAS-II's peak fit returned nothing (EB-38) |
 | `engine_crashed` | engine | the engine raised or exited abnormally (GSAS-II crash, lmfit/CrysPy/CrysFML error, `tc.exe` could not start) |
 | `output_missing` | engine | TOPAS wrote none of its expected files |

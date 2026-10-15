@@ -440,3 +440,38 @@ def test_post_timeout_is_a_backend_failure_without_fallback(client, monkeypatch,
     result = client.submit_simulation(RECIPE, tmp_path)   # fallback_to_subprocess=True by default
     assert result["status"] == "failed" and result["failure"]["reason"] == "timeout"
     assert calls == [], "a timed-out request must never fall back: the server may still be writing"
+
+
+def test_post_timeout_in_auto_start_branch_never_falls_back(monkeypatch, tmp_path):
+    """Review (re/12): the auto-start branch had its own bare except; a timeout there fell back in-process."""
+    import httpx
+    c = GSASClient()
+    availability = iter([False, True])  # unavailable, then up after auto-start
+    monkeypatch.setattr(c, "is_server_available", lambda: next(availability))
+    monkeypatch.setattr(c, "_start_server_background", lambda verbose: True)
+    monkeypatch.setattr("time.sleep", lambda s: None)
+
+    def timeout(*a, **k):
+        raise httpx.ReadTimeout("300 s")
+    monkeypatch.setattr(c, "_submit_to_server", timeout)
+    calls = []
+    monkeypatch.setattr(c, "_submit_via_subprocess", lambda *a, **k: calls.append(1) or {})
+    result = c.submit_simulation(RECIPE, tmp_path, auto_start_server=True)
+    assert result["status"] == "failed" and result["failure"]["reason"] == "timeout"
+    assert calls == []
+
+
+def test_communication_failure_in_auto_start_branch_with_fallback_disabled(monkeypatch, tmp_path):
+    c = GSASClient(fallback_to_subprocess=False)
+    availability = iter([False, True])
+    monkeypatch.setattr(c, "is_server_available", lambda: next(availability))
+    monkeypatch.setattr(c, "_start_server_background", lambda verbose: True)
+    monkeypatch.setattr("time.sleep", lambda s: None)
+
+    def broken(*a, **k):
+        raise RuntimeError("connection reset")
+    monkeypatch.setattr(c, "_submit_to_server", broken)
+    monkeypatch.setattr(c, "_submit_via_subprocess", lambda *a, **k: pytest.fail("must not fall back"))
+    result = c.submit_simulation(RECIPE, tmp_path, auto_start_server=True)
+    assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
+    assert "connection reset" in result["failure"]["message"]

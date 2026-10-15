@@ -101,8 +101,7 @@ if result["status"] == "ok":
     print(f"  Output files: {[Path(p).name for p in result['output_files']]}")
     for w in result["warnings"]:
         print(f"  warning:  {w['code']}")
-else:
-    print(f"  Refinement failed: {result.get('error')}")
+# (a failed run never reaches here: it raised above)
 
 # ---------------------------------------------------------------------------
 # 3. Server-based refinement (GSASClient)

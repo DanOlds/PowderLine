@@ -199,6 +199,32 @@ class GSASClient:
         return envelopes.failure_envelope("backend", "output_not_visible", self._INVISIBLE_OUTPUT_ERROR,
                                           method="server")
 
+    def _server_attempt(self, recipe_dict: dict, output_dir: Path, verbose: bool) -> Dict[str, Any] | None:
+        """One submission to a server that answered ``/health``; the same rules on every branch (re/12).
+
+        Returns the envelope to hand back (``ok``, the server's own ``failed`` one, a ``timeout`` or
+        ``communication_failed`` backend failure), or ``None`` when the caller may fall back in-process
+        (invisible output, or a transport error with fallback enabled). A timeout never falls back: the
+        server may still be writing into ``output_dir``.
+        """
+        import httpx
+
+        try:
+            return self._submit_to_server_guarded(recipe_dict, output_dir)
+        except httpx.TimeoutException as e:
+            return envelopes.failure_envelope(
+                "backend", "timeout",
+                f"the GSAS-II server did not answer within the request timeout ({e}); not falling back "
+                f"in-process because the server may still be writing into {output_dir}", method="server")
+        except Exception as e:
+            if not self.fallback_to_subprocess:
+                return envelopes.failure_envelope("backend", "communication_failed",
+                                                  f"Server communication failed: {e}", method="server")
+            if verbose:
+                print(f"Server communication failed: {e}")
+                print("   Falling back to subprocess mode...")
+            return None
+
     def _submit_to_server_guarded(self, recipe_dict: dict,
                                   output_dir: Path) -> Dict[str, Any] | None:
         """Submit to the server with the output-visibility guard applied.
@@ -231,8 +257,9 @@ class GSASClient:
             use_server: If False, skip the server entirely and run in-process
 
         Returns:
-            Dictionary with 'success', 'output_files', 'elapsed_time',
-            and optional 'error', 'method' fields
+            An envelope (:mod:`powderline.results`): ``ok`` with the result keys, or ``failed`` with a
+            ``failure`` record; ``method`` says which path ran. The client never raises for an
+            application outcome; the gateway does (``results.raise_if_failed``).
 
         Note:
             A server response only counts if its output files were freshly
@@ -253,8 +280,6 @@ class GSASClient:
     def _dispatch(self, recipe, output_dir: Path, verbose: bool, auto_start_server: bool,
                   use_server: bool) -> Dict[str, Any]:
         """Run the recipe on the server or in this process (see :meth:`submit_simulation`)."""
-        import httpx
-
         recipe_dict = self._normalize_recipe(recipe)
 
         if use_server and server_disabled():
@@ -268,25 +293,10 @@ class GSASClient:
         elif self.is_server_available():
             if not verbose:
                 print(f"   Using GSAS-II server mode")
-            try:
-                result = self._submit_to_server_guarded(recipe_dict, output_dir)
-                if result is not None:
-                    return result
-                # fall through to in-process fallback below
-            except httpx.TimeoutException as e:
-                # Never fall back after a request was accepted: the server may still be writing into output_dir.
-                return envelopes.failure_envelope(
-                    "backend", "timeout",
-                    f"the GSAS-II server did not answer within the request timeout ({e}); not falling back "
-                    f"in-process because the server may still be writing into {output_dir}", method="server")
-            except Exception as e:
-                if not self.fallback_to_subprocess:
-                    return envelopes.failure_envelope("backend", "communication_failed",
-                                                      f"Server communication failed: {e}", method="server")
-
-                if verbose:
-                    print(f"Server communication failed: {e}")
-                    print("   Falling back to subprocess mode...")
+            result = self._server_attempt(recipe_dict, output_dir, verbose)
+            if result is not None:
+                return result
+            # fall through to in-process fallback below
 
         # Try to start server if not available and auto_start_server enabled
         elif auto_start_server:
@@ -300,16 +310,10 @@ class GSASClient:
                 if self.is_server_available():
                     if not verbose:
                         print(f"   Using GSAS-II server mode")
-                    try:
-                        result = self._submit_to_server_guarded(recipe_dict, output_dir)
-                        if result is not None:
-                            return result
-                        # fall through to in-process fallback below
-                    except Exception as e:
-                        if verbose:
-                            print(f"Failed to connect to auto-started server: {e}")
-                        if not verbose:
-                            print(f"   Using subprocess mode (start server with: pixi run gsas-server start)")
+                    result = self._server_attempt(recipe_dict, output_dir, verbose)
+                    if result is not None:
+                        return result
+                    # fall through to in-process fallback below
                 else:
                     if verbose:
                         print(f"   Server started but not responding")
@@ -514,8 +518,10 @@ class GSASClient:
         try:
             result = run_refinement(recipe, output_dir, verbose=verbose, method='subprocess')
         except EngineExecutionError as e:  # R30: PowderLine's own failure (divergence, site, peak fit)
+            import traceback
             return e.result or envelopes.failure_envelope("engine", e.reason, str(e), method="subprocess",
-                                                          elapsed=time.time() - start_time, output_files=files())
+                                                          elapsed=time.time() - start_time, output_files=files(),
+                                                          traceback=traceback.format_exc())
         except Exception as e:
             import traceback
             return envelopes.failure_envelope("engine", "engine_crashed", str(e), method="subprocess",
@@ -523,8 +529,7 @@ class GSASClient:
                                               output_files=files())
         if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
             return envelopes.legacy_failure(result)
-        return envelopes.with_status_fields(result, status="ok",
-                                            converged=(result.get('engine_details') or {}).get('converged'))
+        return envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
 
 
 def _with_validation_warnings(recipe, result: Dict[str, Any]) -> Dict[str, Any]:

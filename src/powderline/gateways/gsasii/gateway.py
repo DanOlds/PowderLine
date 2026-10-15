@@ -225,8 +225,9 @@ def run(
         try:
             result = run_refinement(recipe, output_dir, verbose=verbose, method='subprocess')
         except EngineExecutionError as exc:  # R30: PowderLine's own failure, raised by the frozen executor
+            import traceback
             result = exc.result or envelopes.failure_envelope(
-                "engine", exc.reason, str(exc), method="subprocess",
+                "engine", exc.reason, str(exc), method="subprocess", traceback=traceback.format_exc(),
                 output_files=sorted(str(f) for f in output_dir.glob('*') if f.is_file()))
         if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
             result = envelopes.legacy_failure(result)
@@ -283,8 +284,7 @@ def _frames(result: dict) -> dict:
 
     # re/12: the ok envelope fields (status, converged, envelope_version, the deprecated success alias);
     # the pre-0.2.0 top-level error/traceback keys are dropped (a failure never reaches here: it is raised).
-    return envelopes.with_status_fields(result, status="ok",
-                                        converged=(result.get('engine_details') or {}).get('converged'))
+    return envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
 
 
 def get_gateway() -> Gateway:

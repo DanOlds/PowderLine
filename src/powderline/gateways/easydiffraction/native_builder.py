@@ -305,7 +305,7 @@ def _free_group(build: Build, holder, attrs: dict, recipe, group, *, path: str, 
         where = f"{path} ({', '.join(members)})"
         raise EngineExecutionError(
             f"easydiffraction does not tie {where} as core does: it leaves {unconstrained or 'none'} free where "
-            "core has one parameter (EB-47); the refinement would not be the recipe's")
+            "core has one parameter (EB-47); the refinement would not be the recipe's", reason="unusable_site")
     m = unconstrained[0]
     owner = f"{atom} " if atom else ""
     _free(build, getattr(holder, attrs[m]), getattr(recipe, m), name=f"{phase}_{atom + '_' if atom else ''}{m}",
@@ -398,4 +398,4 @@ def check_sites(model, build: Build) -> None:
     problems = site_problems(model, build)
     if problems:
         raise EngineExecutionError("easydiffraction cannot use these atom positions as stated:\n"
-                                   + "\n".join(f"  - {p}" for p in problems))
+                                   + "\n".join(f"  - {p}" for p in problems), reason="unusable_site")

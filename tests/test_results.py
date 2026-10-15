@@ -108,3 +108,10 @@ def test_exception_crosses_a_process_pool():
 
 def test_execution_backend_error_is_public():
     assert "ExecutionBackendError" in powderline.__all__ and powderline.ExecutionBackendError is ExecutionBackendError
+
+
+def test_converged_of_is_none_for_a_simulation_whatever_the_engine_says():
+    assert results.converged_of({"simulation_mode": True, "engine_details": {"converged": False}}) is None
+    assert results.converged_of({"simulation_mode": False, "engine_details": {"converged": False}}) is False
+    assert results.converged_of({"simulation_mode": False, "engine_details": {}}) is None
+    assert results.converged_of({"engine_details": {"converged": True}}) is True

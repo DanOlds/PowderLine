@@ -87,6 +87,16 @@ def with_status_fields(result: dict, *, status: str, converged: Optional[bool]) 
     return result
 
 
+def converged_of(result: dict) -> Optional[bool]:
+    """The uniform ``converged`` of an engine result: ``None`` for every simulation (nothing was optimized,
+    whatever the engine's own flag says, spec D4), else the engine's flag under ``engine_details.converged``
+    (``None`` when the engine cannot report it)."""
+    if result.get("simulation_mode"):
+        return None
+    value = (result.get("engine_details") or {}).get("converged")
+    return None if value is None else bool(value)
+
+
 def legacy_failure(result: dict, *, kind: str = "engine", reason: str = "engine_crashed") -> dict:
     """Adapt a pre-envelope ``{'success': False, 'error', 'traceback', ...}`` dict (the frozen GSAS-II
     executor's catch-alls) to a ``failed`` envelope."""
