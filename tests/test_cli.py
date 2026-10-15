@@ -74,12 +74,12 @@ def _no_tc_exe(monkeypatch):
     monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe", lambda *a, **kw: None)
 
 
-def test_cli_topas_default_output_path_is_beside_the_recipe(tmp_path, monkeypatch, capsys):
+def test_cli_topas_generate_only_exits_0(tmp_path, monkeypatch, capsys):
     """No --output: the run writes to <recipe dir>/output, the base name is the recipe's directory.
 
     Without a declared TOPAS location the native runner generates the INP and xye
-    only and reports the run as failed (TOPAS is not configured), so the CLI exits
-    1 with that message (P-35).
+    only; that is a normal outcome (status "generated", re/12 D6): the CLI exits 0,
+    lists the files and says how to run them (review focus 4).
     """
     _no_tc_exe(monkeypatch)
     case_dir = tmp_path / "example_case"
@@ -87,8 +87,9 @@ def test_cli_topas_default_output_path_is_beside_the_recipe(tmp_path, monkeypatc
     shutil.copy(TOPAS_LAB6, case_dir / "input.json")
     rc = kicker.main([str(case_dir / "input.json"), "--topas-version", "6"])
     out = capsys.readouterr().out
-    assert rc == 1
-    assert "Refinement failed" in out and "TOPAS is not configured" in out and "--topas-dir" in out
+    assert rc == 0
+    assert "Generated" in out and "TOPAS is not configured" in out and "--topas-dir" in out
+    assert "example_case.inp" in out and "Refinement failed" not in out
     assert (case_dir / "output" / "example_case.inp").exists()
     assert (case_dir / "output" / "example_case.xye").exists()
 
@@ -98,7 +99,7 @@ def test_cli_topas_output_dir_flag(tmp_path, monkeypatch):
     _no_tc_exe(monkeypatch)
     out = tmp_path / "lab6_run"
     rc = kicker.main([str(TOPAS_LAB6), "--output", str(out)])
-    assert rc == 1  # generate-only, see above
+    assert rc == 0  # generate-only is a normal outcome (re/12 D6)
     assert (out / "topas.inp").exists() and (out / "topas.xye").exists()
 
 

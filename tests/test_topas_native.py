@@ -415,7 +415,7 @@ def test_runner_successful_run(tmp_path, monkeypatch):
 
     result = native_run.run_native(model, tmp_path, runner=runner)
 
-    assert result["success"] is True
+    assert result["status"] == "ok"
     assert result["method"] == "topas"
     assert result["simulation_mode"] is False
     assert isinstance(result["rwp"], float)
@@ -510,7 +510,7 @@ def test_runner_exit_code_ignored(tmp_path, monkeypatch):
     monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe", lambda *a, **kw: fake_tc)
 
     result = native_run.run_native(model, tmp_path, runner=bad_runner)
-    assert result["success"] is True
+    assert result["status"] == "ok"
 
 
 def test_runner_missing_output_error(tmp_path, monkeypatch):
@@ -709,7 +709,7 @@ def test_runner_background_run_missing_leaves_the_column_empty(tmp_path, monkeyp
     """No background profile (or a stale one from an earlier run): y_bkg empty + a warning; the fit stands."""
     (tmp_path / "run_bkg_profile.txt").write_text("1 2 3\n", encoding="utf-8")  # stale: removed before the run
     result, calls, _ = _bkg_case(tmp_path, monkeypatch, write_bkg=False)
-    assert result["success"] is True and calls == ["run.inp", "run_bkg.inp"]
+    assert result["status"] == "ok" and calls == ["run.inp", "run_bkg.inp"]
     assert result["fit_profile"]["y_bkg"].isna().all()
     hits = [w for w in result["warnings"] if w["code"] == "topas_background_not_calculated"]
     assert [w["field_path"] for w in hits] == ["payload.background"]
@@ -724,7 +724,7 @@ def test_runner_no_background_modelled_is_zero_and_no_second_run(tmp_path, monke
 
 
 def test_runner_no_tc_exe_generate_only(tmp_path, monkeypatch):
-    """No tc.exe -> success False, method topas_generate_only, files exist."""
+    """No tc.exe -> status "generated", method topas_generate_only, files exist (re/12 D6)."""
     recipe = _rietveld()
     model = schema.validate_recipe(recipe)
 
@@ -735,7 +735,12 @@ def test_runner_no_tc_exe_generate_only(tmp_path, monkeypatch):
     out_dir.mkdir()
     result = native_run.run_native(model, out_dir)
 
-    assert result["success"] is False
+    # re/12 D6: generate-only is a normal outcome, not a failure
+    assert result["status"] == "generated" and result["success"] is True
+    assert result["rwp"] is None and result["converged"] is None
+    assert [w["code"] for w in result["warnings"] if w["code"] == "topas_generate_only"] == ["topas_generate_only"]
+    note = next(w for w in result["warnings"] if w["code"] == "topas_generate_only")
+    assert note["level"] == "info" and "--topas-dir" in note["message"]
     assert result["method"] == "topas_generate_only"
     # default_base_name(output_dir) returns parent.name when output_dir.name == "output"
     base = tmp_path.name
@@ -1046,8 +1051,10 @@ _GSASII_CONTRACT = {
     "refined_parameters": pd.DataFrame,
     "spf_peaks": pd.DataFrame,
     "spf_convergence_diagnostics": pd.DataFrame,
-    "error": type(None),   # None on success
-    "traceback": type(None),  # None on success
+    # re/12: the envelope fields; the pre-0.2.0 error/traceback keys are gone (a failure raises)
+    "status": str,
+    "converged": (bool, type(None)),
+    "envelope_version": str,
 }
 
 
@@ -1066,7 +1073,7 @@ def test_native_result_matches_gsasii_key_and_type_contract(tmp_path, monkeypatc
 
     result = native_run.run_native(model, tmp_path, runner=runner)
 
-    assert result["success"] is True
+    assert result["status"] == "ok"
     for key, expected_type in _GSASII_CONTRACT.items():
         assert key in result, f"missing GSAS-II contract key {key!r}"
         assert isinstance(result[key], expected_type), (
@@ -1195,7 +1202,7 @@ def test_runner_non_ascii_base_name_is_sanitized(tmp_path, monkeypatch):
                         lambda *a, **kw: tmp_path / "TOPAS6" / "tc.exe")
     result = native_run.run_native(model, out, base_name="Ünïcødé",
                                    runner=_fake_topas_runner(results_csv, profile, {"LaB6": _make_peak_list()}))
-    assert result["success"] is True
+    assert result["status"] == "ok"
     assert (out / "topas_results.csv").is_file()
     assert [w["code"] for w in result["warnings"]].count("topas_base_name_sanitized") == 1
     # an ASCII name is untouched and raises no warning
@@ -1219,5 +1226,48 @@ def test_run_native_records_the_executable_that_ran(tmp_path, monkeypatch):
     fake_tc = tmp_path / "declared" / "tc.exe"
     monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe", lambda *a, **kw: fake_tc)
     result = native_run.run_native(model, tmp_path, runner=runner)
-    assert result["success"] is True
+    assert result["status"] == "ok"
     assert result["engine_details"]["tc_path"] == str(fake_tc)
+
+
+# --- re/12: reasons on every TOPAS failure; engine errors wrapped --------------------------------------
+
+def test_missing_results_file_is_output_missing(tmp_path, monkeypatch):
+    model = schema.validate_recipe(_rietveld())
+    fake_tc = tmp_path / "declared" / "tc.exe"
+    monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe", lambda *a, **kw: fake_tc)
+    with pytest.raises(EngineExecutionError) as e:
+        native_run.run_native(model, tmp_path, runner=lambda *a, **k: None)  # writes nothing
+    assert e.value.reason == "output_missing"
+
+
+def test_ragged_profile_row_is_output_malformed(tmp_path):
+    p = tmp_path / "x_profile.txt"
+    p.write_text("1.0 100.0 99.0\n1.1 100.0\n", encoding="utf-8")
+    with pytest.raises(EngineExecutionError) as e:
+        native_run._read_profile(p)
+    assert e.value.reason == "output_malformed" and "x_profile.txt" in str(e.value)
+
+
+def test_non_numeric_token_is_output_malformed():
+    with pytest.raises(EngineExecutionError) as e:
+        native_run._topas_float("abc", "f.txt")
+    assert e.value.reason == "output_malformed"
+
+
+def test_tc_launch_failure_is_engine_crashed(tmp_path, monkeypatch):
+    model = schema.validate_recipe(_rietveld())
+    fake_tc = tmp_path / "declared" / "tc.exe"
+    monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe", lambda *a, **kw: fake_tc)
+
+    def cannot_start(*a, **k):
+        raise PermissionError("tc.exe is not executable")
+    with pytest.raises(EngineExecutionError) as e:
+        native_run.run_native(model, tmp_path, runner=cannot_start)
+    assert e.value.reason == "engine_crashed" and "not executable" in str(e.value)
+
+
+def test_divergence_reason_is_diverged():
+    with pytest.raises(EngineExecutionError) as e:
+        raise native_run._diverged("the pattern")
+    assert e.value.reason == "diverged"

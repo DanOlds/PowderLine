@@ -39,6 +39,7 @@ import numpy as np
 import pandas as pd
 
 from powderline import reports
+from powderline import results as envelopes
 from powderline.exceptions import EngineExecutionError, StructuredWarning
 from powderline.fitstats import compute_fit_statistics
 from powderline.gateways.topas.native_writer import (
@@ -102,7 +103,10 @@ def write_input(model, output_dir, base_name: str | None = None) -> NativeInput:
 
 def run_tc(tc: Path, inp: Path, runner=subprocess.run) -> None:
     """Run ``tc "<inp>"`` in the TOPAS folder. The exit code is not used (C13)."""
-    runner([str(tc), str(inp)], cwd=str(tc.parent), capture_output=True)
+    try:
+        runner([str(tc), str(inp)], cwd=str(tc.parent), capture_output=True)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise EngineExecutionError(f"TOPAS could not be started ({tc}): {exc}", reason="engine_crashed") from exc
 
 
 def run_native(model, output_dir, *, base_name: str | None = None, topas_dir=None, topas_version=None,
@@ -124,13 +128,17 @@ def run_native(model, output_dir, *, base_name: str | None = None, topas_dir=Non
         validated_warnings.append(base_warning)
 
     tc = discover_tc_exe(topas_dir, topas_version)
-    if tc is None:
-        return _empty_result(out, success=False, method="topas_generate_only", elapsed=time.time() - started,
-                             simulation=native.simulation, warnings=validated_warnings,
-                             error=(f"TOPAS is not configured: wrote {base}.inp and {base}.xye only (generate-only). "
-                                    "To run TOPAS, set --topas-dir (the folder containing tc.exe) or topas.dir in "
-                                    ".powderline_config.yaml, and declare its version (--topas-version / "
-                                    "topas.version); PowderLine never guesses where TOPAS is (P-35)"))
+    if tc is None:  # generate-only: a normal outcome, status "generated" (re/12 D6)
+        note = StructuredWarning(
+            code="topas_generate_only", level="info", field_path=None,
+            message=(f"TOPAS is not configured, so only {base}.inp and {base}.xye were written (generate-only). "
+                     "To run TOPAS, set --topas-dir (the folder containing tc.exe) or topas.dir in "
+                     ".powderline_config.yaml and declare its version (--topas-version / topas.version), or run "
+                     "the INP on the TOPAS machine; PowderLine never guesses where TOPAS is (P-35)"))
+        return envelopes.generated_envelope(
+            elapsed=time.time() - started, method="topas_generate_only", warnings=validated_warnings + [note],
+            output_files=sorted(str(f) for f in out.glob("*") if f.is_file()), simulation_mode=native.simulation,
+            engine_details={"engine": "TOPAS", "engine_version": model.engine_version, "tc_path": None})
     if engine_version_check is not None:
         engine_version_check(tc)
     expected = (native.results_file, native.profile_file, *native.phase_files.values())
@@ -142,7 +150,7 @@ def run_native(model, output_dir, *, base_name: str | None = None, topas_dir=Non
         raise EngineExecutionError(
             f"TOPAS stopped without writing its results ({', '.join(missing)} missing in {out}). "
             "TOPAS reports the reason only in its console window; run the INP in a terminal to see it. The "
-            f"expanded input is in {tc.parent / 'tc.log'}.")
+            f"expanded input is in {tc.parent / 'tc.log'}.", reason="output_missing")
     _run_background(model, native, out, tc, runner)
     return build_result(model, native, out, validated_warnings, elapsed=time.time() - started, tc_path=str(tc))
 
@@ -177,7 +185,8 @@ def _topas_float(token: str, where: str) -> float:
     except ValueError:
         if _NON_FINITE.fullmatch(token):
             return math.nan
-        raise EngineExecutionError(f"TOPAS wrote {token!r} in {where}, which is not a number") from None
+        raise EngineExecutionError(f"TOPAS wrote {token!r} in {where}, which is not a number",
+                                   reason="output_malformed") from None
 
 
 def _read_results(path: Path) -> tuple[dict, dict]:
@@ -207,8 +216,11 @@ def _read_results(path: Path) -> tuple[dict, dict]:
 def _read_profile(path: Path) -> np.ndarray:
     rows = [[_topas_float(tok, path.name) for tok in line.split()]
             for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    arr = np.array(rows, dtype=float).reshape(-1, 3)
-    return arr
+    bad = [i + 1 for i, r in enumerate(rows) if len(r) != 3]
+    if bad:
+        raise EngineExecutionError(f"TOPAS wrote {len(bad)} malformed line(s) in {path.name} (first at line "
+                                   f"{bad[0]}): expected three columns (X, Yobs, Ycalc)", reason="output_malformed")
+    return np.array(rows, dtype=float).reshape(-1, 3)
 
 
 def _read_peak_list(path: Path, phase: str) -> list[dict]:
@@ -227,7 +239,7 @@ def _nearest(grid: np.ndarray, x: np.ndarray) -> np.ndarray:
 
 
 def _diverged(what: str) -> EngineExecutionError:
-    return EngineExecutionError(f"the refinement diverged: {what} is not finite (A130)")
+    return EngineExecutionError(f"the refinement diverged: {what} is not finite (A130)", reason="diverged")
 
 
 def build_result(model, native: NativeInput, out: Path, validated_warnings: list, *, elapsed: float,
@@ -260,7 +272,7 @@ def build_result(model, native: NativeInput, out: Path, validated_warnings: list
     lacking = mask & (w > 0) & ~np.isfinite(ycalc)
     if lacking.any():
         raise EngineExecutionError(f"TOPAS did not calculate {int(lacking.sum())} weighted point(s) of the stated "
-                                   f"fit window [{lo}, {hi}] (first at {tth[lacking][0]})")
+                                   f"fit window [{lo}, {hi}] (first at {tth[lacking][0]})", reason="output_malformed")
     ycalc_used = np.where(np.isfinite(ycalc), ycalc, 0.0)
     varied = int(round(values.get("number_independent_parameters", (0, None))[0]))
     fs = compute_fit_statistics(yobs, ycalc_used, w, varied, mask=mask)
@@ -315,7 +327,7 @@ def build_result(model, native: NativeInput, out: Path, validated_warnings: list
             writer.writeheader()
             writer.writerows(spf_rows)
 
-    return {
+    return envelopes.with_status_fields({
         "success": True,
         "run_id": str(uuid.uuid4()),
         "rwp": undefined(fs.rwp),
@@ -345,23 +357,7 @@ def build_result(model, native: NativeInput, out: Path, validated_warnings: list
         "spf_peaks": pd.DataFrame(spf_rows, columns=list(SPF_COLUMNS)) if spf_rows else pd.DataFrame(),
         "spf_convergence_diagnostics": (pd.DataFrame(spf_diag, columns=list(SPF_DIAG_COLUMNS)) if spf_diag
                                         else pd.DataFrame()),
-        "error": None,
-        "traceback": None,
-    }
-
-
-def _empty_result(out: Path, *, success: bool, method: str, elapsed: float, simulation: bool, warnings: list,
-                  error=None) -> dict:
-    return {
-        "success": success, "run_id": str(uuid.uuid4()), "rwp": None, "r_exp": None, "gof": None,
-        "chi2_red": None, "simulation_mode": simulation, "engine_details": {}, "warnings": warnings,
-        "elapsed_time": elapsed, "method": method,
-        "output_files": sorted(str(f) for f in out.glob("*") if f.is_file()),
-        "fit_profile": pd.DataFrame(), "unit_cell_data": {}, "peak_list_data": {},
-        "refined_parameters": pd.DataFrame(columns=list(reports.REFINED_PARAMETERS_COLUMNS)),
-        "spf_peaks": pd.DataFrame(), "spf_convergence_diagnostics": pd.DataFrame(),
-        "error": error, "traceback": None,
-    }
+    }, status="ok", converged=None)  # TOPAS 6 exposes no convergence signal in its files (EB-85)
 
 
 def validate_only_result(model, validated_warnings: list) -> dict:

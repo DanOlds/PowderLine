@@ -294,6 +294,13 @@ def main(argv: list[str] | None = None) -> int:
         _print_validate_only(result, args.input_json, verbose=args.verbose)
         return 0
 
+    if result.get('status') == 'generated':  # the engine's input was written, the engine did not run (re/12 D6)
+        print(f"\n{INFO} Generated the engine input only ({result.get('method')}, {result.get('elapsed_time', 0):.1f}s):")
+        for f in result.get('output_files', []):
+            print(f"   {f}")
+        _print_warnings(result.get('warnings'), verbose=True)  # the topas_generate_only note says how to run it
+        return 0
+
     method = result.get('method', 'unknown')
     mode_emoji = emoji("🚀" if method == 'server' else "🐢")
     print(f"\n{INFO} Executed using {method} mode {mode_emoji} ({result.get('elapsed_time', 0):.1f}s)")
