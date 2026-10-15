@@ -148,6 +148,16 @@ recipes do not validate; see the
   a `timeout` failure and no longer falls back in-process into the same output
   directory. `GSASClient.run_simulation` (unused) is removed. All five
   exception classes pickle (`ProcessPoolExecutor`).
+- **GSAS-II server robustness** (re/14). Requests to `/simulate` run one at a
+  time (a lock; GSAS-II's module state is not thread-safe); a bad
+  `POWDERLINE_SERVER_PORT` or a busy port is reported before the lock and the
+  GSAS-II import, and the client refuses to auto-start a server that cannot
+  bind (`server_unavailable`, naming the variable); the server's unsigned 401
+  and 413 refusals are reported as a rejected or too-large request rather than
+  as an impostor listener; only `/simulate` may carry a large body before the
+  HMAC check (4 KiB elsewhere); Windows sharing violations on the state files
+  are retried then reported; `gsas-server status` says "starting" while
+  GSAS-II loads and `logs` reads only the tail of the log.
 - **TOPAS runs only from a declared location** (P-35): `--topas-dir` or
   `topas.dir` in `.powderline_config.yaml`. The former sweep of
   `C:/TOPAS8 … 5` and the `C:/TOPAS<version>` guess are gone, because TOPAS

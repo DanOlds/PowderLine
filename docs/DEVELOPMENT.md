@@ -439,6 +439,14 @@ crashed server). `gsas-server start` takes a kernel-held lock (`flock` /
 it when the process exits, so concurrent auto-starts never spawn duplicates
 and leftover PID files can never make a dead server look alive.
 
+**One refinement at a time:** the server runs `/simulate` requests strictly in
+sequence (GSAS-II's module-level state is not thread-safe); concurrent clients
+queue. **Port problems are reported, not crashed:** a bad
+`POWDERLINE_SERVER_PORT` or a busy port fails `gsas-server start` with one
+line before GSAS-II is imported, and a client never auto-starts a server that
+cannot bind (`ExecutionBackendError`, `server_unavailable`, naming the
+variable).
+
 **Pin the server port** (only if needed — the default ephemeral port avoids
 collisions between users):
 ```bash

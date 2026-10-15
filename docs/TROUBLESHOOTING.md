@@ -498,8 +498,9 @@ If you see "Server communication failed" errors, check the server logs.
 ❌ Server mode failed: Server not available and fallback disabled
 ```
 
-**Cause:** Server process failed to start, the server is disabled
-(`POWDERLINE_NO_SERVER`), or your per-user state directory is unusable.
+**Cause:** Server process failed to start (a bad or busy `POWDERLINE_SERVER_PORT`
+is named in the message), the server is disabled (`POWDERLINE_NO_SERVER`), or
+your per-user state directory is unusable.
 
 **How the server is found:** each user's server binds `127.0.0.1` on a free
 (ephemeral) port and records its port, PID and a random secret token in a
