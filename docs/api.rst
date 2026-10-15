@@ -38,6 +38,13 @@ Exceptions
 
 .. autoexception:: powderline.EngineExecutionError
 
+.. autoexception:: powderline.ExecutionBackendError
+
+The run-result envelope the exceptions carry (``.result``) and every gateway produces:
+
+.. automodule:: powderline.results
+   :members: ENVELOPE_VERSION, STATUSES, ENGINE_REASONS, BACKEND_REASONS, failure_envelope, generated_envelope, with_status_fields, raise_if_failed
+
 The structured-warning shape shared by validation results and run results:
 
 .. autoclass:: powderline.exceptions.StructuredWarning

@@ -301,11 +301,17 @@ own python: `pip install --no-deps --no-build-isolation --no-index -e .`.
 
 **Error:**
 ```
-❌ Refinement failed:
-   GSAS-II cannot use these atom positions as stated: ... state the equivalent position (1/3, 0, 1/6) ...
-❌ GSAS-II's refinement diverged: the calculated pattern is not finite at 212 of 3767 points in the fit window, so no result is reported ...
-❌ TOPAS is not configured: wrote LaB6.inp and LaB6.xye only (generate-only). To run TOPAS, set --topas-dir (the folder containing tc.exe) or topas.dir in .powderline_config.yaml, and declare its version ...
+❌ Refinement failed (unusable_site): GSAS-II cannot use these atom positions as stated: ... state the equivalent position (1/3, 0, 1/6) ...
+❌ Refinement failed (diverged): GSAS-II's refinement diverged: the calculated pattern is not finite at 212 of 3767 points in the fit window, so no result is reported ...
+   Files written before the failure (kept for diagnosis): .../dummy.gpx, .../dummy.lst
+❌ Could not run the engine (server_unavailable): Server not available and fallback disabled
+ℹ️ Generated the engine input only (topas_generate_only, 0.0s): .../LaB6.inp, .../LaB6.xye
 ```
+
+The word in parentheses is the **reason code** (`e.reason` in the API; the
+table is in [schemas](schemas.md#outputs)). "Refinement failed" means the
+engine ran and failed; "Could not run the engine" means it never ran
+(server, configuration); "Generated" is not a failure at all (exit 0).
 
 **Causes and solutions:**
 1. **A site GSAS-II misreads** (some 2-fold sites in R32, R-3m, R-3c, or a
@@ -316,10 +322,15 @@ own python: `pip install --no-deps --no-build-isolation --no-index -e .`.
    engine (0.1.1 returned success with Rwp 100 %). Reduce the refined set,
    start closer, check correlations in `dummy.lst` (gsasii).
 3. **TOPAS not configured** (PowderLine never guesses where `tc.exe` is, P-35): the INP and `.xye` were written; run them on a
-   machine with TOPAS 6, or pass `--topas-dir`.
-4. **TOPAS wrote no output**: TOPAS 6 reports nothing through its exit code,
+   machine with TOPAS 6, or pass `--topas-dir`. This is `status: "generated"`, not a failure.
+4. **TOPAS wrote no output** (`output_missing`): TOPAS 6 reports nothing through its exit code,
    so a missing output file is the error; its messages are in its console
-   window and `tc.log`.
+   window and `tc.log`. A file it did write but PowderLine cannot read strictly is `output_malformed`.
+5. **The engine did not run** (`Could not run the engine (…)`): `server_unavailable` /
+   `server_disabled` / `output_not_visible` / `communication_failed` / `timeout` are the
+   GSAS-II server's cases (see "Server Not Starting" below); `timeout` deliberately does
+   **not** fall back in-process, because the server may still be writing into the output
+   directory.
 
 Then, as always: validate first, run with `--verbose`, and read the engine's
 log (`dummy.lst` for gsasii; the TOPAS console; the printed lmfit report for

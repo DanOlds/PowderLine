@@ -87,8 +87,13 @@ try:
 except powderline.EngineNotAvailableError as exc:
     # the gateway is installed but its engine is not in this environment
     raise SystemExit(f"  {exc}")
+except powderline.EngineExecutionError as exc:
+    # the engine ran and failed (re/12): the reason code and the files written before the failure
+    raise SystemExit(f"  Refinement failed ({exc.reason}): {exc}\n  kept: {exc.result['output_files']}")
+except powderline.ExecutionBackendError as exc:
+    raise SystemExit(f"  Could not run the engine ({exc.reason}): {exc}")
 
-if result["success"]:
+if result["status"] == "ok":
     print(f"  Refinement complete.  Rwp = {result['rwp']:.3f} %  (uniform statistic; "
           f"GSAS-II's own: {result['engine_details'].get('rwp'):.3f} %)")
     print(f"  Parameters requested/varied: {result['engine_details']['parameters_requested']}/"
@@ -120,8 +125,10 @@ server_result = client.submit_simulation(
     auto_start_server=True,
 )
 
-if server_result["success"]:
+# GSASClient returns the envelope itself (ok or failed) and never raises for an application outcome:
+if server_result["status"] == "ok":
     print(f"  Refinement complete.  method={server_result['method']}")
     print(f"  Output files: {[Path(p).name for p in server_result['output_files']]}")
 else:
-    print(f"  Refinement failed: {server_result.get('error')}")
+    failure = server_result["failure"]
+    print(f"  Refinement failed ({failure['kind']}/{failure['reason']}): {failure['message']}")

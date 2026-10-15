@@ -333,7 +333,11 @@ silent drops (A45); when varied < requested the result warns
 - **TOPAS 6**: `tc.exe` returns the same exit code on success and failure and
   prints its messages only to its console window (EB-60), so **success is
   judged from the expected output files**, removed before the run; a missing
-  file is an `EngineExecutionError` pointing to the console and `tc.log`. A
+  file is an `EngineExecutionError` (`output_missing`) pointing to the console
+  and `tc.log`. Without a declared `tc.exe` (P-35) the run is
+  `status: "generated"` with the `topas_generate_only` note: the INP and `.xye`
+  were written, nothing ran. `converged` is always `null` for TOPAS 6 (no
+  convergence signal in its files, EB-85). A
   non-finite term silently zeroes a phase and the background absorbs the
   pattern (EB-63): a phase with all-zero calculated intensities gets the
   informative `topas_phase_contributes_nothing` (a zero contribution can be
@@ -346,11 +350,20 @@ silent drops (A45); when varied < requested the result warns
   values reported** and the warning `easydiffraction_fit_not_converged`
   (A166). `parameters_varied` is lmfit's count (easydiffraction's
   `n_free_parameters`); a parameter without effect gets no ESD (EB-81).
-- **Divergence is a failure in every engine** (A130): a calculated pattern
-  that is not finite inside the window, or any non-finite number the engine
-  writes (`nan`, `1.#QNAN`, `-nan(ind)`), raises `EngineExecutionError` and
-  the result has no products; the engine's files stay on disk. GSAS-II itself
-  prints wR `nan` and reports 100 % (EB-52); v0.1.1 returned success.
+- **Failures raise, uniformly** (re/12): `powderline.run()` and every gateway
+  raise `EngineExecutionError` when the engine ran and failed — `diverged` (a
+  calculated pattern that is not finite inside the window, or any non-finite
+  number the engine writes: `nan`, `1.#QNAN`, `-nan(ind)`; A130; GSAS-II itself
+  prints wR `nan` and reports 100 %, EB-52; v0.1.1 returned success),
+  `unusable_site` (gsasii, A117, before refining), `peak_fit_failed` (gsasii,
+  EB-38), `engine_crashed` (any engine), `output_missing` / `output_malformed`
+  (TOPAS files, easydiffraction's pattern) — and `ExecutionBackendError` when
+  the engine did not run (the GSAS-II server unavailable, disabled, timed out,
+  or its output not visible). The exception's `.reason` names the case and
+  `.result` is the failed envelope; the files written before the failure stay
+  on disk and are listed in it. Every returned result carries `status`
+  (`ok` / `generated`) and `converged` (`true` / `false` / `null`); see
+  [schemas](schemas.md#outputs).
 - **A phase that contributes nothing** gets the informative
   `<engine>_phase_contributes_nothing` (topas, easydiffraction), never an
   error; gsasii accepts `scale: 0` for the same reason (recipe reuse).
@@ -453,6 +466,7 @@ simulated peak heights changed at the 0.2.0 re-baseline.
 | `topas_phase_contributes_nothing` | topas | info | a phase's calculated intensities are all zero (its scale is 0, or TOPAS discarded a non-finite calculation) |
 | `topas_base_name_sanitized` | topas | warning | the recipe's base name is not ASCII-safe for TOPAS; files are written as `topas.*` |
 | `topas_background_not_calculated` | topas | warning | the background-only run wrote nothing; `y_bkg` empty |
+| `topas_generate_only` | topas | info | no `tc.exe` declared: the INP and `.xye` were written, the engine did not run (`status: "generated"`) |
 | `easydiffraction_parameter_at_limit` | easydiffraction | warning | a refined value ended at a bound or physical limit |
 | `easydiffraction_parameters_not_varied` | easydiffraction | warning | lmfit varied fewer parameters than requested |
 | `easydiffraction_phase_contributes_nothing` | easydiffraction | info | as for topas |

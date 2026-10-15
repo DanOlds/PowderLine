@@ -165,7 +165,9 @@ result = powderline.run(recipe, Path("output/"))
 
 # result keys (tabular outputs are pandas DataFrames; per-phase tables are
 # dicts of DataFrames keyed by phase name); the same for every engine:
-# result['success']                  bool
+# result['status']                   "ok" | "generated"   (a failed run raises; see below)
+# result['converged']                True | False | None  (None: the engine cannot report it, or a simulation)
+# result['envelope_version']         "1"
 # result['rwp'], ['r_exp'], ['gof'], ['chi2_red']   PowderLine's uniform statistics (None where undefined)
 # result['simulation_mode']          bool
 # result['engine_details']           dict: the engine's own statistics, parameters_requested / parameters_varied, ...
@@ -179,7 +181,21 @@ result = powderline.run(recipe, Path("output/"))
 # result['spf_peaks']                DataFrame  (single peak fitting; empty for Rietveld)
 # result['spf_convergence_diagnostics'] DataFrame
 # result['output_files']             list[str]
-# result['error'], result['traceback']   None on success
+# result['success']                  True  (deprecated alias of status == "ok"/"generated"; removed in 0.3.0)
+```
+
+A failed run **raises** (re/12). Catch the two classes separately when the
+distinction matters, or `PowderLineError` for both:
+
+```python
+from powderline import EngineExecutionError, ExecutionBackendError
+
+try:
+    result = powderline.run(recipe, Path("output/"))
+except EngineExecutionError as e:      # the engine ran and failed: diverged, unusable_site, engine_crashed, ...
+    print(e.reason, e.result["output_files"])   # the files written before the failure are kept
+except ExecutionBackendError as e:     # the engine did not run: server_unavailable, timeout, ...
+    print(e.reason)
 ```
 
 **Engine options** are keyword arguments forwarded to the gateway; an option

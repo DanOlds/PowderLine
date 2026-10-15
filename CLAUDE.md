@@ -175,8 +175,13 @@ the non-frozen modules (`fit_report.py`, `sites.py`, `routing.py`,
   every member of a symmetry tie group is stated, with the same flag.
 - Results: uniform `rwp`/`r_exp`/`gof`/`chi2_red` from core `fitstats` over the
   window's weighted points; the engine's own values and
-  `parameters_requested`/`parameters_varied` under `engine_details`;
-  divergence is a failure (`EngineExecutionError`).
+  `parameters_requested`/`parameters_varied` under `engine_details`; every
+  result carries `status` (`ok` / `generated`), `converged` and
+  `envelope_version` (`success` is a deprecated alias); **every failure
+  raises**: `EngineExecutionError` (the engine ran and failed) or
+  `ExecutionBackendError` (it did not run), with `.reason` from
+  `powderline.results.REASONS` and `.result` the failed envelope (re/12;
+  the GSAS-II server speaks the same envelope).
 - Output uses fixed filenames (`refined_parameters.csv`,
   `<phase>_unit_cell_report.csv`, `<phase>_peak_list_report.csv`,
   `fit_profile.txt`; gsasii `dummy.gpx`/`dummy.lst`; topas `<base>.inp` etc.).

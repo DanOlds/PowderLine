@@ -180,14 +180,18 @@ early; fuller provenance later.
 
 **Revisit.** Bundle with the provenance work.
 
-**Disposition (0.2.0, proposed: partly resolved; maintainer to confirm).**
-The native gsasii path reads GSAS-II's stored refinement messages into
-`gsasii_refinement_message` warnings (EB-32), reads its convergence flag into
-`engine_details.converged` with `gsasii_fit_not_converged` (A172), treats a
-non-finite calculated pattern as a **failure** (A130; v0.1.1 returned success
-with Rwp 100 %), and reports a clear `EngineExecutionError` where GSAS-II's
-peak fit failed with a bare `TypeError` (EB-38). Captured console text is not
-collected; keep the id open for that.
+**Disposition (0.2.0, proposed: resolved for refinement failures; maintainer
+to confirm).** The native gsasii path reads GSAS-II's stored refinement
+messages into `gsasii_refinement_message` warnings (EB-32), reads its
+convergence flag into the result's top-level `converged` with
+`gsasii_fit_not_converged` (A172), treats a non-finite calculated pattern as a
+**failure** (A130; v0.1.1 returned success with Rwp 100 %), and reports a
+clear `EngineExecutionError` where GSAS-II's peak fit failed with a bare
+`TypeError` (EB-38). Since re/12 these failures **raise through
+`powderline.run()`** (ledger R30: the frozen executor re-raises
+`EngineExecutionError` instead of returning `success: False`), with reasons
+`diverged`, `unusable_site`, `peak_fit_failed`, `engine_crashed`. Captured
+console text is still not collected; keep the id open for that.
 
 ---
 
@@ -441,6 +445,11 @@ the files locally. This dissolves the divergent-view failure instead of
 detecting it, deletes the guard, and makes cross-node servers (HPC: client on
 a login/worker node, GSAS-II server elsewhere, no shared filesystem) a
 supported topology. Needs protocol versioning for already-running servers.
+
+**Update (re/12).** The server's response is now a versioned envelope
+(`envelope_version: "1"`, `status`, `converged`, `failure`; HTTP 200 for every
+application outcome), so the protocol versioning this entry asks for exists;
+the shared-filesystem assumption itself is unchanged.
 
 **Revisit.** Next branch touching the server protocol, or when the HPC
 deployment work starts.

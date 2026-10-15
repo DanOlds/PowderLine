@@ -60,7 +60,8 @@ reproducible, automatable, and accessible.
 | `fitstats.py` | the uniform Rwp / Rexp / GoF / χ²_red over the fit window with positive weights |
 | `reports.py` | the standardized report writers (`refined_parameters.csv`, unit-cell and peak-list reports, `fit_profile.txt`): one column order, UTF-8, LF |
 | `recipes.py` | `load_recipe_asset` (JSON / YAML) |
-| `exceptions.py` | `PowderLineError`, `SymmetryError`, `GatewayNotInstalledError`, `EngineNotAvailableError`, `EngineVersionError`, `EngineExecutionError`, the `StructuredWarning` shape |
+| `exceptions.py` | `PowderLineError`, `SymmetryError`, `GatewayNotInstalledError`, `EngineNotAvailableError`, `EngineVersionError`, `EngineExecutionError`, `ExecutionBackendError` (both with `.reason` / `.result`), the `StructuredWarning` shape |
+| `results.py` | the run-result envelope (re/12): `ENVELOPE_VERSION`, the reason-code sets, `failure_envelope`, `generated_envelope`, `with_status_fields`, `raise_if_failed` |
 | `config_loader.py`, `mp_interface.py` | `.powderline_config.yaml` and the Materials Project client (engine-free; the simulation tool itself lives in the gsasii gateway) |
 | `_status.py` | console status glyphs |
 
@@ -204,12 +205,18 @@ distribution (out of tree) that provides:
      `env` and `install_command` when the engine is missing — only on a real
      run, never for `validate_only`), imports the engine **lazily**, runs, and
      returns the standardized result dict with the same keys and types as the
-     other gateways (`success`, `run_id`, `rwp`, `r_exp`, `gof`, `chi2_red`,
+     other gateways (`status`, `converged`, `envelope_version`, `run_id`, `rwp`, `r_exp`, `gof`, `chi2_red`,
      `simulation_mode`, `engine_details` with `parameters_requested` /
      `parameters_varied` / `n_points`, `warnings`, `elapsed_time`, `method`,
      `output_files`, `fit_profile`, `unit_cell_data`, `peak_list_data`,
-     `refined_parameters`, `spf_peaks`, `spf_convergence_diagnostics`,
-     `error`, `traceback`). Statistics come from `powderline.fitstats` over
+     `refined_parameters`, `spf_peaks`, `spf_convergence_diagnostics`, and
+     `success`, the deprecated alias). A gateway **never returns a failed
+     result**: it raises `EngineExecutionError` (the engine ran and failed) or
+     `ExecutionBackendError` (it did not run) with a `reason` from
+     `powderline.results.REASONS`, or returns
+     `results.raise_if_failed(envelope)` on an envelope it received; the
+     GSAS-II server/client show the wire form (`results.failure_envelope`,
+     `results.with_status_fields`). Statistics come from `powderline.fitstats` over
      the window's weighted points with P read from the engine after the run;
      the engine's own values go under `engine_details`; divergence (a
      non-finite calculated pattern) raises `EngineExecutionError`.

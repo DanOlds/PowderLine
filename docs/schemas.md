@@ -107,7 +107,7 @@ tables are dicts keyed by phase name.
 
 | Key | Meaning |
 |---|---|
-| `success`, `error`, `traceback` | outcome; `error`/`traceback` are `None` on success |
+| `status`, `converged`, `envelope_version` | outcome (re/12): `status` is `"ok"` or `"generated"` (a TOPAS run whose input was written but no `tc.exe` is declared); **a failed run never returns** — it raises `EngineExecutionError` (the engine ran and failed) or `ExecutionBackendError` (it did not run), each with `.reason` (table below) and `.result`, the failed envelope: `failure = {kind, reason, message, traceback, engine_details}` plus `output_files` (the files written before the failure, kept), `warnings`, `run_id`, `method`, `elapsed_time`. `converged` is `true` / `false` / `null` (`null`: the engine cannot report it — TOPAS 6 — or nothing was refined). `envelope_version` is `"1"`, the GSAS-II server's wire contract. `success` is a deprecated always-`true` alias (removed in 0.3.0); the pre-0.2.0 `error` / `traceback` keys are gone |
 | `run_id` | UUID4 of this run |
 | `rwp`, `r_exp`, `gof`, `chi2_red` | PowderLine's **uniform** statistics over the fit window (percent / dimensionless); `None` where undefined |
 | `simulation_mode` | `true` when nothing was refined |
@@ -121,8 +121,26 @@ tables are dicts keyed by phase name.
 | `refined_parameters` | 9 columns: `parameter_name, descriptive_name, phase_name, phase_idx, atom_name, atom_idx, value, esd, category` |
 | `spf_peaks`, `spf_convergence_diagnostics` | single peak fitting only (empty otherwise; the gsasii and topas column sets differ) |
 
+**Reason codes** (`powderline.results.REASONS`; `e.reason` on the exception,
+`failure.reason` in the envelope):
+
+| Reason | Kind | Meaning |
+|---|---|---|
+| `diverged` | engine | a non-finite calculated pattern or value inside the fit window (A130) |
+| `unusable_site` | engine | GSAS-II reads an atom's site differently from core (A117); the run stops before refining |
+| `peak_fit_failed` | engine | GSAS-II's peak fit returned nothing (EB-38) |
+| `engine_crashed` | engine | the engine raised or exited abnormally (GSAS-II crash, lmfit/CrysPy/CrysFML error, `tc.exe` could not start) |
+| `output_missing` | engine | TOPAS wrote none of its expected files |
+| `output_malformed` | engine | an engine file could not be read strictly (non-numeric token, ragged row, missing points, pattern on other 2θ) |
+| `server_unavailable` | backend | server mode: no GSAS-II server and none could be started |
+| `server_disabled` | backend | `POWDERLINE_NO_SERVER` with `execution_mode='server'` |
+| `output_not_visible` | backend | the server reported ok but its files are not visible to this process (fallback disabled) |
+| `communication_failed` | backend | an HTTP/transport error after a server was found |
+| `timeout` | backend | the request timed out; **no in-process fallback** (the server may still be writing) |
+| `backend_error` | backend | anything else on the execution path before the engine ran (e.g. a recipe the server could not validate) |
+
 With `validate_only=True` the result is a slim summary with the same keys on
-every gateway: `success`, `rwp` (`None`), `elapsed_time` (`0.0`), `method`
+every gateway: `status` (`"validated"`), `success` (the deprecated alias), `rwp` (`None`), `elapsed_time` (`0.0`), `method`
 (`"validate_only"`), `schema_name`, `core_schema_version`,
 `engine_schema_version`, `phases`, `simulation_mode`, `parameters_requested`,
 `warnings`, and `engine` — a dict of the engine's own controls

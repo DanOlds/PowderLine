@@ -194,13 +194,16 @@ tables as pandas DataFrames.
 
 **Result keys (every engine):**
 
-- ``result['success']`` (bool); ``result['error']`` / ``result['traceback']`` (``None`` on success)
+- ``result['status']`` (``"ok"``, or ``"generated"`` for a TOPAS run without a declared ``tc.exe``) and
+  ``result['converged']`` (``True`` / ``False`` / ``None``); a failed run **raises**
+  ``EngineExecutionError`` (the engine ran and failed) or ``ExecutionBackendError`` (it did not run),
+  each with ``.reason`` and ``.result``; ``result['success']`` is a deprecated always-``True`` alias
 - ``result['rwp']``, ``result['r_exp']``, ``result['gof']``, ``result['chi2_red']`` — PowderLine's
   uniform statistics over the fit window (percent / dimensionless; ``None`` where undefined)
 - ``result['simulation_mode']`` (bool)
 - ``result['engine_details']`` (dict) — the engine's own statistics, ``parameters_requested``
   vs ``parameters_varied``, ``n_points``, and per engine ``converged`` / ``calculator`` / ``engine_version``
-- ``result['warnings']`` (list of ``{code, message, field_path}``)
+- ``result['warnings']`` (list of ``{code, message, field_path[, level]}``)
 - ``result['elapsed_time']`` (float), ``result['method']`` (which execution path ran), ``result['run_id']``
 - ``result['fit_profile']`` (DataFrame)
 - ``result['unit_cell_data']`` (dict[str, DataFrame]) — per phase, keyed by phase name

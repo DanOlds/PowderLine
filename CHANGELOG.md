@@ -131,6 +131,23 @@ recipes do not validate; see the
 
 ### Changed
 
+- **Failures raise; results carry `status` and `converged`** (re/12). `powderline.run()`
+  and every gateway raise `EngineExecutionError` (the engine ran and failed:
+  `diverged`, `unusable_site`, `peak_fit_failed`, `engine_crashed`, `output_missing`,
+  `output_malformed`) or the new `ExecutionBackendError` (the engine did not run:
+  `server_unavailable`, `server_disabled`, `output_not_visible`,
+  `communication_failed`, `timeout`, `backend_error`), each with `.reason` and
+  `.result` (the failed envelope, listing the files written before the failure,
+  which are kept). gsasii no longer returns `success: False` dicts (ledger R30).
+  Every returned result has `status` (`"ok"`, or `"generated"` for a TOPAS run
+  without a declared `tc.exe`, on which the CLI now exits 0), `converged`
+  (`true`/`false`/`null`) and `envelope_version` (`"1"`, the GSAS-II server's wire
+  contract); `success` is a deprecated always-`true` alias (removed in 0.3.0);
+  the top-level `error` and `traceback` keys are **removed** -- a consumer
+  reading `result["error"]` now gets `KeyError`. A timed-out server request is
+  a `timeout` failure and no longer falls back in-process into the same output
+  directory. `GSASClient.run_simulation` (unused) is removed. All five
+  exception classes pickle (`ProcessPoolExecutor`).
 - **TOPAS runs only from a declared location** (P-35): `--topas-dir` or
   `topas.dir` in `.powderline_config.yaml`. The former sweep of
   `C:/TOPAS8 … 5` and the `C:/TOPAS<version>` guess are gone, because TOPAS
