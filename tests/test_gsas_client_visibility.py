@@ -475,3 +475,37 @@ def test_communication_failure_in_auto_start_branch_with_fallback_disabled(monke
     result = c.submit_simulation(RECIPE, tmp_path, auto_start_server=True)
     assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
     assert "connection reset" in result["failure"]["message"]
+
+
+# --- re/14 items 2 and 3: a bad port never spawns a doomed server; unsigned rejections read as such ----
+
+def test_auto_start_with_bad_port_env_fails_without_spawning(monkeypatch, tmp_path):
+    import subprocess
+    monkeypatch.delenv("POWDERLINE_NO_SERVER", raising=False)
+    monkeypatch.setenv("POWDERLINE_SERVER_PORT", "auto")
+    monkeypatch.setattr(gsas_server, "state_dir", lambda: tmp_path)
+    monkeypatch.setattr(subprocess, "Popen",
+                        lambda *a, **k: pytest.fail("a server that cannot bind must not be spawned"))
+    c = GSASClient(fallback_to_subprocess=False)
+    monkeypatch.setattr(c, "is_server_available", lambda: False)
+    result = c.submit_simulation(RECIPE, tmp_path, auto_start_server=True)
+    assert result["status"] == "failed" and result["failure"]["reason"] == "server_unavailable"
+    assert "POWDERLINE_SERVER_PORT" in result["failure"]["message"]
+
+
+def test_unsigned_413_is_reported_as_too_large(monkeypatch, own_endpoint, tmp_path):
+    _fake_post(monkeypatch, lambda h: _FakeResponse(413, {"detail": "Request too large"}))
+    monkeypatch.setattr(GSASClient, "is_server_available", lambda self: True)
+    c = GSASClient(fallback_to_subprocess=False)
+    result = c.submit_simulation(RECIPE, tmp_path / "out", auto_start_server=False)
+    assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
+    assert "too large" in result["failure"]["message"] and "did not prove" not in result["failure"]["message"]
+
+
+def test_unsigned_401_is_reported_as_rejected(monkeypatch, own_endpoint, tmp_path):
+    _fake_post(monkeypatch, lambda h: _FakeResponse(401, {"detail": "Unauthorized"}))
+    monkeypatch.setattr(GSASClient, "is_server_available", lambda self: True)
+    c = GSASClient(fallback_to_subprocess=False)
+    result = c.submit_simulation(RECIPE, tmp_path / "out", auto_start_server=False)
+    assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
+    assert "rejected" in result["failure"]["message"] and "did not prove" not in result["failure"]["message"]

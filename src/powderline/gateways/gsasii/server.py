@@ -461,9 +461,23 @@ class SignedRequestMiddleware:
 
 
 def _requested_port() -> int:
-    """Port from ``POWDERLINE_SERVER_PORT``, else 0 (an ephemeral port)."""
+    """Port from ``POWDERLINE_SERVER_PORT``, else 0 (an ephemeral port).
+
+    Raises:
+        ServerStateError: the variable is set but is not a port number (re/14: reported up front, before
+            the start lock and the GSAS-II import, and by the client before it spawns a server).
+    """
     value = os.environ.get(PORT_ENV, '').strip()
-    return int(value) if value else 0
+    if not value:
+        return 0
+    try:
+        port = int(value)
+    except ValueError:
+        port = -1
+    if not 1 <= port <= 65535:
+        raise ServerStateError(f"{PORT_ENV}={value!r} is not a port number (1-65535); unset it for an "
+                               "ephemeral port")
+    return port
 
 
 def _bind_listener(port: int) -> socket.socket:
@@ -770,7 +784,13 @@ class GSASServer:
 
         # Bind first so the endpoint file records the real (ephemeral) port
         # and connections queue from the moment clients can discover it.
-        sock = _bind_listener(_requested_port())
+        requested = _requested_port()
+        try:
+            sock = _bind_listener(requested)
+        except OSError as e:
+            self.logger.error(f"cannot listen on {HOST}:{requested or '<ephemeral>'}: {e}")
+            raise ServerStateError(f"cannot listen on {HOST}:{requested or '<ephemeral>'}: {e} (set {PORT_ENV} "
+                                   "to a free port, or unset it)") from e
         port = sock.getsockname()[1]
         _write_private(ENDPOINT_NAME, json.dumps(
             {'pid': os.getpid(), 'port': port, 'token': self.token}))
@@ -1028,6 +1048,8 @@ def main():
         sys.exit(1)
 
     try:
+        if action in ('start', 'restart'):
+            _requested_port()  # a bad POWDERLINE_SERVER_PORT is reported before the lock and the import
         _run_action(action)
     except ServerStateError as e:
         print(f"Error: {e}")

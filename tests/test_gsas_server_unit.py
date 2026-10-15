@@ -778,3 +778,47 @@ def test_simulate_requests_are_serialized(app_client, tmp_path):
     assert len(windows) == 2
     (s1, e1), (s2, e2) = sorted(windows)
     assert s2 >= e1, f"the two refinements overlapped: {windows}"
+
+
+# --- re/14 item 2: port problems are reported, not crashed -------------------------------------------
+
+def test_requested_port_values(monkeypatch):
+    monkeypatch.delenv("POWDERLINE_SERVER_PORT", raising=False)
+    assert gsas_server._requested_port() == 0
+    monkeypatch.setenv("POWDERLINE_SERVER_PORT", "19472")
+    assert gsas_server._requested_port() == 19472
+
+
+@pytest.mark.parametrize("value", ["auto", "70000", "-1", "19 472"])
+def test_requested_port_rejects_bad_values(monkeypatch, value):
+    monkeypatch.setenv("POWDERLINE_SERVER_PORT", value)
+    with pytest.raises(gsas_server.ServerStateError, match="POWDERLINE_SERVER_PORT"):
+        gsas_server._requested_port()
+
+
+def test_main_start_with_bad_port_exits_before_the_lock(monkeypatch, capsys):
+    monkeypatch.delenv("POWDERLINE_NO_SERVER", raising=False)
+    monkeypatch.setenv("POWDERLINE_SERVER_PORT", "auto")
+    monkeypatch.setattr(sys, "argv", ["gsas_server.py", "start"])
+    monkeypatch.setattr(gsas_server, "_claim_server_lock", lambda *a, **k: pytest.fail("the lock must not be taken"))
+    monkeypatch.setattr(gsas_server, "GSASServer", lambda *a, **k: pytest.fail("server must not be created"))
+    with pytest.raises(SystemExit) as e:
+        gsas_server.main()
+    assert e.value.code == 1 and "POWDERLINE_SERVER_PORT" in capsys.readouterr().out
+
+
+def test_bind_failure_is_a_state_error_before_the_endpoint_is_written(monkeypatch):
+    import logging
+    server = gsas_server.GSASServer.__new__(gsas_server.GSASServer)
+    server.request_count = 0
+    server.start_time = None
+    server.token = TOKEN
+    server.logger = logging.getLogger("powderline.server.test")
+
+    def refuse(port):
+        raise OSError(98, "Address already in use")
+    monkeypatch.setattr(gsas_server, "_bind_listener", refuse)
+    monkeypatch.setattr(gsas_server, "_write_private",
+                        lambda *a, **k: pytest.fail("no endpoint for a server that could not bind"))
+    with pytest.raises(gsas_server.ServerStateError, match="Address already in use"):
+        server.start()

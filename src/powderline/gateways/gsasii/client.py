@@ -34,6 +34,7 @@ from powderline.exceptions import EngineExecutionError
 from powderline.gateways.gsasii import server as gsas_server
 from powderline.gateways.gsasii.server import (
     HOST,
+    MAX_BODY_BYTES,
     NO_SERVER_ENV,
     NO_SERVER_MESSAGE,
     NONCE_HEADER,
@@ -52,6 +53,10 @@ class ServerIdentityError(RuntimeError):
     """A response was not signed with this user's server token."""
 
 
+class ServerRejectedRequest(RuntimeError):
+    """The server refused the request before handling it (its 401/413 replies are deliberately unsigned)."""
+
+
 class GSASClient:
     """Client for communicating with GSAS-II server."""
 
@@ -63,6 +68,7 @@ class GSASClient:
         """
         self.fallback_to_subprocess = fallback_to_subprocess
         self._state_warning_shown = False
+        self._start_error: Optional[str] = None  # why the last auto-start could not even be attempted
 
     def _endpoint(self) -> Optional[Dict[str, Any]]:
         """This user's live server endpoint (``pid``/``port``/``token``), or None.
@@ -115,6 +121,16 @@ class GSASClient:
             resp = httpx.post(url, content=body, headers=headers, timeout=timeout,
                               trust_env=False)
         got = resp.headers.get(RESPONSE_SIGNATURE_HEADER, '')
+        if not got and resp.status_code in (401, 413):
+            # The middleware's own refusals are sent unsigned on purpose (nothing is served unauthenticated);
+            # report them for what they are instead of as an impostor listener (re/14).
+            if resp.status_code == 413:
+                raise ServerRejectedRequest(
+                    f"the GSAS-II server rejected the request as too large ({len(body)} bytes; the limit is "
+                    f"{MAX_BODY_BYTES} bytes): reduce the recipe's embedded data, or run in-process")
+            raise ServerRejectedRequest(
+                "the GSAS-II server rejected the request as unauthenticated: its token does not match this "
+                "client's (a restarted server? run `pixi run -e gsasii gsas-server restart` and retry)")
         expected = sign_response(token, nonce, resp.status_code, resp.content)
         if not secrets.compare_digest(got.encode('utf-8', 'replace'), expected.encode()):
             raise ServerIdentityError(
@@ -139,8 +155,8 @@ class GSASClient:
             return False
         try:
             resp = self._signed_request(endpoint, 'GET', '/health', timeout=2.0)
-        except (httpx.HTTPError, OSError, ServerIdentityError):
-            return False
+        except (httpx.HTTPError, OSError, ServerIdentityError, ServerRejectedRequest):
+            return False  # a 401 on /health = a listener that does not hold our token: not available
         return resp.status_code == 200
 
     @staticmethod
@@ -339,8 +355,9 @@ class GSASClient:
                 'No execution path enabled: use_server=False and fallback_to_subprocess=False — enable one of them.',
                 method="none")
         else:
+            why = f": {self._start_error}" if self._start_error else ""
             return envelopes.failure_envelope("backend", "server_unavailable",
-                                              "Server not available and fallback disabled", method="none")
+                                              f"Server not available and fallback disabled{why}", method="none")
 
     @staticmethod
     def _normalize_recipe(recipe) -> dict:
@@ -374,7 +391,9 @@ class GSASClient:
             return False
         try:
             gsas_server.state_dir()  # a server could not start with an unsafe state dir
+            gsas_server._requested_port()  # nor with a bad POWDERLINE_SERVER_PORT (re/14)
         except ServerStateError as e:
+            self._start_error = str(e)
             if verbose:
                 print(f"   Could not auto-start server: {e}")
             return False
