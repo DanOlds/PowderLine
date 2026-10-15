@@ -60,7 +60,8 @@ recipes do not validate; see the
   relation, not a statement of one. gsasii adds
   `gsasii_background_default_applied` and
   `gsasii_refinement_cycles_default_applied` when those blocks are left out
-  (P-33), alongside the size/strain warning.
+  (P-33), alongside the size/strain warning. `topas_phase_contributes_nothing`
+  and `easydiffraction_phase_contributes_nothing` are level `info`.
 - **Exceptions** in `powderline.exceptions`: `SymmetryError`,
   `GatewayNotInstalledError`, `EngineNotAvailableError`, `EngineVersionError`,
   `EngineExecutionError` (A23; row 1, A56/A57/A61).

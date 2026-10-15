@@ -302,7 +302,7 @@ def _empty_phases(model, build: Build) -> list:
                 code="easydiffraction_phase_contributes_nothing",
                 message=(f"phase {name!r} contributes nothing to the calculated pattern (its scale is 0, or all "
                          "its calculated intensities are zero)"),
-                field_path=f"payload.phases.{name}"))
+                field_path=f"payload.phases.{name}", level="info"))
     return found
 
 

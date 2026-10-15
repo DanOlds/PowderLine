@@ -288,7 +288,7 @@ def build_result(model, native: NativeInput, out: Path, validated_warnings: list
                     message=(f"phase {name!r} contributes nothing to the calculated pattern (all its calculated "
                              "intensities are zero): its scale is 0, or TOPAS discarded a calculation that was "
                              "not finite (TOPAS does not report that, C23)"),
-                    field_path=f"payload.phases.{name}"))
+                    field_path=f"payload.phases.{name}", level="info"))
     spf_rows, spf_diag = _spf_rows(model, native, values) if not isinstance(model, TopasRietveldRecipe) else ([], [])
 
     wavelength = _final(native, values, "lam_lo", p.instrument.radiation.lo.value)
