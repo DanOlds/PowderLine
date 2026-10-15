@@ -78,6 +78,8 @@ def _rietveld_recipe():
             "instrument": _instrument(),
             "phases": {"LaB6": _phase_lab6()},
             "fit_range": [1, 15],
+            # stated, so the "no warnings" assertions below stay meaningful (P-33 warns when left out)
+            "background": {"chebyshev": {"num_coefficients": 1, "coefficients": [0.0], "refine_flag": False}},
             "refinement_controls": {"refinement_cycles": 5}
         }
     }
@@ -1139,3 +1141,51 @@ def test_spf_instrument_profile_with_refined_profile_terms_accepted():
         payload["instrument"]["broadening"][term][1] = True
     validate_recipe(recipe)
 
+
+
+# --- P-33: the gsasii defaults a recipe may leave out are warned, like size/strain ------------------
+
+def _codes(recipe, code):
+    return [w for w in collect_warnings(validate_recipe(recipe)) if w["code"] == code]
+
+
+def test_background_left_out_gives_warning():
+    recipe = copy.deepcopy(_rietveld_recipe())
+    recipe["payload"].pop("background", None)
+    ws = _codes(recipe, "gsasii_background_default_applied")
+    assert len(ws) == 1
+    assert ws[0]["field_path"] == "payload.background" and ws[0].get("level", "warning") == "warning"
+    assert "one fixed Chebyshev term" in ws[0]["message"] and "1.0" in ws[0]["message"]
+
+
+def test_background_without_chebyshev_gives_warning_at_chebyshev():
+    recipe = copy.deepcopy(_rietveld_recipe())
+    recipe["payload"]["background"] = {}
+    ws = _codes(recipe, "gsasii_background_default_applied")
+    assert [w["field_path"] for w in ws] == ["payload.background.chebyshev"]
+
+
+def test_background_stated_gives_no_background_warning():
+    assert _codes(copy.deepcopy(_rietveld_recipe()), "gsasii_background_default_applied") == []
+
+
+def test_refinement_cycles_left_out_gives_warning():
+    recipe = copy.deepcopy(_rietveld_recipe())
+    recipe["payload"]["refinement_controls"] = {}
+    ws = _codes(recipe, "gsasii_refinement_cycles_default_applied")
+    assert [w["field_path"] for w in ws] == ["payload.refinement_controls.refinement_cycles"]
+    assert "5" in ws[0]["message"] and ws[0].get("level", "warning") == "warning"
+
+
+def test_refinement_cycles_stated_gives_no_warning():
+    assert _codes(copy.deepcopy(_rietveld_recipe()), "gsasii_refinement_cycles_default_applied") == []
+
+
+def test_spf_refinement_cycles_left_out_gives_warning():
+    import json
+    from pathlib import Path
+    path = Path(__file__).resolve().parent.parent / "examples" / "example_LaB6_singlepeakfit" / "input.json"
+    recipe = json.loads(path.read_text(encoding="utf-8"))
+    recipe["payload"]["refinement_controls"].pop("refinement_cycles", None)
+    ws = _codes(recipe, "gsasii_refinement_cycles_default_applied")
+    assert [w["field_path"] for w in ws] == ["payload.refinement_controls.refinement_cycles"]

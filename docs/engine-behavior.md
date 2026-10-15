@@ -440,6 +440,8 @@ simulated peak heights changed at the 0.2.0 re-baseline.
 | Code | Engine | Level | Meaning |
 |---|---|---|---|
 | `gsasii_broadening_default_applied` | gsasii | warning | size or strain left out; 10 µm / 0 applied, fixed |
+| `gsasii_background_default_applied` | gsasii | warning | `background` (or its `chebyshev`) left out; one fixed Chebyshev term 0.0 applied instead of GSAS-II's refined constant 1.0 (P-33) |
+| `gsasii_refinement_cycles_default_applied` | gsasii | warning | `refinement_cycles` left out; the default 5 cycles run (P-33) |
 | `gsasii_refinement_message` | gsasii | warning | a message GSAS-II stored with the refinement (correlations, singular parameters, SVD) |
 | `gsasii_fit_not_converged` | gsasii | warning | the last cycle's χ² change was above GSAS-II's tolerance; values kept |
 | `gsasii_parameters_not_varied` | gsasii | warning | GSAS-II varied fewer parameters than requested |

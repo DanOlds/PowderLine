@@ -510,6 +510,35 @@ class _Payload(CoreModel):
 
     _not_null = field_validator("fit_range", "background", mode="before")(_never_null)
 
+    def warnings(self) -> list[StructuredWarning]:
+        """The documented defaults this payload applied because the recipe left them out (P-33, A107/A119):
+        the background (one fixed Chebyshev term 0.0 instead of GSAS-II's own constant 1.0) and the
+        number of refinement cycles. Paths are relative to the payload."""
+        found: list[StructuredWarning] = []
+        if "background" not in self.model_fields_set:
+            where = "background"
+        elif "chebyshev" not in self.background.model_fields_set:
+            where = "background.chebyshev"
+        else:
+            where = None
+        if where is not None:
+            found.append(StructuredWarning(
+                code="gsasii_background_default_applied",
+                message=(f"{where} left out, so PowderLine applies one fixed Chebyshev term 0.0 (no background) "
+                         "instead of GSAS-II's own default (a constant 1.0, which it would refine); state "
+                         "background.chebyshev to choose"),
+                field_path=where,
+            ))
+        controls = self.refinement_controls
+        if "refinement_cycles" not in controls.model_fields_set:
+            found.append(StructuredWarning(
+                code="gsasii_refinement_cycles_default_applied",
+                message=(f"refinement_controls.refinement_cycles left out, so PowderLine runs the default "
+                         f"{controls.refinement_cycles} GSAS-II least-squares cycles; state it to choose"),
+                field_path="refinement_controls.refinement_cycles",
+            ))
+        return found
+
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
         data = handler(self)
@@ -572,8 +601,8 @@ class RietveldPayload(_Payload):
         return v
 
     def warnings(self) -> list[StructuredWarning]:
-        """The size/strain defaults applied (A107), paths relative to the payload."""
-        found = []
+        """The defaults applied: the payload's (background, cycles; P-33) and size/strain per phase (A107)."""
+        found = super().warnings()
         for name, phase in self.phases.items():
             pb = phase.peak_broadening
             for part in pb.defaults_applied():
