@@ -31,13 +31,13 @@ fixed Chebyshev term 0.0, D1).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Annotated, Any, ClassVar, Literal, Mapping, Optional, Union
 
 import gemmi
-from pydantic import Field, StrictBool, TypeAdapter, ValidationError, field_validator, model_serializer, model_validator
+from pydantic import Field, StrictBool, ValidationError, field_validator, model_serializer, model_validator
 from pydantic_core import InitErrorDetails, PydanticCustomError
 
-from powderline.compat import check_engine_schema_version
+from powderline.compat import schema_declarations
 from powderline.exceptions import StructuredWarning
 from powderline.schema_core import (
     UNIT_ANGSTROM,
@@ -49,15 +49,24 @@ from powderline.schema_core import (
     CoreInt,
     CoreModel,
     CoreName,
-    CoreRecipe,
+    EngineRecipe,
     FitRange,
     Phase,
     RefinableParameter,
     XRDData,
+    absent_not_null,
     absent_not_null_schema,
-    check_fit_range_within_data,
-    check_names_unique_ignoring_case,
+    fit_range_problems,
+    fit_window,
     name_keyed,
+    omit_absent,
+    outside_window_problems,
+    raise_problems,
+    recipe_validator,
+    refined_flag_problems,
+    refined_flags,
+    unique_phase_names,
+    unit_schema,
 )
 from powderline.symmetry import cell_tie_groups
 
@@ -68,11 +77,11 @@ SUPPORTED_ENGINE_SCHEMAS = "==1.0.0"
 REQUIRES_CORE_SCHEMA = "==1.0.0"
 
 #: The gateway's schema declarations (``capabilities()`` keys, A65).
-DECLARATIONS = {
-    "engine_schema_version": ENGINE_SCHEMA_VERSION,
-    "supported_engine_schemas": SUPPORTED_ENGINE_SCHEMAS,
-    "requires_core_schema": REQUIRES_CORE_SCHEMA,
-}
+DECLARATIONS = schema_declarations(
+    engine_schema_version=ENGINE_SCHEMA_VERSION,
+    supported_engine_schemas=SUPPORTED_ENGINE_SCHEMAS,
+    requires_core_schema=REQUIRES_CORE_SCHEMA,
+)
 
 SCHEMA_NAMES = ("gsasii.rietveld", "gsasii.spf")
 
@@ -83,17 +92,6 @@ UNIT_CENTIDEG2 = "centidegree^2 2theta"
 UNIT_MICROMETRE = "micrometre"
 UNIT_MICROSTRAIN = "microstrain"
 UNIT_DIMENSIONLESS = "dimensionless"
-
-
-def _unit(unit: str) -> dict:
-    return {"unit": unit}
-
-
-def _never_null(v: Any, info) -> Any:
-    """A block that may be left out is never ``null`` (the A96 convention)."""
-    if v is None:
-        raise ValueError(f"{info.field_name} must not be null; leave it out instead")
-    return v
 
 
 # --- space group (A105, EB-03, EB-41) -----------------------------------------
@@ -157,7 +155,7 @@ class Radiation(CoreModel):
 
     type: Literal["PXC"] = Field(description="GSAS-II instrument type; 'PXC' only (Kα doublets, TOF and "
                                              "neutron are not supported)")
-    wavelength: RefinableParameter = Field(json_schema_extra=_unit(UNIT_ANGSTROM),
+    wavelength: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM),
                                            description="Wavelength (GSAS-II 'Lam'), > 0")
 
     @field_validator("wavelength")
@@ -172,7 +170,7 @@ class Geometry(CoreModel):
     """Detector geometry: GSAS-II ``Bank`` and ``Azimuth`` (plain values)."""
 
     bank: CoreInt = Field(description="GSAS-II 'Bank'")
-    azimuth: CoreFloat = Field(json_schema_extra=_unit(UNIT_DEGREE), description="GSAS-II 'Azimuth'")
+    azimuth: CoreFloat = Field(json_schema_extra=unit_schema(UNIT_DEGREE), description="GSAS-II 'Azimuth'")
 
 
 #: GSAS-II computes Bragg (Rietveld) and Peak List profiles with SH/L >= 0.002 (EB-37).
@@ -182,11 +180,11 @@ AXIAL_DIVERGENCE_MIN = 0.002
 class Corrections(CoreModel):
     """Instrument corrections: zero shift, polarization, axial divergence (GSAS-II 'SH/L')."""
 
-    zero_shift: RefinableParameter = Field(json_schema_extra=_unit(UNIT_CENTIDEG), description="GSAS-II 'Zero'")
-    polarization: RefinableParameter = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS),
+    zero_shift: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_CENTIDEG), description="GSAS-II 'Zero'")
+    polarization: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS),
                                              description="GSAS-II 'Polariz.'")
     axial_divergence: RefinableParameter = Field(
-        json_schema_extra=_unit(UNIT_DIMENSIONLESS),
+        json_schema_extra=unit_schema(UNIT_DIMENSIONLESS),
         description=f"GSAS-II 'SH/L' (asymmetry); at least {AXIAL_DIVERGENCE_MIN} (GSAS-II's own floor, A91)")
 
     @field_validator("axial_divergence")
@@ -203,12 +201,12 @@ class Corrections(CoreModel):
 class InstrumentBroadening(CoreModel):
     """Instrument profile (Caglioti U, V, W; Lorentzian X, Y, Z)."""
 
-    U: RefinableParameter = Field(json_schema_extra=_unit(UNIT_CENTIDEG2))
-    V: RefinableParameter = Field(json_schema_extra=_unit(UNIT_CENTIDEG2))
-    W: RefinableParameter = Field(json_schema_extra=_unit(UNIT_CENTIDEG2))
-    X: RefinableParameter = Field(json_schema_extra=_unit(UNIT_CENTIDEG))
-    Y: RefinableParameter = Field(json_schema_extra=_unit(UNIT_CENTIDEG))
-    Z: RefinableParameter = Field(json_schema_extra=_unit(UNIT_CENTIDEG))
+    U: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_CENTIDEG2))
+    V: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_CENTIDEG2))
+    W: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_CENTIDEG2))
+    X: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_CENTIDEG))
+    Y: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_CENTIDEG))
+    Z: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_CENTIDEG))
 
 
 class Instrument(CoreModel):
@@ -221,14 +219,11 @@ class Instrument(CoreModel):
     corrections: Corrections
     broadening: InstrumentBroadening
 
-    _not_null = field_validator("description", mode="before")(_never_null)
+    _not_null = field_validator("description", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        data = handler(self)
-        if self.description is None:
-            data.pop("description", None)
-        return data
+        return omit_absent(handler(self), self, ("description",))
 
 
 def gsasii_iparm1(instrument: Instrument) -> dict:
@@ -287,10 +282,10 @@ class BackgroundPeaks(CoreModel):
     payload).
     """
 
-    positions: list[RefinableParameter] = Field(min_length=1, json_schema_extra=_unit(UNIT_DEG_2THETA))
-    intensities: list[RefinableParameter] = Field(min_length=1, json_schema_extra=_unit(UNIT_ARBITRARY))
-    pv_gaussian_sigma_sq: list[RefinableParameter] = Field(min_length=1, json_schema_extra=_unit(UNIT_CENTIDEG2))
-    pv_lorentzian_gamma: list[RefinableParameter] = Field(min_length=1, json_schema_extra=_unit(UNIT_CENTIDEG))
+    positions: list[RefinableParameter] = Field(min_length=1, json_schema_extra=unit_schema(UNIT_DEG_2THETA))
+    intensities: list[RefinableParameter] = Field(min_length=1, json_schema_extra=unit_schema(UNIT_ARBITRARY))
+    pv_gaussian_sigma_sq: list[RefinableParameter] = Field(min_length=1, json_schema_extra=unit_schema(UNIT_CENTIDEG2))
+    pv_lorentzian_gamma: list[RefinableParameter] = Field(min_length=1, json_schema_extra=unit_schema(UNIT_CENTIDEG))
 
     @model_validator(mode="after")
     def _lists(self) -> "BackgroundPeaks":
@@ -321,14 +316,11 @@ class Background(CoreModel):
     single_peaks: Optional[BackgroundPeaks] = Field(default=None, json_schema_extra=absent_not_null_schema(),
                                                    description="Left out: no background peaks")
 
-    _not_null = field_validator("chebyshev", "single_peaks", mode="before")(_never_null)
+    _not_null = field_validator("chebyshev", "single_peaks", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        data = handler(self)
-        if self.single_peaks is None:
-            data.pop("single_peaks", None)
-        return data
+        return omit_absent(handler(self), self, ("single_peaks",))
 
 
 # --- Peak List single peaks (gsasii.spf; A90) --------------------------------
@@ -344,10 +336,10 @@ class SinglePeaks(CoreModel):
     least GSAS-II's floor 0.001 (A90).
     """
 
-    positions: list[RefinableParameter] = Field(min_length=1, json_schema_extra=_unit(UNIT_DEG_2THETA))
-    intensities: list[RefinableParameter] = Field(min_length=1, json_schema_extra=_unit(UNIT_ARBITRARY))
-    pv_gaussian_sigma_sq: list[RefinableParameter] = Field(min_length=1, json_schema_extra=_unit(UNIT_CENTIDEG2))
-    pv_lorentzian_gamma: list[RefinableParameter] = Field(min_length=1, json_schema_extra=_unit(UNIT_CENTIDEG))
+    positions: list[RefinableParameter] = Field(min_length=1, json_schema_extra=unit_schema(UNIT_DEG_2THETA))
+    intensities: list[RefinableParameter] = Field(min_length=1, json_schema_extra=unit_schema(UNIT_ARBITRARY))
+    pv_gaussian_sigma_sq: list[RefinableParameter] = Field(min_length=1, json_schema_extra=unit_schema(UNIT_CENTIDEG2))
+    pv_lorentzian_gamma: list[RefinableParameter] = Field(min_length=1, json_schema_extra=unit_schema(UNIT_CENTIDEG))
 
     @model_validator(mode="after")
     def _lists(self) -> "SinglePeaks":
@@ -369,8 +361,8 @@ class SizeBroadening(CoreModel):
     """Crystallite-size broadening; isotropic only in gsasii 1.0.0."""
 
     model: Literal["isotropic"] = Field(description="'isotropic' (uniaxial and ellipsoidal are not supported)")
-    isotropic_size: RefinableParameter = Field(json_schema_extra=_unit(UNIT_MICROMETRE), description="> 0")
-    LG_eta: RefinableParameter = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS),
+    isotropic_size: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_MICROMETRE), description="> 0")
+    LG_eta: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS),
                                        description="Lorentzian fraction of the size profile (1 = Lorentzian)")
 
     @field_validator("isotropic_size")
@@ -385,9 +377,9 @@ class StrainBroadening(CoreModel):
     """Microstrain broadening; isotropic only in gsasii 1.0.0."""
 
     model: Literal["isotropic"] = Field(description="'isotropic' (uniaxial and generalized are not supported)")
-    isotropic_strain: RefinableParameter = Field(json_schema_extra=_unit(UNIT_MICROSTRAIN),
+    isotropic_strain: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_MICROSTRAIN),
                                                  description="Microstrain, Δd/d × 10^6")
-    LG_eta: RefinableParameter = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS),
+    LG_eta: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS),
                                        description="Lorentzian fraction of the strain profile (1 = Lorentzian)")
 
 
@@ -407,7 +399,7 @@ class PeakBroadening(CoreModel):
     size_broadening: SizeBroadening = Field(default_factory=_default_size)
     strain_broadening: StrainBroadening = Field(default_factory=_default_strain)
 
-    _not_null = field_validator("size_broadening", "strain_broadening", mode="before")(_never_null)
+    _not_null = field_validator("size_broadening", "strain_broadening", mode="before")(absent_not_null)
 
     def defaults_applied(self) -> tuple[str, ...]:
         """The parts the recipe left out (the A107 default holds them)."""
@@ -422,13 +414,13 @@ class GsasiiPhase(Phase[RefinableParameter]):
     EB-41), and a refined cell must refine whole GSAS-II cell groups (A95).
     """
 
-    scale: RefinableParameter = Field(json_schema_extra=_unit(UNIT_ARBITRARY),
+    scale: RefinableParameter = Field(json_schema_extra=unit_schema(UNIT_ARBITRARY),
                                       description="Phase scale factor, >= 0 (0 allowed for reusable recipes)")
     peak_broadening: PeakBroadening = Field(
         default_factory=PeakBroadening,
         description="Left out (in whole or part): 10 um, 0 microstrain, isotropic, fixed, with a warning (A107)")
 
-    _gsasii_not_null = field_validator("peak_broadening", mode="before")(_never_null)
+    _gsasii_not_null = field_validator("peak_broadening", mode="before")(absent_not_null)
 
     @field_validator("scale")
     @classmethod
@@ -487,21 +479,6 @@ class SpfControls(CoreModel):
     single_peak_fitting_mode: SinglePeakFittingMode
 
 
-def _refined_flags(obj: Any, loc: tuple = ()) -> list[tuple]:
-    """Locations of every refine flag set to true in a validated model tree (A88)."""
-    if isinstance(obj, RefinableParameter):
-        return [loc] if obj.refine_flag else []
-    if isinstance(obj, ChebyshevBackground):
-        return [loc + ("refine_flag",)] if obj.refine_flag else []
-    if isinstance(obj, CoreModel):
-        return [hit for name in type(obj).model_fields for hit in _refined_flags(getattr(obj, name), loc + (name,))]
-    if isinstance(obj, dict):
-        return [hit for k, v in obj.items() for hit in _refined_flags(v, loc + (k,))]
-    if isinstance(obj, list):
-        return [hit for i, v in enumerate(obj) for hit in _refined_flags(v, loc + (i,))]
-    return []
-
-
 class _Payload(CoreModel):
     """Fields both gsasii workflows share."""
 
@@ -511,7 +488,7 @@ class _Payload(CoreModel):
                                           description="Left out: the data's full 2theta range")
     background: Background = Field(default_factory=Background)
 
-    _not_null = field_validator("fit_range", "background", mode="before")(_never_null)
+    _not_null = field_validator("fit_range", "background", mode="before")(absent_not_null)
 
     def warnings(self) -> list[StructuredWarning]:
         """The documented defaults this payload applied because the recipe left them out (P-33, A107/A119):
@@ -544,47 +521,25 @@ class _Payload(CoreModel):
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        data = handler(self)
-        if self.fit_range is None:
-            data.pop("fit_range", None)
-        return data
+        return omit_absent(handler(self), self, ("fit_range",))
 
     @model_validator(mode="after")
     def _payload_rules(self) -> "_Payload":
-        problems = []
-        try:
-            check_fit_range_within_data(self.fit_range, self.xrd_data)
-        except ValueError as exc:
-            problems.append(InitErrorDetails(type=PydanticCustomError("fit_range", str(exc)), loc=("fit_range",),
-                                             input=None if self.fit_range is None else self.fit_range.model_dump()))
+        problems = fit_range_problems(self.fit_range, self.xrd_data)
         if self.background.single_peaks is not None:
             problems += self._outside_fit_window(self.background.single_peaks, ("background", "single_peaks"),
                                                  "background peak")
         problems += self._workflow_problems()
         if self.refinement_controls.refinement_cycles == 1:  # simulation: nothing refined (A88)
-            for loc in _refined_flags(self):
-                problems.append(InitErrorDetails(
-                    type=PydanticCustomError(
-                        "simulation_refines", "refinement_cycles is 1 (a simulation), so nothing may be "
-                        "refined; set this refine flag to false"),
-                    loc=loc, input=True))
-        if problems:
-            raise ValidationError.from_exception_data(type(self).__name__, problems)
+            problems += refined_flag_problems(self, "refinement_cycles is 1 (a simulation), so nothing may be "
+                                                    "refined; set this refine flag to false")
+        raise_problems(type(self).__name__, problems)
         return self
 
     def _outside_fit_window(self, peaks, loc: tuple, what: str) -> list[InitErrorDetails]:
         """Peak positions outside the fit window (fit_range; open ends are the data limits; A86, A126)."""
-        lo, hi = self.xrd_data.tth[0], self.xrd_data.tth[-1]
-        if self.fit_range is not None:
-            lo = lo if self.fit_range.min is None else self.fit_range.min
-            hi = hi if self.fit_range.max is None else self.fit_range.max
-        return [InitErrorDetails(
-                    type=PydanticCustomError(
-                        "outside_fit_window", "{what} position {value} is outside the fit window "
-                        "[{lo}, {hi}] (fit_range; open ends are the data limits)",
-                        {"what": what, "value": p.value, "lo": lo, "hi": hi}),
-                    loc=loc + ("positions", i), input=p.model_dump())
-                for i, p in enumerate(peaks.positions) if not lo <= p.value <= hi]
+        return outside_window_problems(peaks.positions, fit_window(self.fit_range, self.xrd_data),
+                                       lambda i: loc + ("positions", i), what)
 
     def _workflow_problems(self) -> list[InitErrorDetails]:
         """Rules of one workflow's own fields (located from the payload)."""
@@ -597,11 +552,7 @@ class RietveldPayload(_Payload):
     phases: dict[CoreName, GsasiiPhase] = Field(min_length=1, json_schema_extra=name_keyed)
     refinement_controls: RietveldControls
 
-    @field_validator("phases")
-    @classmethod
-    def _phase_names(cls, v: dict) -> dict:
-        check_names_unique_ignoring_case(v, "phase")
-        return v
+    _phase_names = field_validator("phases")(unique_phase_names)
 
     def warnings(self) -> list[StructuredWarning]:
         """The defaults applied: the payload's (background, cycles; P-33) and size/strain per phase (A107)."""
@@ -671,12 +622,9 @@ class SpfPayload(_Payload):
         return problems
 
 
-class _GsasiiRecipe(CoreRecipe):
-    @model_validator(mode="after")
-    def _versions(self) -> "_GsasiiRecipe":
-        check_engine_schema_version(self.core_schema_version, self.engine_schema_version,
-                                    gateway="gsasii", capabilities=DECLARATIONS)
-        return self
+class _GsasiiRecipe(EngineRecipe):
+    gateway_name: ClassVar[str] = "gsasii"
+    schema_declarations: ClassVar[Mapping[str, Any]] = DECLARATIONS
 
 
 class GsasiiRietveldRecipe(_GsasiiRecipe):
@@ -694,25 +642,5 @@ class GsasiiSpfRecipe(_GsasiiRecipe):
 
 
 GsasiiRecipe = Annotated[Union[GsasiiRietveldRecipe, GsasiiSpfRecipe], Field(discriminator="schema_name")]
-_RECIPE = TypeAdapter(GsasiiRecipe, config={"title": "GsasiiRecipe"})
-_RECIPE_MODELS = {"gsasii.rietveld": GsasiiRietveldRecipe, "gsasii.spf": GsasiiSpfRecipe}
-
-
-def validate_recipe(recipe) -> GsasiiRietveldRecipe | GsasiiSpfRecipe:
-    """Validate a ``gsasii.*`` recipe (dict or model); return the model (idempotent, A50).
-
-    Errors are located from the recipe's top level (``payload.phases.<name>...``);
-    an unknown ``schema_name`` is reported at ``schema_name``.
-    """
-    if isinstance(recipe, (GsasiiRietveldRecipe, GsasiiSpfRecipe)):
-        return recipe
-    if not isinstance(recipe, dict):
-        return _RECIPE.validate_python(recipe)
-    model = _RECIPE_MODELS.get(recipe.get("schema_name"))
-    if model is None:
-        raise ValidationError.from_exception_data("GsasiiRecipe", [InitErrorDetails(
-            type=PydanticCustomError("schema_name", "schema_name '{name}' is not a gsasii workflow; expected one of "
-                                                    "{names}", {"name": recipe.get("schema_name"),
-                                                                "names": ", ".join(SCHEMA_NAMES)}),
-            loc=("schema_name",), input=recipe.get("schema_name"))])
-    return model.model_validate(recipe)
+validate_recipe = recipe_validator({"gsasii.rietveld": GsasiiRietveldRecipe, "gsasii.spf": GsasiiSpfRecipe},
+                                   engine="gsasii", title="GsasiiRecipe")
