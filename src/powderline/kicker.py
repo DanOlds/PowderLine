@@ -11,7 +11,8 @@
 engine flags onto the gateway's run options and calls :func:`powderline.run`;
 the engine is the one named by the recipe's ``schema_name``, so the same
 command serves ``gsasii.*``, ``topas.*`` and ``easydiffraction.*`` recipes.
-An engine flag given for a recipe of another engine is an error. Exit status 0 on success, 1 otherwise.
+An engine flag given for a recipe of another engine is an error. Exit status 0 for an ``ok`` or
+``generated`` outcome, 1 otherwise (a failed run is raised by the gateway and reported by reason).
 
 Engine-free: this module imports no engine; GSAS-II is imported by the gsasii
 gateway when a gsasii recipe runs.
@@ -30,7 +31,7 @@ from pydantic import ValidationError
 from powderline import api
 from powderline._status import CHECK, CROSS, INFO, WARN, emoji
 from powderline.api import run
-from powderline.exceptions import PowderLineError
+from powderline.exceptions import EngineExecutionError, ExecutionBackendError, PowderLineError
 from powderline.recipes import load_recipe_asset
 
 #: CLI flag (argparse dest) -> the gateway it belongs to; any other recipe rejects it.
@@ -274,6 +275,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"See examples/example_LaB6/input.json for a working example.\n")
         return 1
 
+    except EngineExecutionError as e:  # the engine ran and failed (re/12)
+        print(f"\n{CROSS} Refinement failed ({e.reason}): {e}")
+        files = (e.result or {}).get('output_files') or []
+        if files:
+            print("   Files written before the failure (kept for diagnosis):")
+            for f in files:
+                print(f"     {f}")
+        hint = f"{output_dir}/*.lst" if gateway_name == "gsasii" else str(output_dir)
+        print(f"\nCheck the engine's log for details: {hint}\n")
+        return 1
+
+    except ExecutionBackendError as e:  # the engine did not run (re/12)
+        print(f"\n{CROSS} Could not run the engine ({e.reason}): {e}\n")
+        return 1
+
     except (ValueError, PowderLineError) as e:
         print(f"\n{CROSS} {e}\n")
         return 1
@@ -307,18 +323,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.verbose and 'run_id' in result:
         print(f"{INFO} Run ID: {result['run_id']}")
 
-    if not result.get('success'):
-        print(f"\n{CROSS} Refinement failed:")
-        print(f"   {result.get('error', 'Unknown error')}")
-        hint = f"{output_dir}/*.lst" if gateway_name == "gsasii" else str(output_dir)
-        print(f"\nCheck the engine's log for details: {hint}\n")
-        return 1
-
     _print_warnings(result.get('warnings'), verbose=args.verbose)
     if result.get('rwp') is not None:
-        print(f"{CHECK} Refinement complete. Final Rwp: {result['rwp']:.3f}%\n")
+        print(f"{CHECK} Refinement complete. Final Rwp: {result['rwp']:.3f}%")
     else:
-        print(f"{CHECK} Refinement complete.\n")
+        print(f"{CHECK} Refinement complete.")
+    if result.get('converged') is False:
+        print(f"{WARN} The refinement did not converge within the cycle limit; the values are reported as they "
+              "stand (see the *_fit_not_converged warning).")
+    print()
     return 0
 
 

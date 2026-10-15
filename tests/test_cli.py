@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from powderline import kicker
+from powderline.exceptions import EngineExecutionError, ExecutionBackendError
 from subprocess_utils import run_subprocess_utf8
 
 pytestmark = pytest.mark.core
@@ -305,3 +306,37 @@ def test_print_warnings_verbose_lists_info_level(capsys):
                            verbose=True)
     out = capsys.readouterr().out
     assert "an_info: fyi" in out and "warning(s)" not in out
+
+
+# --- re/12: the CLI reports by outcome class ----------------------------------------------------------
+
+def _patched_run(monkeypatch, outcome):
+    def fake_run(*a, **k):
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+    monkeypatch.setattr(kicker, "run", fake_run)
+
+
+def test_cli_engine_failure_prints_reason_and_exits_1(tmp_path, monkeypatch, capsys):
+    from powderline import results
+    env = results.failure_envelope("engine", "diverged", "the pattern is not finite", output_files=["o/dummy.lst"])
+    _patched_run(monkeypatch, EngineExecutionError("the pattern is not finite", reason="diverged", result=env))
+    rc = kicker.main([str(LAB6), "--no-server", "--output", str(tmp_path / "o")])
+    out = capsys.readouterr().out
+    assert rc == 1 and "Refinement failed (diverged)" in out and "not finite" in out and "dummy.lst" in out
+
+
+def test_cli_backend_failure_prints_reason_and_exits_1(tmp_path, monkeypatch, capsys):
+    _patched_run(monkeypatch, ExecutionBackendError("no server", reason="server_unavailable"))
+    rc = kicker.main([str(LAB6), "--use-server", "--output", str(tmp_path / "o")])
+    out = capsys.readouterr().out
+    assert rc == 1 and "Could not run the engine (server_unavailable)" in out and "no server" in out
+
+
+def test_cli_unconverged_result_says_so(tmp_path, monkeypatch, capsys):
+    _patched_run(monkeypatch, {"status": "ok", "converged": False, "rwp": 7.1, "method": "subprocess",
+                               "elapsed_time": 1.0, "warnings": [], "output_files": []})
+    rc = kicker.main([str(LAB6), "--no-server", "--output", str(tmp_path / "o")])
+    out = capsys.readouterr().out
+    assert rc == 0 and "Final Rwp: 7.100%" in out and "did not converge" in out
