@@ -28,7 +28,7 @@ import math
 import re
 from fractions import Fraction
 from dataclasses import dataclass
-from typing import Annotated, Any, Callable, Generic, Literal, Optional, TypeVar
+from typing import Annotated, Any, Callable, ClassVar, Generic, Literal, Mapping, Optional, Sequence, TypeVar, Union
 
 import gemmi
 import numpy as np
@@ -43,6 +43,7 @@ from pydantic import (
     PrivateAttr,
     Strict,
     StrictBool,
+    TypeAdapter,
     ValidationError,
     WithJsonSchema,
     field_validator,
@@ -113,7 +114,7 @@ UNIT_ARBITRARY = "arbitrary"
 UNIT_INV_INTENSITY2 = "1/intensity^2"
 
 
-def _unit(unit: str) -> dict:
+def unit_schema(unit: str) -> dict:
     return {"unit": unit}
 
 
@@ -413,10 +414,10 @@ class XRDData(BaseModel):
 
     model_config = _STRICT
 
-    tth: list[CoreFloat] = Field(description="Two-theta values", json_schema_extra=_unit(UNIT_DEG_2THETA))
-    Itth: list[CoreFloat] = Field(description="Intensity values", json_schema_extra=_unit(UNIT_ARBITRARY))
+    tth: list[CoreFloat] = Field(description="Two-theta values", json_schema_extra=unit_schema(UNIT_DEG_2THETA))
+    Itth: list[CoreFloat] = Field(description="Intensity values", json_schema_extra=unit_schema(UNIT_ARBITRARY))
     Itth_weights: list[CoreFloat] = Field(description="Intensity weights (1/sigma^2)",
-                                      json_schema_extra=_unit(UNIT_INV_INTENSITY2))
+                                      json_schema_extra=unit_schema(UNIT_INV_INTENSITY2))
     filename: str | None = Field(default=None, description="Original filename for reference")
 
     @model_validator(mode='after')
@@ -629,7 +630,7 @@ class ChebyshevBackground(BaseModel):
 P = TypeVar("P", RefinableParameter, BoundedRefinableParameter)
 
 
-def _absent_not_null(v: Any, info) -> Any:
+def absent_not_null(v: Any, info) -> Any:
     """A field that may be left out is never ``null`` (A96): reject an explicit null."""
     if v is None:
         raise ValueError(f"{info.field_name} must not be null; leave it out instead")
@@ -648,7 +649,7 @@ def absent_not_null_schema(unit: Optional[str] = None):
         if any_of:
             schema.update(next(s for s in any_of if s.get("type") != "null"))
         if unit:
-            schema.update(_unit(unit))
+            schema.update(unit_schema(unit))
     return extra
 
 
@@ -657,12 +658,12 @@ class UnitCell(CoreModel, Generic[P]):
     derives it from a..gamma (A75). The values must fit the space group (A77,
     checked by :class:`Phase`)."""
 
-    a: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM))
-    b: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM))
-    c: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM))
-    alpha: P = Field(json_schema_extra=_unit(UNIT_DEGREE))
-    beta: P = Field(json_schema_extra=_unit(UNIT_DEGREE))
-    gamma: P = Field(json_schema_extra=_unit(UNIT_DEGREE))
+    a: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM))
+    b: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM))
+    c: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM))
+    alpha: P = Field(json_schema_extra=unit_schema(UNIT_DEGREE))
+    beta: P = Field(json_schema_extra=unit_schema(UNIT_DEGREE))
+    gamma: P = Field(json_schema_extra=unit_schema(UNIT_DEGREE))
 
     @field_validator("a", "b", "c")
     @classmethod
@@ -693,12 +694,12 @@ _UANISO_KEYS = ("U11", "U22", "U33", "U12", "U13", "U23")
 class UanisoTensor(CoreModel, Generic[P]):
     """Anisotropic ADPs: all six of U11, U22, U33, U12, U13, U23, each a parameter (A^2)."""
 
-    U11: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM2))
-    U22: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM2))
-    U33: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM2))
-    U12: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM2))
-    U13: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM2))
-    U23: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM2))
+    U11: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM2))
+    U22: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM2))
+    U33: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM2))
+    U12: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM2))
+    U13: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM2))
+    U23: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM2))
 
 
 #: JSON Schema of the ADP pairing (A96): ``ADP`` selects which one of ``Uiso`` /
@@ -743,7 +744,7 @@ class Atom(CoreModel, Generic[P]):
         default=None, json_schema_extra=absent_not_null_schema(),
         description="All six of U11, U22, U33, U12, U13, U23; required when ADP is 'Uaniso', else left out")
 
-    _not_null = field_validator("Multiplicity", "Uiso", "Uaniso", mode="before")(_absent_not_null)
+    _not_null = field_validator("Multiplicity", "Uiso", "Uaniso", mode="before")(absent_not_null)
 
     @field_validator("element")
     @classmethod
@@ -1429,6 +1430,147 @@ class CoreRecipe(CoreModel):
     @classmethod
     def _metadata(cls, v):
         return _check_metadata(v)
+
+
+# --- engine schema building blocks (P-37) -------------------------------------
+# What every engine schema needs and none should write twice: the pieces a
+# gateway's ``schema.py`` composes its payload rules and recipe classes from.
+
+
+def refined_flags(obj: Any, loc: tuple = ()) -> list[tuple]:
+    """Locations of every refine flag set to true in a validated model tree (A88)."""
+    if isinstance(obj, (RefinableParameter, BoundedRefinableParameter)):
+        return [loc] if obj.refine_flag else []
+    if isinstance(obj, ChebyshevBackground):
+        return [loc + ("refine_flag",)] if obj.refine_flag else []
+    if isinstance(obj, CoreModel):
+        return [hit for name in type(obj).model_fields for hit in refined_flags(getattr(obj, name), loc + (name,))]
+    if isinstance(obj, dict):
+        return [hit for k, v in obj.items() for hit in refined_flags(v, loc + (k,))]
+    if isinstance(obj, list):
+        return [hit for i, v in enumerate(obj) for hit in refined_flags(v, loc + (i,))]
+    return []
+
+
+def custom_error(kind: str, message: str, loc: tuple, input_: Any, **ctx) -> InitErrorDetails:
+    """One located problem for :func:`raise_problems` (pydantic's own error shape, A70)."""
+    return InitErrorDetails(type=PydanticCustomError(kind, message, ctx or None), loc=loc, input=input_)
+
+
+def raise_problems(title: str, problems: list) -> None:
+    """Raise every collected problem at once as one ``ValidationError`` titled ``title``; nothing if none."""
+    if problems:
+        raise ValidationError.from_exception_data(title, problems)
+
+
+def omit_absent(data: dict, model: BaseModel, names: tuple) -> dict:
+    """Drop from a dump the optional blocks the recipe left out (held as ``None``; A96)."""
+    for name in names:
+        if getattr(model, name) is None:
+            data.pop(name, None)
+    return data
+
+
+def unique_phase_names(v: dict) -> dict:
+    """``field_validator("phases")`` body: names unique ignoring case."""
+    check_names_unique_ignoring_case(v, "phase")
+    return v
+
+
+def fit_window(fit_range: Optional[FitRange], xrd_data: XRDData) -> tuple:
+    """The fit window as stated: the data's ends, each overridden by a stated limit (open ends stay).
+
+    Not :func:`fit_limits_on_data`, which snaps the limits to data points.
+    """
+    lo, hi = xrd_data.tth[0], xrd_data.tth[-1]
+    if fit_range is not None:
+        lo = lo if fit_range.min is None else fit_range.min
+        hi = hi if fit_range.max is None else fit_range.max
+    return lo, hi
+
+
+def fit_range_problems(fit_range: Optional[FitRange], xrd_data: XRDData) -> list:
+    """:func:`check_fit_range_within_data` as a located problem at ``fit_range``."""
+    try:
+        check_fit_range_within_data(fit_range, xrd_data)
+    except ValueError as exc:
+        return [custom_error("fit_range", str(exc), ("fit_range",),
+                             None if fit_range is None else fit_range.model_dump())]
+    return []
+
+
+def outside_window_problems(params: Sequence, window: tuple, loc: Callable, what: str) -> list:
+    """Peak positions outside the fit window (A86, A126).
+
+    ``params`` are parameter models (``.value``), ``window`` is :func:`fit_window`,
+    ``loc(i)`` the location of the i-th position.
+    """
+    lo, hi = window
+    return [custom_error("outside_fit_window", "{what} position {value} is outside the fit window [{lo}, {hi}] "
+                         "(fit_range; open ends are the data limits)", loc(i), p.model_dump(),
+                         what=what, value=p.value, lo=lo, hi=hi)
+            for i, p in enumerate(params) if not lo <= p.value <= hi]
+
+
+def refined_flag_problems(model: BaseModel, message: str) -> list:
+    """A simulation refines nothing (A88): one ``simulation_refines`` problem per refine flag set."""
+    return [custom_error("simulation_refines", message, loc, True) for loc in refined_flags(model)]
+
+
+class EngineRecipe(CoreRecipe):
+    """The top level of an engine's recipes: the core frame plus the engine's version check.
+
+    A subclass states ``gateway_name`` and ``schema_declarations`` (the module's
+    ``DECLARATIONS``), narrows ``schema_name`` and types ``payload``. Both are
+    class variables: they add nothing to the JSON Schema.
+    """
+
+    gateway_name: ClassVar[str]
+    schema_declarations: ClassVar[Mapping[str, Any]]
+
+    @model_validator(mode="after")
+    def _versions(self) -> "EngineRecipe":
+        from powderline.compat import check_engine_schema_version  # compat imports this module
+
+        cls = type(self)
+        if not hasattr(cls, "gateway_name") or not hasattr(cls, "schema_declarations"):
+            raise TypeError(f"{cls.__name__} must set gateway_name and schema_declarations")
+        check_engine_schema_version(self.core_schema_version, self.engine_schema_version,
+                                    gateway=cls.gateway_name, capabilities=cls.schema_declarations)
+        return self
+
+
+def recipe_validator(models: Mapping[str, type], *, engine: str, title: str) -> Callable:
+    """The ``validate_recipe`` of an engine: ``schema_name`` -> model (A50, idempotent).
+
+    A dict is dispatched on ``schema_name`` (an unknown one is reported at
+    ``schema_name``); a model is returned as is; anything else is validated by
+    the union of ``models`` so that pydantic reports it.
+    """
+    kinds = tuple(models.values())
+    if len(kinds) == 1:
+        adapter = TypeAdapter(kinds[0])
+    else:
+        adapter = TypeAdapter(Annotated[Union[kinds], Field(discriminator="schema_name")], config={"title": title})
+    article = "an" if engine[:1] in "aeiou" else "a"
+    names = ", ".join(models)
+
+    def validate_recipe(recipe):
+        if isinstance(recipe, kinds):
+            return recipe
+        if not isinstance(recipe, dict):
+            return adapter.validate_python(recipe)
+        model = models.get(recipe.get("schema_name"))
+        if model is None:
+            raise ValidationError.from_exception_data(title, [custom_error(
+                "schema_name", "schema_name '{name}' is not " + article + " {engine} workflow; expected one of "
+                "{names}", ("schema_name",), recipe.get("schema_name"), name=recipe.get("schema_name"),
+                engine=engine, names=names)])
+        return model.model_validate(recipe)
+
+    validate_recipe.__doc__ = (f"Validate {article} ``{engine}.*`` recipe (dict or model); return the model "
+                               "(idempotent, A50).")
+    return validate_recipe
 
 
 # --- warnings (A23, A115) ----------------------------------------------------

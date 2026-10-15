@@ -65,6 +65,16 @@ def declarations(capabilities: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     return {k: capabilities[k] for k in DECLARATION_KEYS}
 
 
+def schema_declarations(*, engine_schema_version: str, supported_engine_schemas: str,
+                        requires_core_schema: RequiresCore, **extra: Any) -> Dict[str, Any]:
+    """A gateway's ``DECLARATIONS``: the :data:`DECLARATION_KEYS` in order, then any engine extras."""
+    out: Dict[str, Any] = {"engine_schema_version": engine_schema_version,
+                           "supported_engine_schemas": supported_engine_schemas,
+                           "requires_core_schema": requires_core_schema}
+    out.update(extra)
+    return out
+
+
 def required_core_schemas(requires: RequiresCore, engine_schema_version: str) -> str:
     """The core specifier that ``engine_schema_version`` requires.
 
