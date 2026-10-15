@@ -42,8 +42,11 @@ Exceptions
 
 The run-result envelope the exceptions carry (``.result``) and every gateway produces:
 
+``powderline.results.ENVELOPE_VERSION`` (``"1"``), ``STATUSES`` (``ok``, ``generated``, ``failed``),
+``ENGINE_REASONS`` and ``BACKEND_REASONS`` (the reason codes, tabulated in :doc:`schemas`):
+
 .. automodule:: powderline.results
-   :members: ENVELOPE_VERSION, STATUSES, ENGINE_REASONS, BACKEND_REASONS, failure_envelope, generated_envelope, with_status_fields, raise_if_failed
+   :members: failure_envelope, generated_envelope, with_status_fields, raise_if_failed
 
 The structured-warning shape shared by validation results and run results:
 

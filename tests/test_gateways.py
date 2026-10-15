@@ -220,7 +220,7 @@ def test_gsasii_version_check_bypassed_with_allow_unsupported(tmp_path, monkeypa
     assert call_kwargs["verbose"] is True
     assert call_kwargs["method"] == "subprocess"
     # the gateway's own result normalisation applied
-    assert result["error"] is None
+    assert result["status"] == "ok" and "error" not in result  # re/12 envelope
     assert result["refined_parameters"].empty
 
 

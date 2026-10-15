@@ -20,14 +20,13 @@ import pandas as pd
 from powderline import reports
 from powderline.exceptions import EngineExecutionError, ExecutionBackendError
 
-#: The wire contract's own version (KI-12): bump when the envelope's keys or meanings change.
+# ENVELOPE_VERSION is the wire contract's own version (KI-12): bump it when the envelope's keys or
+# meanings change. A returned result's status is "ok" or "generated"; "failed" is raised. The two
+# reason sets are failure.kind == "engine" (the engine ran and failed) and "backend" (it did not run).
 ENVELOPE_VERSION = "1"
-#: A returned result is ``ok`` or ``generated``; ``failed`` is raised.
 STATUSES = ("ok", "generated", "failed")
-#: ``failure.kind == "engine"``: the engine ran and failed.
 ENGINE_REASONS = frozenset({"diverged", "unusable_site", "peak_fit_failed", "engine_crashed",
                             "output_missing", "output_malformed"})
-#: ``failure.kind == "backend"``: the engine did not run.
 BACKEND_REASONS = frozenset({"server_unavailable", "server_disabled", "output_not_visible",
                              "communication_failed", "timeout", "backend_error"})
 REASONS = ENGINE_REASONS | BACKEND_REASONS
