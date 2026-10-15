@@ -85,6 +85,7 @@ def test_symmetry_error_raised_in_a_validator_is_reported_by_pydantic():
 
 
 def test_structured_warning_shape():
-    assert set(StructuredWarning.__annotations__) == {"code", "message", "field_path"}
+    assert StructuredWarning.__required_keys__ == {"code", "message", "field_path"}
+    assert StructuredWarning.__optional_keys__ == {"level"}  # P-34: absent means "warning"
     w: StructuredWarning = {"code": "W001", "message": "m", "field_path": None}
-    assert w["field_path"] is None
+    assert w["field_path"] is None and w.get("level", "warning") == "warning"

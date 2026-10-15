@@ -26,7 +26,7 @@ This module must never import an engine (enforced by an import-block test).
 
 from __future__ import annotations
 
-from typing import Optional, TypedDict
+from typing import Literal, Optional, TypedDict
 
 
 class PowderLineError(Exception):
@@ -86,14 +86,26 @@ class EngineExecutionError(PowderLineError):
     """The engine ran and failed."""
 
 
-class StructuredWarning(TypedDict):
+class _StructuredWarningRequired(TypedDict):
+    code: str
+    message: str
+    field_path: Optional[str]
+
+
+class StructuredWarning(_StructuredWarningRequired, total=False):
     """One entry of the ``warnings`` list in results and ``validate()`` output.
 
     ``field_path`` is the dotted recipe path the warning refers to, or ``None``
     when it is not tied to one field. Plumbed into results per gateway in
     re/04-06.
+
+    ``level`` (P-34) is ``"warning"`` -- something the user should act on or
+    decide about (a default applied, a parameter at a limit) -- or ``"info"``
+    -- a record of something PowderLine did that changes no outcome, such as a
+    coordinate held at its exact symmetry value. Absent means ``"warning"``;
+    consumers read it as ``w.get("level", "warning")``. The CLI prints
+    warnings and only counts info entries unless ``--verbose``; a GUI can show
+    both.
     """
 
-    code: str
-    message: str
-    field_path: Optional[str]
+    level: Literal["warning", "info"]  # optional (total=False); absent means "warning"

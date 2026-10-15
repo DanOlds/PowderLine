@@ -283,3 +283,23 @@ def test_use_server_with_no_server_env_exits(tmp_path, monkeypatch, capsys):
     assert rc == 1
     assert "POWDERLINE_NO_SERVER" in capsys.readouterr().out
     assert not out_dir.exists()
+
+
+# --- warning levels (P-34): info-level entries are counted, listed only with --verbose -----------
+
+def test_print_warnings_summarises_info_level(capsys):
+    kicker._print_warnings([
+        {"code": "a_warning", "message": "act on this", "field_path": "p.x"},
+        {"code": "an_info", "message": "for your information", "field_path": "p.y", "level": "info"},
+    ])
+    out = capsys.readouterr().out
+    assert "1 warning(s)" in out and "a_warning: act on this (p.x)" in out
+    assert "an_info" not in out
+    assert "1 informative note(s)" in out and "--verbose" in out
+
+
+def test_print_warnings_verbose_lists_info_level(capsys):
+    kicker._print_warnings([{"code": "an_info", "message": "fyi", "field_path": None, "level": "info"}],
+                           verbose=True)
+    out = capsys.readouterr().out
+    assert "an_info: fyi" in out and "warning(s)" not in out

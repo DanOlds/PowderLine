@@ -170,7 +170,7 @@ _ENGINE_ITEM_LABELS = {'refinement_cycles': 'Refinement cycles', 'iters': 'Itera
                        'engine_version': 'Engine version', 'calculator': 'Calculator'}
 
 
-def _print_validate_only(result: dict, input_path: Path) -> None:
+def _print_validate_only(result: dict, input_path: Path, verbose: bool = False) -> None:
     """Print the uniform ``validate_only`` summary (``powderline.registry.validate_only_summary``, P-28)."""
     print(f"{CHECK} Recipe validation successful: {input_path}")
     print(f"   Schema name: {result['schema_name']}")
@@ -182,16 +182,33 @@ def _print_validate_only(result: dict, input_path: Path) -> None:
         print(f"   {_ENGINE_ITEM_LABELS.get(key, key.replace('_', ' ').capitalize())}: {value}")
     if result['simulation_mode']:
         print("   Mode: Simulation (all parameters locked)")
-    _print_warnings(result['warnings'])
+    _print_warnings(result['warnings'], verbose=verbose)
 
 
-def _print_warnings(warnings) -> None:
+def _print_warnings(warnings, verbose: bool = False) -> None:
+    """Print the structured warnings: ``warning``-level entries always, ``info``-level ones only with
+    ``verbose`` (otherwise their count and a hint; P-34)."""
     if not warnings:
         return
-    print(f"{WARN} {len(warnings)} warning(s):")
-    for w in warnings:
+    actionable = [w for w in warnings if w.get('level', 'warning') != 'info']
+    informative = [w for w in warnings if w.get('level', 'warning') == 'info']
+
+    def _line(w) -> str:
         where = f" ({w['field_path']})" if w.get('field_path') else ""
-        print(f"   - {w['code']}: {w['message']}{where}")
+        return f"   - {w['code']}: {w['message']}{where}"
+
+    if actionable:
+        print(f"{WARN} {len(actionable)} warning(s):")
+        for w in actionable:
+            print(_line(w))
+    if informative:
+        if verbose:
+            print(f"{INFO} {len(informative)} informative note(s):")
+            for w in informative:
+                print(_line(w))
+        else:
+            print(f"{INFO} {len(informative)} informative note(s) (values held at their symmetry-derived "
+                  f"form, etc.); run with --verbose to list them")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -274,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if args.validate_only:
-        _print_validate_only(result, args.input_json)
+        _print_validate_only(result, args.input_json, verbose=args.verbose)
         return 0
 
     method = result.get('method', 'unknown')
@@ -290,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nCheck the engine's log for details: {hint}\n")
         return 1
 
-    _print_warnings(result.get('warnings'))
+    _print_warnings(result.get('warnings'), verbose=args.verbose)
     if result.get('rwp') is not None:
         print(f"{CHECK} Refinement complete. Final Rwp: {result['rwp']:.3f}%\n")
     else:

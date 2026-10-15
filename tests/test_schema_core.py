@@ -2623,3 +2623,24 @@ def test_check_fit_range_within_data_open_window_needs_two_weighted_points():
     with pytest.raises(ValueError, match=r"holds 1 data point\(s\)"):
         check_fit_range_within_data(None, XRDData(tth=[1.0, 2.0], Itth=[1.0, 1.0], Itth_weights=[0.0, 1.0]))
     check_fit_range_within_data(None, XRDData(tth=[1.0, 2.0], Itth=[1.0, 1.0], Itth_weights=[1.0, 1.0]))  # ok
+
+
+# --- structured warning level (P-34) -------------------------------------------------------------
+
+from powderline.exceptions import StructuredWarning as _SW  # noqa: E402
+from powderline.schema_core import collect_warnings as _collect  # noqa: E402
+
+
+def test_collect_warnings_preserves_level_and_leaves_it_absent_otherwise():
+    class Leaf(BaseModel):
+        def warnings(self):
+            return [_SW(code="c", message="m", field_path="x", level="info"),
+                    {"code": "d", "message": "n", "field_path": None}]
+
+    class Root(BaseModel):
+        leaf: Leaf
+
+    found = _collect(Root(leaf=Leaf()))
+    assert [w["code"] for w in found] == ["c", "d"]
+    assert found[0]["level"] == "info" and found[0]["field_path"] == "leaf.x"
+    assert "level" not in found[1]  # absent means "warning"; consumers use .get("level", "warning")

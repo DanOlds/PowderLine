@@ -1429,8 +1429,11 @@ def collect_warnings(model: BaseModel, path: str = "") -> list[StructuredWarning
             if callable(own):
                 for w in own():
                     rel = w["field_path"]
-                    found.append(StructuredWarning(code=w["code"], message=w["message"],
-                                                   field_path=join(prefix, rel) if rel else (prefix or None)))
+                    entry = StructuredWarning(code=w["code"], message=w["message"],
+                                              field_path=join(prefix, rel) if rel else (prefix or None))
+                    if "level" in w:  # absent means "warning" (P-34); keep it absent
+                        entry["level"] = w["level"]
+                    found.append(entry)
             for name in type(obj).model_fields:
                 visit(getattr(obj, name), join(prefix, name))
         elif isinstance(obj, dict):
