@@ -163,13 +163,17 @@ def run(recipe, output_dir, *, verbose: bool = False, validate_only: bool = Fals
             engine needed, nothing written).
 
     Returns:
-        The gateway's result dict. Every engine returns the same keys and
-        types (``success``, ``run_id``, ``rwp``, ``elapsed_time``, ``method``,
+        The gateway's ``ok`` or ``generated`` envelope (re/12; :mod:`powderline.results`).
+        Every engine returns the same keys and types: ``status`` (``"ok"``, or
+        ``"generated"`` when TOPAS's input was written but no ``tc.exe`` is
+        declared), ``converged`` (``True`` / ``False`` / ``None`` when the engine
+        cannot report it or nothing was refined), ``envelope_version``,
+        ``run_id``, ``rwp``, ``r_exp``, ``gof``, ``chi2_red``, ``simulation_mode``,
+        ``engine_details``, ``warnings``, ``elapsed_time``, ``method``,
         ``output_files``, ``fit_profile``, ``unit_cell_data``, ``peak_list_data``,
         ``refined_parameters``, ``spf_peaks``, ``spf_convergence_diagnostics``,
-        ``error``, ``traceback``, ``r_exp``, ``gof``, ``chi2_red``,
-        ``simulation_mode``, ``engine_details``, ``warnings``); see the
-        gateway's ``run`` for details.
+        and ``success`` (a deprecated always-``True`` alias, removed in 0.3.0).
+        A failed run never returns: it raises (below). See docs/schemas.md.
 
     Raises:
         pydantic.ValidationError: the recipe is invalid, or ``schema_name`` is
@@ -177,7 +181,13 @@ def run(recipe, output_dir, *, verbose: bool = False, validate_only: bool = Fals
         GatewayNotInstalledError: no gateway of that name is installed.
         EngineNotAvailableError: the gateway's engine is not installed here.
         EngineVersionError: the installed engine is outside the supported versions.
-        EngineExecutionError: the engine ran and failed (including a diverged refinement).
+        EngineExecutionError: the engine ran and failed. ``.reason`` is one of
+            ``diverged``, ``unusable_site``, ``peak_fit_failed``, ``engine_crashed``,
+            ``output_missing``, ``output_malformed``; ``.result`` is the failed
+            envelope, listing the files written before the failure (kept).
+        ExecutionBackendError: the engine did not run. ``.reason`` is one of
+            ``server_unavailable``, ``server_disabled``, ``output_not_visible``,
+            ``communication_failed``, ``timeout``, ``backend_error``.
         TypeError: an option the gateway does not take, or
             ``allow_unsupported_engine_version``.
         ValueError: a gateway option with an invalid value.

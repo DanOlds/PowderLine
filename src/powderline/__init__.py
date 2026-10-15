@@ -6,7 +6,8 @@ The public API (v0.2.0, P-06) is the names in ``__all__``:
 - :func:`validate` -- validate a recipe engine-free, returning a :class:`ValidationResult`;
 - :func:`load_recipe_asset` -- read a recipe file (JSON / YAML) into a dict;
 - :func:`support_matrix` -- the schema versions every installed gateway declares;
-- the exceptions (:class:`PowderLineError` and its gateway subclasses).
+- the exceptions (:class:`PowderLineError` and its gateway subclasses; a failed run raises
+  :class:`EngineExecutionError` or :class:`ExecutionBackendError`, each with ``.reason`` and ``.result``).
 
 ``import powderline`` imports no engine: GSAS-II, TOPAS and easydiffraction
 are imported by their gateways, lazily, when a recipe runs. Engine-specific
@@ -25,6 +26,7 @@ from powderline.exceptions import (
     EngineNotAvailableError,
     EngineVersionError,
     EngineExecutionError,
+    ExecutionBackendError,
 )
 
 __all__ = [
@@ -38,4 +40,5 @@ __all__ = [
     "EngineNotAvailableError",
     "EngineVersionError",
     "EngineExecutionError",
+    "ExecutionBackendError",
 ]

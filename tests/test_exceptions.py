@@ -89,3 +89,12 @@ def test_structured_warning_shape():
     assert StructuredWarning.__optional_keys__ == {"level"}  # P-34: absent means "warning"
     w: StructuredWarning = {"code": "W001", "message": "m", "field_path": None}
     assert w["field_path"] is None and w.get("level", "warning") == "warning"
+
+
+def test_engine_execution_error_defaults():
+    e = EngineExecutionError("m")
+    assert e.reason == "engine_crashed" and e.result == {}
+    from powderline.exceptions import ExecutionBackendError, PowderLineError
+    b = ExecutionBackendError("n")
+    assert b.reason == "backend_error" and b.result == {} and isinstance(b, PowderLineError)
+    assert not isinstance(b, ImportError)

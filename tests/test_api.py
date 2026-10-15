@@ -283,6 +283,7 @@ def test_run_validate_only_summary_is_uniform_across_gateways(tmp_path):
     for name, s in summaries.items():
         assert tuple(s) == VALIDATE_ONLY_KEYS, name
         assert s["success"] is True and s["rwp"] is None and s["elapsed_time"] == 0.0, name
+        assert s["status"] == "validated", name  # re/12 D3: every run() dict carries a status
         assert s["method"] == "validate_only" and s["schema_name"].startswith(name + "."), name
         assert s["core_schema_version"] == "1.0.0" and s["engine_schema_version"] == "1.0.0", name
         assert s["phases"] == 1 and isinstance(s["simulation_mode"], bool), name

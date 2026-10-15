@@ -12,7 +12,11 @@ gateway errors split along the schema/runtime layers (master plan A23, A5/A8):
   callers that caught the underlying import failure keep working (A52).
 - :class:`EngineVersionError` — the installed engine is outside the gateway's
   supported ``ENGINE_VERSION_SPEC``. A hard error (A44).
-- :class:`EngineExecutionError` — the engine ran and failed.
+- :class:`EngineExecutionError` — the engine ran and failed (``.reason`` is a
+  code from :mod:`powderline.results`, ``.result`` the failed envelope).
+- :class:`ExecutionBackendError` — the engine did not run: the execution
+  backend (the GSAS-II server, a transport, a configuration step) failed.
+  Same ``.reason`` / ``.result`` shape. Both pickle (``ProcessPoolExecutor``).
 - :class:`SymmetryError` — core symmetry helpers (``powderline.symmetry``)
   cannot interpret a space group or site. Gateways convert it to their own
   error type (A61).
@@ -50,6 +54,9 @@ class GatewayNotInstalledError(PowderLineError):
         super().__init__(message)
         self.gateway = gateway
 
+    def __reduce__(self):
+        return (_rebuild, (type(self), (str(self),), {"gateway": self.gateway}))
+
 
 class EngineNotAvailableError(PowderLineError, ImportError):
     """The gateway is present, but its engine dependency is not installed here."""
@@ -66,6 +73,10 @@ class EngineNotAvailableError(PowderLineError, ImportError):
         self.env = env
         self.install_command = install_command
 
+    def __reduce__(self):  # keyword-only constructor: make it picklable (re/12 spec §4)
+        return (_rebuild, (type(self), (), {"gateway": self.gateway, "dependency": self.dependency,
+                                           "env": self.env, "install_command": self.install_command}))
+
 
 class EngineVersionError(PowderLineError):
     """The installed engine version is outside the gateway's supported range."""
@@ -80,10 +91,46 @@ class EngineVersionError(PowderLineError):
         self.engine = engine
         self.installed = installed
         self.supported = supported
+        self._message = message
+
+    def __reduce__(self):
+        return (_rebuild, (type(self), (), {"gateway": self.gateway, "engine": self.engine,
+                                           "installed": self.installed, "supported": self.supported,
+                                           "message": self._message}))
 
 
-class EngineExecutionError(PowderLineError):
-    """The engine ran and failed."""
+class _RunFailure(PowderLineError):
+    """Shared shape of the two run-failure classes (re/12 spec §4): ``reason`` (a code from
+    :mod:`powderline.results`) and ``result`` (the failed envelope, JSON-safe; ``{}`` when the error was
+    raised before any run data existed)."""
+
+    default_reason = "engine_crashed"
+
+    def __init__(self, message: str, *, reason: Optional[str] = None, result: Optional[dict] = None) -> None:
+        super().__init__(message)
+        self.reason = reason or self.default_reason
+        self.result = {} if result is None else result
+
+    def __reduce__(self):
+        return (_rebuild, (type(self), (str(self),), {"reason": self.reason, "result": self.result}))
+
+
+class EngineExecutionError(_RunFailure):
+    """The engine ran and failed (envelope ``failure.kind == "engine"``)."""
+
+    default_reason = "engine_crashed"
+
+
+class ExecutionBackendError(_RunFailure):
+    """The engine did not run: the execution backend failed (``failure.kind == "backend"``) -- the GSAS-II
+    server was unavailable or disabled, its output is not visible here, the request timed out, or a
+    configuration error stopped the run before the engine started."""
+
+    default_reason = "backend_error"
+
+
+def _rebuild(cls, args, kwargs):
+    return cls(*args, **kwargs)
 
 
 class _StructuredWarningRequired(TypedDict):
