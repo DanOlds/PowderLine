@@ -50,7 +50,17 @@ recipes do not validate; see the
   results and validation output (A23), e.g. `gsasii_broadening_default_applied`,
   `gsasii_parameters_not_varied` (row 20, A128), `uaniso_not_positive_definite`
   (A118), `topas_parameter_at_limit`, `easydiffraction_parameter_at_limit`,
-  `*_phase_contributes_nothing`.
+  `*_phase_contributes_nothing`. Each entry may carry a `level` (P-34):
+  `"warning"` (absent means this) or `"info"`; the CLI prints warnings and
+  counts info entries (listed with `--verbose`). Info-level
+  `symmetry_value_derived` records every coordinate, cell value or Uij the
+  validated model holds in its exact symmetry-derived form because it was
+  stated within tolerance of it (stated and held values in the message);
+  an exactly stated value gets none, so the note is evidence of a symmetry
+  relation, not a statement of one. gsasii adds
+  `gsasii_background_default_applied` and
+  `gsasii_refinement_cycles_default_applied` when those blocks are left out
+  (P-33), alongside the size/strain warning.
 - **Exceptions** in `powderline.exceptions`: `SymmetryError`,
   `GatewayNotInstalledError`, `EngineNotAvailableError`, `EngineVersionError`,
   `EngineExecutionError` (A23; row 1, A56/A57/A61).
@@ -119,6 +129,14 @@ recipes do not validate; see the
   package (`pixi reinstall powderline`).
 
 ### Changed
+
+- **TOPAS runs only from a declared location** (P-35): `--topas-dir` or
+  `topas.dir` in `.powderline_config.yaml`. The former sweep of
+  `C:/TOPAS8 … 5` and the `C:/TOPAS<version>` guess are gone, because TOPAS
+  carries no readable version and a guessed directory could silently run a
+  different TOPAS than the recipe's `engine_version` (A145). With no
+  directory declared a run is generate-only and says so; a real run records
+  the executable in `engine_details.tc_path`.
 
 **Statistics and fit window (all engines)**
 - **`rwp` means something different.** On a native run it is PowderLine's

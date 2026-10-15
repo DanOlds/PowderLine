@@ -721,3 +721,12 @@ def test_state_dir_uncreatable_raises_state_error(monkeypatch, tmp_path):
     monkeypatch.setattr(gsas_server.tempfile, "gettempdir", lambda: str(readonly))
     with pytest.raises(gsas_server.ServerStateError, match="Cannot create"):
         gsas_server.state_dir()
+
+
+def test_response_model_keeps_warning_level():
+    """P-34: an info-level warning crosses the server round trip with its level intact."""
+    native = {"success": True, "warnings": [
+        {"code": "symmetry_value_derived", "message": "m", "field_path": "payload.phases.P.atoms.A.y", "level": "info"},
+        {"code": "gsasii_background_default_applied", "message": "n", "field_path": "payload.background"}]}
+    dumped = gsas_server.SimulationResponse(**native).model_dump()
+    assert dumped["warnings"] == native["warnings"]
