@@ -24,6 +24,7 @@ from typing import Literal
 
 import pandas as pd
 
+from powderline import results as envelopes
 from powderline.exceptions import EngineNotAvailableError
 from powderline.gateways.gsasii import schema
 from powderline.gateways.gsasii.routing import run_refinement
@@ -267,12 +268,10 @@ def _frames(result: dict) -> dict:
         pd.DataFrame(spf_diag_raw) if spf_diag_raw else pd.DataFrame()
     )
 
-    # Ensure 'error' key is always present (None on success) so callers can
-    # safely use result['error'] without KeyError regardless of success state.
-    # Similarly normalise 'traceback' so callers never hit a KeyError.
-    result.setdefault('error', None)
-    result.setdefault('traceback', None)
-    return result
+    # re/12: the ok envelope fields (status, converged, envelope_version, the deprecated success alias);
+    # the pre-0.2.0 top-level error/traceback keys are dropped (a failure never reaches here: it is raised).
+    return envelopes.with_status_fields(result, status="ok",
+                                        converged=(result.get('engine_details') or {}).get('converged'))
 
 
 def get_gateway() -> Gateway:

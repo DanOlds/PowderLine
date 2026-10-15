@@ -74,7 +74,8 @@ def fit_report(proj, hist, recipe, engine_rwp, engine_rvals=None) -> dict:
             f"GSAS-II's refinement diverged: the calculated pattern is not finite at {diverged} of "
             f"{int(np.count_nonzero(mask))} points in the fit window, so no result is reported (GSAS-II itself "
             "does not flag this; its wR shows 100 %, EB-52). Refine fewer or less correlated parameters, or start "
-            "closer to the solution; the GSAS-II files in the output directory show the diverged parameters.")
+            "closer to the solution; the GSAS-II files in the output directory show the diverged parameters.",
+            reason="diverged")
     spf = recipe.schema_name == "gsasii.spf"
     if spf:
         rvals = {k: v for k, v in (engine_rvals or {}).items() if k in ("GOF",)}

@@ -188,7 +188,8 @@ def execute_spf_refinement(
             raise
         raise EngineExecutionError(
             "GSAS-II's peak fit failed: DoPeakFit returned no result (GSAS-II prints the reason only in its "
-            "debug mode; GSAS-II quirk EB-38). Check the peak positions, widths and fit range."
+            "debug mode; GSAS-II quirk EB-38). Check the peak positions, widths and fit range.",
+            reason="peak_fit_failed",
         ) from exc
 
     # Extract Rwp from peak_result
@@ -308,6 +309,8 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
                 comments=None,
                 phases=None, # Optionally could link to phases if order of operations
             )
+        except EngineExecutionError:  # R30: PowderLine's own failure (divergence, site, peak fit) propagates
+            raise
         except Exception as e:
             import traceback as _tb
             tb = _tb.format_exc()
@@ -423,6 +426,8 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
                     'method': method
                 }
 
+        except EngineExecutionError:  # R30: PowderLine's own failure (divergence, site, peak fit) propagates
+            raise
         except Exception as e:
             import traceback as _tb
             tb = _tb.format_exc()
@@ -515,6 +520,8 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
             **fit_report(proj, hist, recipe, engine_rwp=rwp, engine_rvals=result.get('engine_rvals')),
         }
 
+    except EngineExecutionError:  # R30: PowderLine's own failure (divergence, site, peak fit) propagates
+        raise
     except Exception as e:
         import traceback
         tb = traceback.format_exc()

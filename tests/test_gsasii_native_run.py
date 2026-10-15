@@ -137,22 +137,26 @@ CUBIC = ("P 4 3 2", (5.0, 5.0, 5.0, 90.0, 90.0, 90.0))
 
 
 def test_site_gsasii_misreads_is_an_error_naming_an_equivalent_position(tmp_path):
-    """EB-40: GSAS-II doubles the multiplicity at (0, 1/3, 1/6); 4x the intensity, so always an error (A117)."""
-    r = _single_atom(tmp_path / "a", *RHOMB, (0.0, 0.333333, 0.166667))
-    assert not r["success"]
+    """EB-40: GSAS-II doubles the multiplicity at (0, 1/3, 1/6); 4x the intensity, so always an error (A117).
+    re/12 (R30): the error is raised through run(), before GSAS-II refines anything."""
+    with pytest.raises(EngineExecutionError) as e:
+        _single_atom(tmp_path / "a", *RHOMB, (0.0, 0.333333, 0.166667))
+    assert e.value.reason == "unusable_site"
     assert ("payload.phases.P.atoms.Fe at (0.0, 0.333333, 0.166667): GSAS-II reads it as site '1' with multiplicity 36, "
-            "but its multiplicity is 18") in r["error"]
-    assert "state the equivalent position (0.666667, 0.666667, 0.166667) instead" in r["error"]
-    assert _single_atom(tmp_path / "b", *RHOMB, (0.666667, 0.666667, 0.166667))["success"]
+            "but its multiplicity is 18") in str(e.value)
+    assert "state the equivalent position (0.666667, 0.666667, 0.166667) instead" in str(e.value)
+    assert not (tmp_path / "a" / "dummy.lst").exists()  # refused before the refinement ran
+    assert _single_atom(tmp_path / "b", *RHOMB, (0.666667, 0.666667, 0.166667))["status"] == "ok"
 
 
 def test_site_gsasii_cannot_name_is_an_error_only_when_refined(tmp_path):
     """EB-05: 'sp' at (0, 1/24, 0) in P432 crashes GSAS-II only when a coordinate is refined (A117)."""
-    assert _single_atom(tmp_path / "fixed", *CUBIC, (0.0, 0.041667, 0.0))["success"]
-    r = _single_atom(tmp_path / "refined", *CUBIC, (0.0, 0.041667, 0.0), (False, True, False))
-    assert not r["success"]
-    assert "GSAS-II cannot name its site symmetry ('sp')" in r["error"]
-    assert "state the equivalent position (0.958333, 0.0, 0.0) instead" in r["error"]
+    assert _single_atom(tmp_path / "fixed", *CUBIC, (0.0, 0.041667, 0.0))["status"] == "ok"
+    with pytest.raises(EngineExecutionError) as e:
+        _single_atom(tmp_path / "refined", *CUBIC, (0.0, 0.041667, 0.0), (False, True, False))
+    assert e.value.reason == "unusable_site"
+    assert "GSAS-II cannot name its site symmetry ('sp')" in str(e.value)
+    assert "state the equivalent position (0.958333, 0.0, 0.0) instead" in str(e.value)
 
 
 @pytest.mark.parametrize("sg, point", [("R -3 m:H", (0, 8, 4)), ("R 3 2:H", (16, 0, 8)), ("P 4 3 2", (0, 1, 0)),
@@ -207,8 +211,32 @@ def test_diverged_refinement_is_a_clear_engine_error():
     recipe = validate_recipe(_lab6())
     proj, hist = _fake_run(recipe, lambda y: np.where(np.arange(y.size) < 5, np.nan, y), 17)
     with pytest.raises(EngineExecutionError, match=r"refinement diverged: the calculated pattern is not finite at "
-                                                   r"5 of 50 points"):
+                                                   r"5 of 50 points") as e:
         fit_report(proj, hist, recipe, engine_rwp=100.0)
+    assert e.value.reason == "diverged"
+
+
+def test_divergence_raises_through_run_in_subprocess_mode(tmp_path, monkeypatch):
+    """R30: an EngineExecutionError from fit_report propagates out of the frozen executor to run()."""
+    from powderline.gateways.gsasii import executors
+
+    def diverged(*a, **k):
+        raise EngineExecutionError("GSAS-II's refinement diverged: test", reason="diverged")
+    monkeypatch.setattr(executors, "fit_report", diverged)
+    with pytest.raises(EngineExecutionError) as e:
+        powderline.run(_lab6(), tmp_path / "out", execution_mode="subprocess")
+    assert e.value.reason == "diverged" and "diverged: test" in str(e.value)
+
+
+def test_peak_fit_failure_carries_its_reason():
+    """EB-38 (R12; the reason was added under R30)."""
+    hist = MagicMock()
+    hist.refine_peaks.side_effect = TypeError("'NoneType' object is not subscriptable")
+    recipe = MagicMock()
+    recipe.payload.refinement_controls.single_peak_fitting_mode.use_instrument_profile = False
+    with pytest.raises(EngineExecutionError) as e:
+        execute_spf_refinement(MagicMock(), hist, recipe, verbose=False)
+    assert e.value.reason == "peak_fit_failed"
 
 
 def test_fewer_parameters_varied_than_requested_warns():

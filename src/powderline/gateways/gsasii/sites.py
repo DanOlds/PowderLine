@@ -81,4 +81,4 @@ def check_sites(proj, recipe) -> None:
     problems = site_problems(proj, phases)
     if problems:
         raise EngineExecutionError("GSAS-II cannot use these atom positions as stated:\n"
-                                   + "\n".join(f"  - {p}" for p in problems))
+                                   + "\n".join(f"  - {p}" for p in problems), reason="unusable_site")

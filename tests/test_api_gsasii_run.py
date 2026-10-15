@@ -234,12 +234,13 @@ def test_gsasclient_accepts_path(tmp_path):
 
 # ─── error key contract tests ──────────────────────────────────────────────────
 
-def test_run_success_result_has_error_key_none(lab6_subprocess_run):
-    """run() on success always includes 'error': None so callers can use result['error']."""
+def test_ok_result_has_status_and_alias_but_no_error_key(lab6_subprocess_run):
+    """re/12 (review focus 5): an ok result carries status/converged/envelope_version and the deprecated
+    success alias; the pre-0.2.0 error/traceback keys are gone (a failure raises instead)."""
     result, _ = lab6_subprocess_run
-    assert result["success"] is True
-    assert "error" in result, "'error' key must always be present in run() result"
-    assert result["error"] is None, "On success, result['error'] must be None"
+    assert result["status"] == "ok" and result["success"] is True and result["envelope_version"] == "1"
+    assert result["converged"] in (True, False)
+    assert "error" not in result and "traceback" not in result
 
 
 def test_run_failure_result_normalization(recipe_LaB6_dict, tmp_path):
