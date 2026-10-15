@@ -269,6 +269,21 @@ recipes do not validate; see the
   pixi task `kicker` runs the same `main`.
 - `GSASClient` lives at `powderline.gateways.gsasii.client`; the GSAS-II
   `run` body is `powderline.gateways.gsasii.gateway.run`.
+- **The schema layer is assembled from core building blocks** (P-37, review
+  finding 13): the ~230 lines the three `schema.py` modules had each written
+  for themselves are now public functions of `powderline.schema_core`
+  (`EngineRecipe`, `recipe_validator`, `refined_flags`, `custom_error` /
+  `raise_problems`, `omit_absent`, `absent_not_null`, `unique_phase_names`,
+  `fit_window`, `fit_range_problems`, `outside_window_problems`,
+  `refined_flag_problems`, `unit_schema`) and
+  `powderline.compat.schema_declarations`. Nothing a recipe author sees
+  changes: the generated field tables, every example's validate-only output
+  and the invalid-recipe error lists (type, location, message) are
+  byte-identical; the unused `json_schema()` helpers of the topas and
+  easydiffraction schema modules are gone (`Model.model_json_schema()` is the
+  route). `powderline.exceptions.WARNING_CODES` registers every
+  structured-warning code with its owner and level; a test holds it, the
+  codes emitted under `src/` and the engine-behaviour table in agreement.
 
 ### Removed
 

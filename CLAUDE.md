@@ -48,11 +48,18 @@ Core (engine-free; `import powderline` imports no engine):
   `ChebyshevBackground`, the phase block `Phase[P]` (`space_group` canonical
   gemmi name, `unit_cell`, `atoms`; every symmetry rule: cell check, special
   positions, tie groups and flags, derived values held exactly), `CoreName`,
-  `collect_warnings`, `parameters_requested`, `fit_limits_on_data`. Every
+  `collect_warnings`, `parameters_requested`, `fit_limits_on_data`, and the
+  engine schema building blocks (P-37: `EngineRecipe`, `recipe_validator`,
+  `refined_flags`, `custom_error`/`raise_problems`, `omit_absent`,
+  `absent_not_null`, `unique_phase_names`, `fit_window`, `fit_range_problems`,
+  `outside_window_problems`, `refined_flag_problems`, `unit_schema`) every
+  gateway schema is composed from. Every
   model `extra='forbid'`; units in `json_schema_extra={"unit": ...}`.
 - `symmetry.py` (gemmi), `compat.py` (declared schema compatibility,
   `support_matrix()`), `fitstats.py` (uniform Rwp/Rexp/GoF/χ²_red), `reports.py`
-  (standardized report writers), `recipes.py`, `exceptions.py`,
+  (standardized report writers), `recipes.py`, `exceptions.py` (also
+  `WARNING_CODES`: every warning code with owner and level, asserted against
+  `src/` and the engine-behaviour table),
   `config_loader.py` (simulation defaults), `_status.py`.
 
 Gateways (`src/powderline/gateways/<engine>/`), each a **schema layer**

@@ -54,13 +54,13 @@ reproducible, automatable, and accessible.
 | `api.py` | `validate()` and `run()`: resolve the gateway from `schema_name` (`<engine>.<workflow>`) through the registry and hand the recipe over; `ValidationResult` |
 | `kicker.py` | the one CLI (`powderline <recipe>`; `pixi run kicker` runs the same `main`): loads the recipe, refuses templates, maps the engine flags onto the gateway's run options, prints the summary and the structured warnings |
 | `registry.py` | gateway discovery from the `powderline.gateways` entry-point group, lazy loading, `Gateway` dataclass (`name`, `capabilities`, `validate`, `run`), `register_gateway` escape hatch, the engine-version check |
-| `schema_core.py` | core schema 1.0.0: `CoreRecipe` (frame), `RefinableParameter` / `BoundedRefinableParameter`, `XRDData`, `FitRange`, `ChebyshevBackground`, `UnitCell`, `Atom`, `UanisoTensor`, `Phase[P]` (the phase block with every symmetry rule), `CoreFloat`/`CoreInt`/`CoreName`, `collect_warnings`, `parameters_requested`, `fit_limits_on_data` |
+| `schema_core.py` | core schema 1.0.0: `CoreRecipe` (frame), `RefinableParameter` / `BoundedRefinableParameter`, `XRDData`, `FitRange`, `ChebyshevBackground`, `UnitCell`, `Atom`, `UanisoTensor`, `Phase[P]` (the phase block with every symmetry rule), `CoreFloat`/`CoreInt`/`CoreName`, `collect_warnings`, `parameters_requested`, `fit_limits_on_data`; the engine schema building blocks (P-37): `EngineRecipe`, `recipe_validator`, `refined_flags`, `custom_error` / `raise_problems`, `omit_absent`, `absent_not_null`, `unique_phase_names`, `fit_window`, `fit_range_problems`, `outside_window_problems`, `refined_flag_problems`, `unit_schema` |
 | `symmetry.py` | gemmi-backed symmetry: canonical space-group names, cell tie groups and the cell check, special-position analysis, coupling groups for coordinates and Uij |
-| `compat.py` | declared schema-version compatibility: `check_engine_schema_version`, `support_matrix()` |
+| `compat.py` | declared schema-version compatibility: `check_engine_schema_version`, `support_matrix()`, `schema_declarations()` (a gateway's `DECLARATIONS`) |
 | `fitstats.py` | the uniform Rwp / Rexp / GoF / χ²_red over the fit window with positive weights |
 | `reports.py` | the standardized report writers (`refined_parameters.csv`, unit-cell and peak-list reports, `fit_profile.txt`): one column order, UTF-8, LF |
 | `recipes.py` | `load_recipe_asset` (JSON / YAML) |
-| `exceptions.py` | `PowderLineError`, `SymmetryError`, `GatewayNotInstalledError`, `EngineNotAvailableError`, `EngineVersionError`, `EngineExecutionError`, `ExecutionBackendError` (both with `.reason` / `.result`), the `StructuredWarning` shape |
+| `exceptions.py` | `PowderLineError`, `SymmetryError`, `GatewayNotInstalledError`, `EngineNotAvailableError`, `EngineVersionError`, `EngineExecutionError`, `ExecutionBackendError` (both with `.reason` / `.result`), the `StructuredWarning` shape; `WARNING_CODES`, the registry of every structured-warning code with its owner and level (asserted against `src/` and the engine-behaviour table) |
 | `results.py` | the run-result envelope (re/12): `ENVELOPE_VERSION`, the reason-code sets, `failure_envelope`, `generated_envelope`, `with_status_fields`, `raise_if_failed` |
 | `config_loader.py` | `.powderline_config.yaml` (the `simulation_defaults` block; engine-free) |
 | `_status.py` | console status glyphs |
@@ -179,19 +179,31 @@ distribution (out of tree) that provides:
      no `null` for a block that may be left out, and **no default that
      replaces an engine behaviour silently** (either the value is required, or
      the default is documented and reported by a warning);
-   - the recipe model(s) subclassing `CoreRecipe` with `schema_name` narrowed
-     to a `Literal`, and the version declarations
-     `ENGINE_SCHEMA_VERSION = "1.0.0"`, `SUPPORTED_ENGINE_SCHEMAS = "==1.0.0"`,
-     `REQUIRES_CORE_SCHEMA = "==1.0.0"` (widened explicitly later, never by
-     range), checked with `powderline.compat.check_engine_schema_version` from
-     a model validator;
-   - a `validate_recipe(recipe)` that accepts a dict or an already-validated
-     model (idempotent) and reports an unknown `schema_name` at `schema_name`;
+   - the recipe model(s) subclassing `powderline.schema_core.EngineRecipe`
+     with `schema_name` narrowed to a `Literal` and two class variables,
+     `gateway_name` and `schema_declarations = DECLARATIONS`, where
+     `DECLARATIONS = compat.schema_declarations(engine_schema_version="1.0.0",
+     supported_engine_schemas="==1.0.0", requires_core_schema="==1.0.0")`
+     (widened explicitly later, never by range); `EngineRecipe` runs the
+     version check;
+   - `validate_recipe = schema_core.recipe_validator({<schema_name>: <model>, ...},
+     engine="<engine>", title="<Engine>Recipe")`: accepts a dict or an
+     already-validated model (idempotent) and reports an unknown
+     `schema_name` at `schema_name`;
    - every engine rule as a validator: refuse what the engine cannot express
      (settings, features) and what it would silently alter (floors, limits),
      naming the value to write; apply the three shared value rules
      (wavelength > 0, scale per engine, peak positions inside the window) and
-     the fit window on data points (`fit_limits_on_data`).
+     the fit window on data points (`fit_limits_on_data`). The shared pieces
+     are core building blocks (P-37), not copies: `absent_not_null` for a
+     block that may be left out but never be `null`, `omit_absent` in the
+     wrap serializer that drops it from dumps, `unique_phase_names`,
+     `fit_range_problems` / `fit_window` / `outside_window_problems` /
+     `refined_flag_problems` for the payload rules, `refined_flags`,
+     `custom_error` + `raise_problems` to report every problem at once;
+   - every warning code the engine emits registered in
+     `powderline.exceptions.WARNING_CODES` (owner, level) and listed in the
+     engine-behaviour table; a core test holds the three in agreement.
 2. **A gateway module** (`gateway.py`) exporting `get_gateway()` →
    `registry.Gateway(name, capabilities, validate, run)`:
    - `capabilities()` returns at least `name`, `workflows` (the schema names),
