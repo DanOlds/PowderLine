@@ -51,13 +51,13 @@ easydiffraction rules checked here:
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Annotated, Any, ClassVar, Literal, Mapping, Optional, Union
 
 import numpy as np
-from pydantic import Field, ValidationError, field_validator, model_serializer, model_validator
-from pydantic_core import InitErrorDetails, PydanticCustomError
+from pydantic import Field, field_validator, model_serializer, model_validator
+from pydantic_core import InitErrorDetails
 
-from powderline.compat import check_engine_schema_version
+from powderline.compat import schema_declarations
 from powderline.gateways.easydiffraction.space_group_support import CRYSFML_SETTINGS, CRYSPY_SETTINGS
 from powderline.gateways.easydiffraction.space_group_table import SPACE_GROUPS
 from powderline.schema_core import (
@@ -71,15 +71,22 @@ from powderline.schema_core import (
     CoreInt,
     CoreModel,
     CoreName,
-    CoreRecipe,
+    EngineRecipe,
     FitRange,
     Phase,
     XRDData,
+    absent_not_null,
     absent_not_null_schema,
-    check_fit_range_within_data,
-    check_names_unique_ignoring_case,
+    custom_error,
     fit_limits_on_data,
+    fit_range_problems,
     name_keyed,
+    omit_absent,
+    raise_problems,
+    recipe_validator,
+    refined_flags,
+    unique_phase_names,
+    unit_schema,
 )
 
 P = BoundedRefinableParameter
@@ -92,11 +99,11 @@ REQUIRES_CORE_SCHEMA = "==1.0.0"
 
 #: The gateway's schema declarations (``capabilities()`` keys, A65). No engine
 #: version in the recipe: the library is pinned and read at run time (A157 B2).
-DECLARATIONS = {
-    "engine_schema_version": ENGINE_SCHEMA_VERSION,
-    "supported_engine_schemas": SUPPORTED_ENGINE_SCHEMAS,
-    "requires_core_schema": REQUIRES_CORE_SCHEMA,
-}
+DECLARATIONS = schema_declarations(
+    engine_schema_version=ENGINE_SCHEMA_VERSION,
+    supported_engine_schemas=SUPPORTED_ENGINE_SCHEMAS,
+    requires_core_schema=REQUIRES_CORE_SCHEMA,
+)
 
 SCHEMA_NAMES = ("easydiffraction.rietveld",)
 
@@ -125,33 +132,6 @@ PHYSICAL_LIMITS = {
     "adp": (0.0, 10.0),
     "nonnegative": (0.0, None),
 }
-
-
-def _unit(unit: str) -> dict:
-    return {"unit": unit}
-
-
-def _never_null(v: Any, info) -> Any:
-    """A block that may be left out is never ``null`` (the A96 convention)."""
-    if v is None:
-        raise ValueError(f"{info.field_name} must not be null; leave it out instead")
-    return v
-
-
-def _error(kind: str, message: str, loc: tuple, input_: Any, **ctx) -> InitErrorDetails:
-    return InitErrorDetails(type=PydanticCustomError(kind, message, ctx or None), loc=loc, input=input_)
-
-
-def _raise(model: str, problems: list[InitErrorDetails]) -> None:
-    if problems:
-        raise ValidationError.from_exception_data(model, problems)
-
-
-def _omit_none(data: dict, model: CoreModel, names: tuple[str, ...]) -> dict:
-    for name in names:
-        if getattr(model, name) is None:
-            data.pop(name, None)
-    return data
 
 
 def negative_widths(u: float, v: float, w: float, x: float, y: float, tth) -> dict[str, tuple[float, float]]:
@@ -200,7 +180,7 @@ def physical_problems(p: Optional[P], limits: tuple, loc: tuple, what: str) -> l
     if (lo is None or p.value >= lo) and (hi is None or p.value <= hi):
         return []
     span = f"[{lo:g}, {hi:g}]" if hi is not None else f">= {lo:g}"
-    return [_error("easydiffraction_physical_limit",
+    return [custom_error("easydiffraction_physical_limit",
                    "{what} {value} is outside easydiffraction's physical limit {span}: the engine refuses it (EB-71)",
                    loc, p.model_dump(), what=what, value=p.value, span=span)]
 
@@ -239,7 +219,7 @@ def easydiffraction_space_group(name: str) -> tuple[str, str]:
 class Radiation(CoreModel):
     """Incident radiation: one wavelength, optionally a Kα2 line (both stated or neither)."""
 
-    setup_wavelength: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM), description="Wavelength (Kα1), > 0")
+    setup_wavelength: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM), description="Wavelength (Kα1), > 0")
     setup_wavelength_2: Optional[CoreFloat] = Field(
         default=None, gt=0, json_schema_extra=absent_not_null_schema(UNIT_ANGSTROM),
         description="Second wavelength (Kα2), > 0, with setup_wavelength_2_to_1_ratio; left out: one wavelength")
@@ -247,25 +227,25 @@ class Radiation(CoreModel):
         default=None, gt=0, le=1, json_schema_extra=absent_not_null_schema(UNIT_DIMENSIONLESS),
         description="Kα2/Kα1 intensity ratio, 0 < ratio <= 1, with setup_wavelength_2")
 
-    _not_null = field_validator("setup_wavelength_2", "setup_wavelength_2_to_1_ratio", mode="before")(_never_null)
+    _not_null = field_validator("setup_wavelength_2", "setup_wavelength_2_to_1_ratio", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("setup_wavelength_2", "setup_wavelength_2_to_1_ratio"))
+        return omit_absent(handler(self), self, ("setup_wavelength_2", "setup_wavelength_2_to_1_ratio"))
 
     @model_validator(mode="after")
     def _easydiffraction_radiation(self) -> "Radiation":
         problems = []
         if self.setup_wavelength.value <= 0:  # A126
-            problems.append(_error("easydiffraction_positive", "setup_wavelength must be > 0, got {value}",
+            problems.append(custom_error("easydiffraction_positive", "setup_wavelength must be > 0, got {value}",
                                    ("setup_wavelength",), self.setup_wavelength.model_dump(),
                                    value=self.setup_wavelength.value))
         if (self.setup_wavelength_2 is None) != (self.setup_wavelength_2_to_1_ratio is None):
             missing = "setup_wavelength_2_to_1_ratio" if self.setup_wavelength_2 is not None else "setup_wavelength_2"
-            problems.append(_error("easydiffraction_doublet",
+            problems.append(custom_error("easydiffraction_doublet",
                                    "a Kα2 line needs both setup_wavelength_2 and setup_wavelength_2_to_1_ratio; "
                                    "state {missing} too, or leave both out", (missing,), None, missing=missing))
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -273,15 +253,15 @@ class Polarization(CoreModel):
     """Lorentz-polarization: factor 1 - p + p cos^2(2theta_m) cos^2(2theta) (EB-75). Fixed values."""
 
     setup_polarization_coefficient: CoreFloat = Field(
-        ge=0, le=1, json_schema_extra=_unit(UNIT_DIMENSIONLESS), description="p, 0..1")
+        ge=0, le=1, json_schema_extra=unit_schema(UNIT_DIMENSIONLESS), description="p, 0..1")
     setup_monochromator_twotheta: CoreFloat = Field(
-        ge=0, lt=180, json_schema_extra=_unit(UNIT_DEGREE), description="Monochromator 2theta_m, 0 <= 2theta_m < 180")
+        ge=0, lt=180, json_schema_extra=unit_schema(UNIT_DEGREE), description="Monochromator 2theta_m, 0 <= 2theta_m < 180")
 
 
 class Corrections(CoreModel):
     """Peak-position corrections (degrees 2theta). Displacement and transparency left out: not modelled."""
 
-    calib_twotheta_offset: P = Field(json_schema_extra=_unit(UNIT_DEG_2THETA), description="Zero offset")
+    calib_twotheta_offset: P = Field(json_schema_extra=unit_schema(UNIT_DEG_2THETA), description="Zero offset")
     calib_sample_displacement: Optional[P] = Field(
         default=None, json_schema_extra=absent_not_null_schema(UNIT_DEG_2THETA),
         description="Specimen displacement term (shift x cos 2theta)")
@@ -289,33 +269,33 @@ class Corrections(CoreModel):
         default=None, json_schema_extra=absent_not_null_schema(UNIT_DEG_2THETA),
         description="Transparency term (shift x sin 2theta)")
 
-    _not_null = field_validator("calib_sample_displacement", "calib_sample_transparency", mode="before")(_never_null)
+    _not_null = field_validator("calib_sample_displacement", "calib_sample_transparency", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("calib_sample_displacement", "calib_sample_transparency"))
+        return omit_absent(handler(self), self, ("calib_sample_displacement", "calib_sample_transparency"))
 
 
 class Absorption(CoreModel):
     """Cylindrical-sample absorption (Hewat), both calculators."""
 
     type: Literal["cylinder-hewat"] = Field(description="easydiffraction absorption type")
-    mu_r: P = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS), description="mu R, >= 0")
+    mu_r: P = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS), description="mu R, >= 0")
 
     @model_validator(mode="after")
     def _easydiffraction_mu_r(self) -> "Absorption":
-        _raise(type(self).__name__, physical_problems(self.mu_r, PHYSICAL_LIMITS["nonnegative"], ("mu_r",), "mu_r"))
+        raise_problems(type(self).__name__, physical_problems(self.mu_r, PHYSICAL_LIMITS["nonnegative"], ("mu_r",), "mu_r"))
         return self
 
 
 class _Broadening(CoreModel):
     """Caglioti Gaussian (FWHM^2 = U tan^2 theta + V tan theta + W) and Lorentzian (X tan theta + Y / cos theta)."""
 
-    broad_gauss_u: P = Field(json_schema_extra=_unit(UNIT_DEGREE2))
-    broad_gauss_v: P = Field(json_schema_extra=_unit(UNIT_DEGREE2))
-    broad_gauss_w: P = Field(json_schema_extra=_unit(UNIT_DEGREE2))
-    broad_lorentz_x: P = Field(json_schema_extra=_unit(UNIT_DEGREE))
-    broad_lorentz_y: P = Field(json_schema_extra=_unit(UNIT_DEGREE))
+    broad_gauss_u: P = Field(json_schema_extra=unit_schema(UNIT_DEGREE2))
+    broad_gauss_v: P = Field(json_schema_extra=unit_schema(UNIT_DEGREE2))
+    broad_gauss_w: P = Field(json_schema_extra=unit_schema(UNIT_DEGREE2))
+    broad_lorentz_x: P = Field(json_schema_extra=unit_schema(UNIT_DEGREE))
+    broad_lorentz_y: P = Field(json_schema_extra=unit_schema(UNIT_DEGREE))
 
 
 class PseudoVoigtParameters(_Broadening):
@@ -325,17 +305,17 @@ class PseudoVoigtParameters(_Broadening):
 class BerarBaldinozziParameters(_Broadening):
     """``cwl-pseudo-voigt-berar-baldinozzi-asymmetry``: pseudo-Voigt with empirical asymmetry (CrysPy)."""
 
-    asym_beba_a0: P = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS))
-    asym_beba_b0: P = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS))
-    asym_beba_a1: P = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS))
-    asym_beba_b1: P = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS))
+    asym_beba_a0: P = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS))
+    asym_beba_b0: P = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS))
+    asym_beba_a1: P = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS))
+    asym_beba_b1: P = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS))
 
 
 class FcjParameters(_Broadening):
     """``cwl-thompson-cox-hastings``: pseudo-Voigt with FCJ axial-divergence asymmetry (CrysFML)."""
 
-    asym_fcj_1: P = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS), description="FCJ S/L")
-    asym_fcj_2: P = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS), description="FCJ H/L")
+    asym_fcj_1: P = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS), description="FCJ S/L")
+    asym_fcj_2: P = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS), description="FCJ H/L")
 
 
 class _PeakProfile(CoreModel):
@@ -343,11 +323,11 @@ class _PeakProfile(CoreModel):
         default=None, gt=0, json_schema_extra=absent_not_null_schema(UNIT_DIMENSIONLESS),
         description="CrysPy only: peaks computed within this many FWHM; left out: no cutoff (full tails)")
 
-    _not_null = field_validator("cutoff_fwhm", mode="before")(_never_null)
+    _not_null = field_validator("cutoff_fwhm", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("cutoff_fwhm",))
+        return omit_absent(handler(self), self, ("cutoff_fwhm",))
 
 
 class PseudoVoigt(_PeakProfile):
@@ -388,11 +368,11 @@ class Instrument(CoreModel):
                                              description="Left out: no absorption correction")
     broadening: PeakProfile
 
-    _not_null = field_validator("description", "polarization", "absorption", mode="before")(_never_null)
+    _not_null = field_validator("description", "polarization", "absorption", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("description", "polarization", "absorption"))
+        return omit_absent(handler(self), self, ("description", "polarization", "absorption"))
 
 
 # --- background ----------------------------------------------------------------------
@@ -414,7 +394,7 @@ class EasydiffractionPhase(Phase[BoundedRefinableParameter]):
     its physical limits (EB-71); ``scale >= 0`` (A161).
     """
 
-    scale: P = Field(json_schema_extra=_unit(UNIT_ARBITRARY), description="Phase scale factor, >= 0")
+    scale: P = Field(json_schema_extra=unit_schema(UNIT_ARBITRARY), description="Phase scale factor, >= 0")
 
     @field_validator("space_group")
     @classmethod
@@ -440,7 +420,7 @@ class EasydiffractionPhase(Phase[BoundedRefinableParameter]):
                 for key in ("U11", "U22", "U33"):
                     problems += physical_problems(getattr(atom.Uaniso, key), PHYSICAL_LIMITS["adp"],
                                                   ("atoms", label, "Uaniso", key), key)
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -462,21 +442,6 @@ class RefinementControls(CoreModel):
     gradient_tolerance: CoreFloat = Field(ge=0, description="Gradient orthogonality that stops the fit (lmfit gtol)")
 
 
-def _refined_flags(obj: Any, loc: tuple = ()) -> list[tuple]:
-    """Locations of every refine flag set to true in a validated model tree."""
-    if isinstance(obj, BoundedRefinableParameter):
-        return [loc] if obj.refine_flag else []
-    if isinstance(obj, ChebyshevBackground):
-        return [loc + ("refine_flag",)] if obj.refine_flag else []
-    if isinstance(obj, CoreModel):
-        return [hit for name in type(obj).model_fields for hit in _refined_flags(getattr(obj, name), loc + (name,))]
-    if isinstance(obj, dict):
-        return [hit for k, v in obj.items() for hit in _refined_flags(v, loc + (k,))]
-    if isinstance(obj, list):
-        return [hit for i, v in enumerate(obj) for hit in _refined_flags(v, loc + (i,))]
-    return []
-
-
 class RietveldPayload(CoreModel):
     """``easydiffraction.rietveld`` payload."""
 
@@ -489,17 +454,13 @@ class RietveldPayload(CoreModel):
     phases: dict[CoreName, EasydiffractionPhase] = Field(min_length=1, json_schema_extra=name_keyed)
     refinement_controls: RefinementControls
 
-    _not_null = field_validator("fit_range", "background", mode="before")(_never_null)
+    _not_null = field_validator("fit_range", "background", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("fit_range", "background"))
+        return omit_absent(handler(self), self, ("fit_range", "background"))
 
-    @field_validator("phases")
-    @classmethod
-    def _phase_names(cls, v: dict) -> dict:
-        check_names_unique_ignoring_case(v, "phase")
-        return v
+    _phase_names = field_validator("phases")(unique_phase_names)
 
     def window_mask(self) -> np.ndarray:
         """The points handed to easydiffraction: weighted, within the limits on data points (A149, A154, A158)."""
@@ -510,22 +471,21 @@ class RietveldPayload(CoreModel):
 
     def simulation_mode(self) -> bool:
         """No refine flag set: the pattern is calculated, lmfit is not run."""
-        return not _refined_flags(self)
+        return not refined_flags(self)
 
     @model_validator(mode="after")
     def _easydiffraction_payload(self) -> "RietveldPayload":
-        problems = []
+        problems = fit_range_problems(self.fit_range, self.xrd_data)
         try:
-            check_fit_range_within_data(self.fit_range, self.xrd_data)
-            mask = self.window_mask()
+            mask = None if problems else self.window_mask()
         except ValueError as exc:
-            problems.append(_error("fit_range", str(exc), ("fit_range",),
-                                   None if self.fit_range is None else self.fit_range.model_dump()))
+            problems.append(custom_error("fit_range", str(exc), ("fit_range",),
+                                         None if self.fit_range is None else self.fit_range.model_dump()))
             mask = None
         if mask is not None:
             heavy = np.flatnonzero(mask & (np.asarray(self.xrd_data.Itth_weights, dtype=float) > MAX_WEIGHT))
             for i in heavy[:20]:
-                problems.append(_error(
+                problems.append(custom_error(
                     "easydiffraction_weight",
                     "weight {value} (sigma {sigma}) is above {limit}: easydiffraction would replace sigma "
                     "< 1e-4 by 1.0 without saying so (EB-73); rescale the intensities and weights",
@@ -534,7 +494,7 @@ class RietveldPayload(CoreModel):
                     limit=f"{MAX_WEIGHT:g}"))  # pydantic's templates take no format specs
             itth = np.asarray(self.xrd_data.Itth, dtype=float)
             for i in np.flatnonzero(mask & (itth < 0))[:20]:
-                problems.append(_error(
+                problems.append(custom_error(
                     "easydiffraction_negative_intensity",
                     "intensity {value} at {tth} deg 2theta is negative: easydiffraction refuses negative measured "
                     "intensities (EB-91); shift the data so that every point in the fit window is >= 0, or give "
@@ -545,12 +505,12 @@ class RietveldPayload(CoreModel):
         for name, phase in self.phases.items():
             why = calculator_setting_problem(phase.space_group, calculator)
             if why is not None:
-                problems.append(_error("easydiffraction_setting", "{why}", ("phases", name, "space_group"),
+                problems.append(custom_error("easydiffraction_setting", "{why}", ("phases", name, "space_group"),
                                        phase.space_group, why=why))
             if calculator == "crysfml":
                 for label, atom in phase.atoms.items():
                     if atom.Uaniso is not None:
-                        problems.append(_error(
+                        problems.append(custom_error(
                             "easydiffraction_uaniso_crysfml",
                             "the crysfml calculator does not use anisotropic ADPs: easydiffraction hands CrysFML "
                             "B = 8 pi^2 Ueq (the trace / 3) and the tensor has no effect (EB-23); state Uiso, or "
@@ -558,13 +518,13 @@ class RietveldPayload(CoreModel):
                             ("phases", name, "atoms", label, "Uaniso"), atom.Uaniso.model_dump()))
         profile = self.instrument.broadening
         if profile.peak_type not in CALCULATOR_PEAK_TYPES[calculator]:
-            problems.append(_error(
+            problems.append(custom_error(
                 "easydiffraction_peak_type",
                 "peak_type '{peak_type}' is not computed by the {calculator} calculator; it computes {allowed}",
                 ("instrument", "broadening", "peak_type"), profile.peak_type, peak_type=profile.peak_type,
                 calculator=calculator, allowed=", ".join(CALCULATOR_PEAK_TYPES[calculator])))
         if profile.cutoff_fwhm is not None and calculator != "cryspy":
-            problems.append(_error(
+            problems.append(custom_error(
                 "easydiffraction_cutoff",
                 "cutoff_fwhm is a CrysPy setting; {calculator} ignores it (fixed 30-FWHM window, EB-76): leave it out",
                 ("instrument", "broadening", "cutoff_fwhm"), profile.cutoff_fwhm, calculator=calculator))
@@ -575,49 +535,26 @@ class RietveldPayload(CoreModel):
                                         corrections.calib_sample_transparency) if q is not None]
             points, pad = width_check_points(np.asarray(self.xrd_data.tth, dtype=float)[mask], shifts)
             for kind, (lo, hi) in profile_negative_widths(lambda n: getattr(pars, n).value, points).items():
-                problems.append(_error(
+                problems.append(custom_error(
                     "easydiffraction_negative_width",
                     "the {width} is negative from {lo} to {hi} deg 2theta, within {pad} deg of the fit window "
                     "(reflections there are computed and reach it): easydiffraction then computes a wrong "
                     "pattern without a message (CrysFML drops those peaks, CrysPy distorts them; EB-87)",
                     ("instrument", "broadening", "parameters"), pars.model_dump(),
                     width=kind, lo=f"{lo:g}", hi=f"{hi:g}", pad=f"{pad:g}"))
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
-class EasydiffractionRietveldRecipe(CoreRecipe):
+class EasydiffractionRietveldRecipe(EngineRecipe):
     """An ``easydiffraction.rietveld`` recipe."""
+
+    gateway_name: ClassVar[str] = "easydiffraction"
+    schema_declarations: ClassVar[Mapping[str, Any]] = DECLARATIONS
 
     schema_name: Literal["easydiffraction.rietveld"]
     payload: RietveldPayload
 
-    @model_validator(mode="after")
-    def _versions(self) -> "EasydiffractionRietveldRecipe":
-        check_engine_schema_version(self.core_schema_version, self.engine_schema_version,
-                                    gateway="easydiffraction", capabilities=DECLARATIONS)
-        return self
 
-
-_RECIPE_MODELS = {"easydiffraction.rietveld": EasydiffractionRietveldRecipe}
-
-
-def validate_recipe(recipe) -> EasydiffractionRietveldRecipe:
-    """Validate an ``easydiffraction.*`` recipe (dict or model); return the model (idempotent, A50)."""
-    if isinstance(recipe, EasydiffractionRietveldRecipe):
-        return recipe
-    if not isinstance(recipe, dict):
-        return EasydiffractionRietveldRecipe.model_validate(recipe)
-    model = _RECIPE_MODELS.get(recipe.get("schema_name"))
-    if model is None:
-        raise ValidationError.from_exception_data("EasydiffractionRecipe", [InitErrorDetails(
-            type=PydanticCustomError("schema_name", "schema_name '{name}' is not an easydiffraction workflow; "
-                                                    "expected one of {names}",
-                                     {"name": recipe.get("schema_name"), "names": ", ".join(SCHEMA_NAMES)}),
-            loc=("schema_name",), input=recipe.get("schema_name"))])
-    return model.model_validate(recipe)
-
-
-def json_schema(schema_name: str) -> dict:
-    """The JSON Schema of one easydiffraction workflow."""
-    return _RECIPE_MODELS[schema_name].model_json_schema()
+validate_recipe = recipe_validator({"easydiffraction.rietveld": EasydiffractionRietveldRecipe},
+                                   engine="easydiffraction", title="EasydiffractionRecipe")
