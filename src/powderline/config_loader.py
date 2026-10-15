@@ -5,7 +5,6 @@ TOPAS section is read by ``gateways.topas.runner``. Nothing else lives in the fi
 Materials Project tool left PowderLine (P-36, 0.2.0).
 """
 
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 import yaml

@@ -379,8 +379,7 @@ from a GSAS-II recipe:
   engine you use (`pixi install -e gsasii`, `pixi install -e easydiffraction`,
   or `-e all`) and run in it: `pixi run -e gsasii kicker <recipe>`. The
   `easydiff` environment is now `easydiffraction` (remove the stale
-  `.pixi/envs/easydiff`); `pixi run gsas-server …` and `pixi run mp-simulate …`
-  need `-e gsasii`. A `gsasii.*` run in the default environment raises
+  `.pixi/envs/easydiff`); `pixi run gsas-server …` needs `-e gsasii`. A `gsasii.*` run in the default environment raises
   `EngineNotAvailableError` with the install and run commands in the message.
 - **Public API and CLI** (P-06, provisional):
   - `powderline.run(recipe, output_dir, engine=...)` → `powderline.run(recipe,

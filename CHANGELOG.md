@@ -194,10 +194,10 @@ recipes do not validate; see the
   single background peak at the example migration: its γ = 1e-5 is below
   GSAS-II's floor and no variant of it converges; the regression references
   lose the four `background_peak_0_*` rows (P-01, provisional).
-- **`mp-simulate`** writes SH/L 0.002 (the gsasii floor) instead of 0.001
-  (P-05, provisional), emits a `gsasii.rietveld` 1.0.0 recipe and ships with
-  the GSAS-II gateway (`powderline.gateways.gsasii.mp_simulate`; pixi task
-  `pixi run -e gsasii mp-simulate`). Its structures are now reduced to the
+- **The simulation recipe builder** (`simulation_builder.SimulationRecipeBuilder`;
+  the `mp-simulate` tool that drove it was removed later in this release, see
+  Removed) writes SH/L 0.002 (the gsasii floor) instead of 0.001 (P-05,
+  provisional) and emits a `gsasii.rietveld` 1.0.0 recipe. Its structures are now reduced to the
   symmetry-unique sites (v0.1.1 handed GSAS-II every atom of the conventional
   cell, so a site was counted *multiplicity* times) and two-origin groups are
   moved to origin choice 2; the simulated grid includes `max_2theta` (row 31,
@@ -236,11 +236,11 @@ recipes do not validate; see the
 - **pixi environments** (A31, A42; P-21, provisional): the **default
   environment is core-only** (schema layer, registry, the engine-free CLI; no
   engine). Engines live in named environments: `gsasii` (GSAS-II via
-  pixi-build, the server, `mp-simulate`), `easydiffraction` (renamed from
+  pixi-build, the server), `easydiffraction` (renamed from
   `easydiff`; Python ≥ 3.12, no GSAS-II), `all` (every engine) and `dev` (all
   plus docs/test tooling). `pixi install -e gsasii` installs an engine;
   `pixi run -e gsasii kicker <recipe>` runs in it; engine-bound tasks
-  (`gsas-server`, `mp-simulate`, `ui`) live in their engine's feature, so
+  (`gsas-server`, `ui`) live in their engine's feature, so
   pixi asks for `-e` when the task is ambiguous; `pixi run test` and
   `pixi run docs` resolve to `dev`. A `gsasii.*` recipe validates in the
   default environment but a run there raises `EngineNotAvailableError`

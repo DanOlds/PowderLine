@@ -25,7 +25,8 @@ simulation_defaults:
     wavelength: 0.4133       # Angstroms (lambda = 12.398 / E[keV]; 0.4133 A = 30 keV)
     polarization: 0.99       # GSAS-II 'Polariz.'
     zero_shift: 0.0          # centidegrees 2theta (GSAS-II 'Zero')
-    axial_divergence: 0.002  # GSAS-II 'SH/L' (0.002 is GSAS-II's own floor: smaller values are rejected)
+    axial_divergence: 0.002  # GSAS-II 'SH/L'; 0.002 is GSAS-II's own floor
+                             # (smaller values are rejected)
 
     # Thompson-Cox-Hastings pseudo-Voigt instrumental broadening
     # (GSAS-II U, V, W, X, Y, Z; reasonable high-resolution synchrotron values)

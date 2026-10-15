@@ -2,9 +2,9 @@
 
 Covers the file-discovery paths (no config file → defaults, explicit missing
 path → FileNotFoundError, valid YAML from a temporary file, tilde expansion,
-empty YAML) and the MP API key resolution order (config value first, then the
-simulation defaults). Runs in the default
-pixi environment and requires only pyyaml (already a PowderLine dependency).
+empty YAML) and `get_simulation_defaults` (file value, fallback to the
+built-ins). Runs in the default pixi environment and requires only pyyaml
+(already a PowderLine dependency).
 """
 
 from __future__ import annotations

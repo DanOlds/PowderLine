@@ -15,7 +15,7 @@ from powderline.gateways.gsasii.simulation_builder import SimulationRecipeBuilde
 from test_simulation_builder import _validate  # noqa: E402
 
 
-def test_mp_pipeline_end_to_end(lab6_structure_data, tmp_output_dir):
+def test_builder_pipeline_end_to_end(lab6_structure_data, tmp_output_dir):
     """Full stack: build recipe → validate → run simulation → check outputs.
 
     Uses subprocess execution mode to bypass the server requirement.

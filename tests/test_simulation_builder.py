@@ -9,9 +9,9 @@ values), simulation-mode invariants (all refine flags locked), structural
 fallbacks (Uiso/occupancy defaults + warnings, occupancy passthrough), the
 reduction of the conventional cell to symmetry-unique sites and the
 origin-choice handling for two-origin groups. GSASClient behavior lives in
-test_gsas_client_visibility.py; the mp_simulate CLI in test_mp_simulate_cli.py.
-Unit tests need no GSAS-II; the end-to-end test (build recipe → run
-simulation → check output files) is ``test_mp_pipeline_gsasii.py`` (re/09 split).
+test_gsas_client_visibility.py. Unit tests need no GSAS-II; the end-to-end
+test (build recipe → run simulation → check output files) is
+``test_simulation_builder_gsasii.py`` (re/09 split).
 """
 
 import pytest

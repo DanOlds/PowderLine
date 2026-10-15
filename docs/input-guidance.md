@@ -289,6 +289,6 @@ approximated; each is a validation error or simply absent.
   guaranteeing the recipe's intent): a named future feature, not present.
 - **TOPAS 7**: `topas.*` 1.0.0 is verified against TOPAS 6 and declares TOPAS
   6 only; TOPAS 7 needs an explicit widening with a compatibility run.
-- **Materials Project simulation as an engine-agnostic tool**: `mp-simulate`
-  emits a `gsasii.rietveld` recipe and runs GSAS-II; an engine-agnostic
-  plugin with its own configuration is a future item.
+- **A structure-source plugin** (Materials Project, CIF) upstream of the
+  simulation recipe builder, with its own configuration: the Materials
+  Project tool that drove the builder left PowderLine in 0.2.0 (P-36).

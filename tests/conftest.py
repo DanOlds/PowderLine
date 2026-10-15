@@ -61,8 +61,7 @@ def pytest_collection_modifyitems(config, items):
 CORE_GUARD_ENV = "POWDERLINE_CORE_GUARD"
 
 #: Top-level packages no core/topas_gen test may import: the engines and their
-#: calculators, and the Materials Project stack, which lives in the gsasii env
-#: (P-21), so a test that needs it is `gsasii`.
+#: calculators (P-21); a test that needs one is `gsasii` or `easydiffraction`.
 CORE_GUARD_BLOCKED = ("GSASII", "easydiffraction", "cryspy", "pycrysfml", "crysfml")
 
 ENGINE_MARKERS = tuple(m for m in SUITE_MARKERS if m not in ("core", "topas_gen"))
@@ -346,7 +345,7 @@ def lab6_structure_data():
             'gamma': 90.0,
             'volume': 71.82632674659455,
         },
-        # Every atom of the conventional cell, as MPInterface.get_structure lists
+        # Every atom of the conventional cell, as a Materials Project structure lists
         # them (1 La on 1a, the 6 B of site 6f); the builder reduces them to one
         # representative per orbit
         'sites': [

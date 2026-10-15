@@ -82,7 +82,7 @@ Each gateway is a package with the same two layers:
 
 | Gateway | Runtime modules |
 |---|---|
-| `gsasii/` (GSAS-II 5.7.9) | the **frozen** setup/execution code moved verbatim from the pre-refactor `kicker.py`: `helpers.py`, `project.py`, `setters.py`, `executors.py`, `extractors.py`, `constraints.py` (code-hashed; see [policies](policies.md#frozen-gsas-ii-code-and-the-edits-ledger)); non-frozen additions `routing.py` (one entry for in-process, server and client), `fit_report.py` (uniform statistics, `engine_details`, convergence, divergence), `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`; `server.py` / `client.py` (the persistent FastAPI server and `GSASClient`: per-user, loopback, ephemeral port, signed requests and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2); the Materials Project simulation tool `mp_simulate.py`, `simulation_builder.py`, `pattern_exporter.py` |
+| `gsasii/` (GSAS-II 5.7.9) | the **frozen** setup/execution code moved verbatim from the pre-refactor `kicker.py`: `helpers.py`, `project.py`, `setters.py`, `executors.py`, `extractors.py`, `constraints.py` (code-hashed; see [policies](policies.md#frozen-gsas-ii-code-and-the-edits-ledger)); non-frozen additions `routing.py` (one entry for in-process, server and client), `fit_report.py` (uniform statistics, `engine_details`, convergence, divergence), `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`; `server.py` / `client.py` (the persistent FastAPI server and `GSASClient`: per-user, loopback, ephemeral port, signed requests and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2); `simulation_builder.py` (structure dict → simulation recipe; see [the builder](#the-simulation-recipe-builder)) |
 | `topas/` (TOPAS 6) | `native_writer.py` (model → INP + `.xye`), `native_run.py` (run `tc.exe`, read TOPAS's files strictly, build the result; the background-only second run), `peak_list.py`, `conversions.py`, `runner.py` (find `tc.exe`, read `.powderline_config.yaml`), `errors.py` |
 | `easydiffraction/` (0.21.1) | `native_builder.py` (model → easydiffraction `Project`; the CrysPy template rule; anisotropic atoms first), `native_run.py` (calculate or lmfit fit, the result), `space_group_table.py` / `space_group_support.py` (the 531 settings and the per-calculator verified sets), `errors.py` |
 
@@ -612,7 +612,10 @@ origin choice 2, the canonical space-group name, every default stated, SH/L
 0.002, instrument defaults from `.powderline_config.yaml`'s
 `simulation_defaults`. The Materials Project fetch and `.chi` export that
 drove it (`mp-simulate`) left PowderLine in 0.2.0 (P-36); RandomXRD carries
-its own copy.
+its own copy. The recipe's `metadata.materials_project` block (material id,
+formula, the space group as stated) keeps its name: it is what the tests and
+RandomXRD's copy read, and a source-neutral key is a shape decision for the
+maintainer.
 
 ## Future roadmap
 

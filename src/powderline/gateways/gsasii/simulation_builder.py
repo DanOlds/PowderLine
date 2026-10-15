@@ -357,21 +357,19 @@ class SimulationRecipeBuilder:
             'broadening': {key: [broadening[key], False] for key in ('U', 'V', 'W', 'X', 'Y', 'Z')},
         }
 
-    def _build_phase_from_mp_data(self, structure_data: Dict[str, Any], phase_name: str) -> Dict[str, Any]:
+    def _build_phase_from_structure(self, structure_data: Dict[str, Any], phase_name: str) -> Dict[str, Any]:
         """Build the gsasii phase block (A93) from structure data.
 
-        Uses the structure data provided by MP API directly, avoiding CIF
-        parsing. Structural fallbacks (Uiso, occupancy) are applied ONLY to
+        Reads the structure dict directly (no CIF parsing). Structural fallbacks (Uiso, occupancy) are applied ONLY to
         sites that do not provide a value, with a warning naming the affected
         atoms (every atom of the input list, before the reduction to unique
         sites). The space group is written in its canonical setting
         (:func:`space_group_setting`) and the atom list reduced to one
         representative per orbit (:func:`unique_sites`).
         """
-        # Use MP-provided data (unit_cell, space_group, sites already extracted)
         if not structure_data.get('unit_cell') or not structure_data.get('space_group') or not structure_data.get('sites'):
             raise ValueError(
-                "MP structure data missing required fields. "
+                "Structure data missing required fields. "
                 "Ensure unit_cell, space_group, and sites are present."
             )
 
@@ -453,7 +451,7 @@ class SimulationRecipeBuilder:
         self,
         structure_data: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Build a complete ``gsasii.rietveld`` simulation recipe from MP structure data.
+        """Build a complete ``gsasii.rietveld`` simulation recipe from a structure dict.
 
         Args:
             structure_data: Structure data (see the module docstring for the keys)
@@ -497,7 +495,7 @@ class SimulationRecipeBuilder:
 
                 # Phase definition (one block: structure, scale, broadening)
                 'phases': {
-                    phase_name: self._build_phase_from_mp_data(structure_data, phase_name),
+                    phase_name: self._build_phase_from_structure(structure_data, phase_name),
                 },
 
                 # Simulation mode: 1 cycle, no refinement
