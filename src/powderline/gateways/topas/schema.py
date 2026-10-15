@@ -39,15 +39,15 @@ TOPAS rules checked here:
 from __future__ import annotations
 
 import math
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Annotated, Any, ClassVar, Literal, Mapping, Optional, Union
 
 import gemmi
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
-from pydantic import Field, StrictStr, TypeAdapter, ValidationError, field_validator, model_serializer, model_validator
-from pydantic_core import InitErrorDetails, PydanticCustomError
+from pydantic import Field, StrictStr, field_validator, model_serializer, model_validator
+from pydantic_core import InitErrorDetails
 
-from powderline.compat import check_engine_schema_version
+from powderline.compat import schema_declarations
 from powderline.exceptions import StructuredWarning
 from powderline.schema_core import (
     UNIT_ANGSTROM,
@@ -60,14 +60,24 @@ from powderline.schema_core import (
     CoreInt,
     CoreModel,
     CoreName,
-    CoreRecipe,
+    EngineRecipe,
     FitRange,
     Phase,
     XRDData,
+    absent_not_null,
     absent_not_null_schema,
-    check_fit_range_within_data,
-    check_names_unique_ignoring_case,
+    custom_error,
+    fit_range_problems,
+    fit_window,
     name_keyed,
+    omit_absent,
+    outside_window_problems,
+    raise_problems,
+    recipe_validator,
+    refined_flag_problems,
+    refined_flags,
+    unique_phase_names,
+    unit_schema,
 )
 
 P = BoundedRefinableParameter
@@ -81,12 +91,12 @@ REQUIRES_CORE_SCHEMA = "==1.0.0"
 SUPPORTED_ENGINE_VERSIONS = "==6"
 
 #: The gateway's schema declarations (``capabilities()`` keys, A65) plus the TOPAS versions (A144).
-DECLARATIONS = {
-    "engine_schema_version": ENGINE_SCHEMA_VERSION,
-    "supported_engine_schemas": SUPPORTED_ENGINE_SCHEMAS,
-    "requires_core_schema": REQUIRES_CORE_SCHEMA,
-    "supported_engine_versions": SUPPORTED_ENGINE_VERSIONS,
-}
+DECLARATIONS = schema_declarations(
+    engine_schema_version=ENGINE_SCHEMA_VERSION,
+    supported_engine_schemas=SUPPORTED_ENGINE_SCHEMAS,
+    requires_core_schema=REQUIRES_CORE_SCHEMA,
+    supported_engine_versions=SUPPORTED_ENGINE_VERSIONS,
+)
 
 SCHEMA_NAMES = ("topas.rietveld", "topas.spf")
 
@@ -100,33 +110,6 @@ UNIT_DIMENSIONLESS = "dimensionless"
 
 #: beq = 8 pi^2 Uiso (EB-24; confirmed on TOPAS 6, C19).
 EIGHT_PI_SQ = 8 * math.pi ** 2
-
-
-def _unit(unit: str) -> dict:
-    return {"unit": unit}
-
-
-def _never_null(v: Any, info) -> Any:
-    """A block that may be left out is never ``null`` (the A96 convention)."""
-    if v is None:
-        raise ValueError(f"{info.field_name} must not be null; leave it out instead")
-    return v
-
-
-def _error(kind: str, message: str, loc: tuple, input_: Any, **ctx) -> InitErrorDetails:
-    return InitErrorDetails(type=PydanticCustomError(kind, message, ctx or None), loc=loc, input=input_)
-
-
-def _raise(model: str, problems: list[InitErrorDetails]) -> None:
-    if problems:
-        raise ValidationError.from_exception_data(model, problems)
-
-
-def _omit_none(data: dict, model: CoreModel, names: tuple[str, ...]) -> dict:
-    for name in names:
-        if getattr(model, name) is None:
-            data.pop(name, None)
-    return data
 
 
 # --- TOPAS's fixed default limits (A138; TR Table 3.1, TOPAS.INC; EB-58) ------
@@ -150,13 +133,13 @@ def limit_problems(p: Optional[P], lo: Optional[float], hi: Optional[float], loc
         return []
     problems = []
     if lo is not None and p.min is None and p.value < lo:
-        problems.append(_error(
+        problems.append(custom_error(
             "topas_default_limit",
             "{what} is refined from {value}, below TOPAS's default minimum {limit}: TOPAS would move it to the "
             "limit without saying so; start at or above {limit}, or state min to replace TOPAS's limit (A138)",
             loc, p.model_dump(), what=what, value=p.value, limit=_limit_text(lo, "min")))
     if hi is not None and p.max is None and p.value > hi:
-        problems.append(_error(
+        problems.append(custom_error(
             "topas_default_limit",
             "{what} is refined from {value}, above TOPAS's default maximum {limit}: TOPAS would move it to the "
             "limit without saying so; start at or below {limit}, or state max to replace TOPAS's limit (A138)",
@@ -171,7 +154,7 @@ def _positive(p: Optional[P], loc: tuple, what: str, *, allow_zero: bool = False
     if not bad:
         return []
     need = ">= 0" if allow_zero else "> 0"
-    return [_error("topas_positive", "{what} must be {need}, got {value}", loc, p.model_dump(),
+    return [custom_error("topas_positive", "{what} must be {need}, got {value}", loc, p.model_dump(),
                    what=what, need=need, value=p.value)]
 
 
@@ -232,20 +215,20 @@ class Radiation(CoreModel):
     """One emission line (TOPAS ``lam``): ``la``, ``lo``, ``lh`` and optionally ``lg`` with ``lh``."""
 
     ymin_on_ymax: CoreFloat = Field(gt=0, description="TOPAS 'ymin_on_ymax': x-axis extent of the emission line")
-    la: P = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS), description="TOPAS 'la': area of the line, > 0")
-    lo: P = Field(json_schema_extra=_unit(UNIT_ANGSTROM), description="TOPAS 'lo': wavelength, > 0")
-    lh: P = Field(json_schema_extra=_unit(UNIT_MILLIANGSTROM),
+    la: P = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS), description="TOPAS 'la': area of the line, > 0")
+    lo: P = Field(json_schema_extra=unit_schema(UNIT_ANGSTROM), description="TOPAS 'lo': wavelength, > 0")
+    lh: P = Field(json_schema_extra=unit_schema(UNIT_MILLIANGSTROM),
                   description="TOPAS 'lh': Lorentzian half-width of the line, > 0 (synchrotron: very narrow, "
                               "e.g. 0.0001)")
     lg: Optional[P] = Field(default=None, json_schema_extra=absent_not_null_schema(UNIT_MILLIANGSTROM),
                             description="TOPAS 'lg': Gaussian half-width, > 0; only together with lh (lg alone "
                                         "crashes TOPAS 6)")
 
-    _not_null = field_validator("lg", mode="before")(_never_null)
+    _not_null = field_validator("lg", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("lg",))
+        return omit_absent(handler(self), self, ("lg",))
 
     @model_validator(mode="after")
     def _topas_radiation(self) -> "Radiation":
@@ -254,7 +237,7 @@ class Radiation(CoreModel):
             p = getattr(self, name)
             problems += _positive(p, (name,), name)
             problems += limit_problems(p, *KEYWORD_LIMITS[name], (name,), name)
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -266,67 +249,67 @@ class Geometry(CoreModel):
     Rs: Optional[CoreFloat] = Field(default=None, gt=0, json_schema_extra=absent_not_null_schema(UNIT_MILLIMETRE),
                                     description="Secondary radius; required with either axial model")
 
-    _not_null = field_validator("Rp", "Rs", mode="before")(_never_null)
+    _not_null = field_validator("Rp", "Rs", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("Rp", "Rs"))
+        return omit_absent(handler(self), self, ("Rp", "Rs"))
 
 
 class ZeroError(CoreModel):
     """TOPAS ``ZE`` / ``Zero_Error``: ``th2_offset``."""
 
-    th2_offset: P = Field(json_schema_extra=_unit(UNIT_DEG_2THETA), description="Zero error")
+    th2_offset: P = Field(json_schema_extra=unit_schema(UNIT_DEG_2THETA), description="Zero error")
 
 
 class LPFactor(CoreModel):
     """TOPAS ``LP_Factor``: Lorentz-polarisation with a monochromator angle."""
 
-    monochromator_angle: P = Field(json_schema_extra=_unit(UNIT_DEGREE),
+    monochromator_angle: P = Field(json_schema_extra=unit_schema(UNIT_DEGREE),
                                    description="Monochromator 2theta: 90 synchrotron/neutron, 0 no monochromator")
 
 
 class LPFactorSynchrotron(CoreModel):
     """TOPAS ``LP_Factor_Synchrotron`` (Madsen): in-plane polarisation and monochromator angle."""
 
-    pp: P = Field(json_schema_extra=_unit(UNIT_DIMENSIONLESS),
+    pp: P = Field(json_schema_extra=unit_schema(UNIT_DIMENSIONLESS),
                   description="Polarisation in the plane: 0 ideal synchrotron ... 1 laboratory tube")
-    mono: P = Field(json_schema_extra=_unit(UNIT_DEGREE), description="Monochromator 2theta")
+    mono: P = Field(json_schema_extra=unit_schema(UNIT_DEGREE), description="Monochromator 2theta")
 
     @model_validator(mode="after")
     def _topas_lp_sync(self) -> "LPFactorSynchrotron":
         problems = limit_problems(self.pp, 1e-7, 1.0, ("pp",), "pp")
         problems += limit_problems(self.mono, 1e-7, 90.0, ("mono",), "mono")
         if self.pp.refine_flag and self.mono.refine_flag:
-            problems.append(_error(
+            problems.append(custom_error(
                 "topas_lp_sync_correlated",
                 "pp and mono are ~100 % correlated (TOPAS.INC: do not attempt to refine both together); "
                 "refine at most one of them", ("mono",), self.mono.model_dump()))
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
 class SimpleAxialModel(CoreModel):
     """TOPAS ``Simple_Axial_Model``: one axial length; reads ``Rs``."""
 
-    axial_length_mm: P = Field(json_schema_extra=_unit(UNIT_MILLIMETRE), description="Axial divergence length")
+    axial_length_mm: P = Field(json_schema_extra=unit_schema(UNIT_MILLIMETRE), description="Axial divergence length")
 
 
 class FullAxialModel(CoreModel):
     """TOPAS ``Full_Axial_Model`` (``axial_conv``); reads ``Rp`` and ``Rs``. Soller angles left out: no Soller slit."""
 
-    filament_length: P = Field(json_schema_extra=_unit(UNIT_MILLIMETRE))
-    sample_length: P = Field(json_schema_extra=_unit(UNIT_MILLIMETRE))
-    receiving_slit_length: P = Field(json_schema_extra=_unit(UNIT_MILLIMETRE))
+    filament_length: P = Field(json_schema_extra=unit_schema(UNIT_MILLIMETRE))
+    sample_length: P = Field(json_schema_extra=unit_schema(UNIT_MILLIMETRE))
+    receiving_slit_length: P = Field(json_schema_extra=unit_schema(UNIT_MILLIMETRE))
     primary_soller_angle: Optional[P] = Field(default=None, json_schema_extra=absent_not_null_schema(UNIT_DEGREE))
     secondary_soller_angle: Optional[P] = Field(default=None, json_schema_extra=absent_not_null_schema(UNIT_DEGREE))
     axial_n_beta: CoreInt = Field(gt=0, description="TOPAS 'axial_n_beta': rays per point source")
 
-    _not_null = field_validator("primary_soller_angle", "secondary_soller_angle", mode="before")(_never_null)
+    _not_null = field_validator("primary_soller_angle", "secondary_soller_angle", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("primary_soller_angle", "secondary_soller_angle"))
+        return omit_absent(handler(self), self, ("primary_soller_angle", "secondary_soller_angle"))
 
     @model_validator(mode="after")
     def _topas_axial(self) -> "FullAxialModel":
@@ -334,15 +317,15 @@ class FullAxialModel(CoreModel):
         for name in ("filament_length", "sample_length", "receiving_slit_length",
                      "primary_soller_angle", "secondary_soller_angle"):
             problems += limit_problems(getattr(self, name), *KEYWORD_LIMITS["axial"], (name,), name)
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
 class Capillary(CoreModel):
     """TOPAS capillary absorption (TOPAS 6 keywords; the focusing-beam keywords are TOPAS 7 only, A143)."""
 
-    diameter_mm: P = Field(json_schema_extra=_unit(UNIT_MILLIMETRE), description="TOPAS 'capillary_diameter_mm'")
-    u_cm_inv: P = Field(json_schema_extra=_unit(UNIT_INV_CM),
+    diameter_mm: P = Field(json_schema_extra=unit_schema(UNIT_MILLIMETRE), description="TOPAS 'capillary_diameter_mm'")
+    u_cm_inv: P = Field(json_schema_extra=unit_schema(UNIT_INV_CM),
                         description="TOPAS 'capillary_u_cm_inv': linear absorption coefficient")
     beam: Literal["parallel", "divergent"] = Field(
         description="TOPAS 'capillary_parallel_beam' or 'capillary_divergent_beam' (the capillary is assumed "
@@ -361,18 +344,18 @@ class Corrections(CoreModel):
     capillary: Optional[Capillary] = Field(default=None, json_schema_extra=absent_not_null_schema())
 
     _not_null = field_validator("Zero_Error", "LP_Factor", "LP_Factor_Synchrotron", "Simple_Axial_Model",
-                                "Full_Axial_Model", "capillary", mode="before")(_never_null)
+                                "Full_Axial_Model", "capillary", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, tuple(type(self).model_fields))
+        return omit_absent(handler(self), self, tuple(type(self).model_fields))
 
     @model_validator(mode="after")
     def _topas_corrections(self) -> "Corrections":
         problems = []
         for a, b in (("LP_Factor", "LP_Factor_Synchrotron"), ("Simple_Axial_Model", "Full_Axial_Model")):
             if getattr(self, a) is not None and getattr(self, b) is not None:
-                problems.append(_error("topas_exclusive", "{a} and {b} model the same effect; state one of them",
+                problems.append(custom_error("topas_exclusive", "{a} and {b} model the same effect; state one of them",
                                        (b,), getattr(self, b).model_dump(), a=a, b=b))
         if self.LP_Factor is not None:
             problems += limit_problems(self.LP_Factor.monochromator_angle, 1e-4, 90.0,
@@ -382,7 +365,7 @@ class Corrections(CoreModel):
                                        ("Simple_Axial_Model", "axial_length_mm"), "axial_length_mm")
         if self.capillary is not None:
             problems += _positive(self.capillary.diameter_mm, ("capillary", "diameter_mm"), "diameter_mm")
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -408,11 +391,11 @@ def _named_parameters(params: dict, expected: tuple[str, ...], loc: tuple, owner
     problems = []
     for name in expected:
         if name not in params:
-            problems.append(_error("missing_parameter", "{owner} needs parameter '{name}' (expected: {names})",
+            problems.append(custom_error("missing_parameter", "{owner} needs parameter '{name}' (expected: {names})",
                                    loc, sorted(params), owner=owner, name=name, names=", ".join(expected)))
     for name in params:
         if name not in expected:
-            problems.append(_error("unexpected_parameter", "{owner} has no parameter '{name}' (expected: {names})",
+            problems.append(custom_error("unexpected_parameter", "{owner} has no parameter '{name}' (expected: {names})",
                                    loc + (name,), params[name].model_dump(), owner=owner, name=name,
                                    names=", ".join(expected)))
     return problems
@@ -438,7 +421,7 @@ class InstrumentBroadening(CoreModel):
         problems = _named_parameters(self.parameters, expected, ("parameters",), self.peak_type)
         for name, (lo, hi) in PEAK_TYPE_LIMITS[self.peak_type].items():
             problems += limit_problems(self.parameters.get(name), lo, hi, ("parameters", name), name)
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -454,11 +437,11 @@ class Instrument(CoreModel):
                                                description="Left out: no corrections")
     broadening: InstrumentBroadening
 
-    _not_null = field_validator("description", "geometry", "corrections", mode="before")(_never_null)
+    _not_null = field_validator("description", "geometry", "corrections", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("description", "geometry", "corrections"))
+        return omit_absent(handler(self), self, ("description", "geometry", "corrections"))
 
     @model_validator(mode="after")
     def _topas_geometry(self) -> "Instrument":
@@ -471,13 +454,13 @@ class Instrument(CoreModel):
                                      ("Rp", need_rp, "Full_Axial_Model")):
             value = None if g is None else getattr(g, name)
             if needed and value is None:
-                problems.append(_error("topas_radius_needed", "{reader} reads the radius {name}; state "
+                problems.append(custom_error("topas_radius_needed", "{reader} reads the radius {name}; state "
                                        "geometry.{name}", ("geometry", name), None, reader=reader, name=name))
             elif not needed and value is not None:
-                problems.append(_error("topas_radius_unused", "geometry.{name} is read only by {reader}, which "
+                problems.append(custom_error("topas_radius_unused", "geometry.{name} is read only by {reader}, which "
                                        "this recipe does not use; leave it out", ("geometry", name), value,
                                        reader=reader, name=name))
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -495,8 +478,8 @@ _WIDTHS = ("pv_fwhm", "spv_h1", "spv_h2", "h1", "h2")
 class BackgroundPeak(CoreModel):
     """A background peak: one TOPAS ``xo_Is`` phase with its own peak type (no instrument profile)."""
 
-    xo: P = Field(json_schema_extra=_unit(UNIT_DEG_2THETA), description="Position, inside the fit window")
-    I: P = Field(json_schema_extra=_unit(UNIT_ARBITRARY), description="Intensity")  # noqa: E741  TOPAS's name
+    xo: P = Field(json_schema_extra=unit_schema(UNIT_DEG_2THETA), description="Position, inside the fit window")
+    I: P = Field(json_schema_extra=unit_schema(UNIT_ARBITRARY), description="Intensity")  # noqa: E741  TOPAS's name
     peak_type: Literal["pv", "spv", "spvii"]
     parameters: dict[str, P] = Field(description="pv: pv_fwhm, pv_lor; spv: spv_h1, spv_h2, spv_l1, spv_l2; "
                                                  "spvii: h1, h2, m1, m2 (widths in degree 2theta)")
@@ -511,7 +494,7 @@ class BackgroundPeak(CoreModel):
                 problems += _positive(p, ("parameters", name), name)
             if name in KEYWORD_LIMITS:
                 problems += limit_problems(p, *KEYWORD_LIMITS[name], ("parameters", name), name)
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -528,17 +511,17 @@ class Background(CoreModel):
     peaks: Optional[list[BackgroundPeak]] = Field(default=None, min_length=1,
                                                   json_schema_extra=absent_not_null_schema())
 
-    _not_null = field_validator("chebyshev", "One_on_X", "peaks", mode="before")(_never_null)
+    _not_null = field_validator("chebyshev", "One_on_X", "peaks", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("chebyshev", "One_on_X", "peaks"))
+        return omit_absent(handler(self), self, ("chebyshev", "One_on_X", "peaks"))
 
     @model_validator(mode="after")
     def _topas_background(self) -> "Background":
         if self.chebyshev is None and self.One_on_X is None and self.peaks is None:
             raise ValueError("background states nothing; leave the block out for no background")
-        _raise(type(self).__name__, limit_problems(self.One_on_X, 1e-4, None, ("One_on_X",), "One_on_X"))
+        raise_problems(type(self).__name__, limit_problems(self.One_on_X, 1e-4, None, ("One_on_X",), "One_on_X"))
         return self
 
 
@@ -555,11 +538,11 @@ class SizeBroadening(CoreModel):
     CS_L: Optional[P] = Field(default=None, json_schema_extra=absent_not_null_schema(UNIT_NANOMETRE))
     CS_G: Optional[P] = Field(default=None, json_schema_extra=absent_not_null_schema(UNIT_NANOMETRE))
 
-    _not_null = field_validator("CS_L", "CS_G", mode="before")(_never_null)
+    _not_null = field_validator("CS_L", "CS_G", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("CS_L", "CS_G"))
+        return omit_absent(handler(self), self, ("CS_L", "CS_G"))
 
     @model_validator(mode="after")
     def _topas_size(self) -> "SizeBroadening":
@@ -570,7 +553,7 @@ class SizeBroadening(CoreModel):
             p = getattr(self, name)
             problems += _positive(p, (name,), name)
             problems += limit_problems(p, 0.3, 10000.0, (name,), name)
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -584,11 +567,11 @@ class StrainBroadening(CoreModel):
     Strain_L: Optional[P] = Field(default=None, json_schema_extra=absent_not_null_schema(UNIT_DEG_2THETA))
     Strain_G: Optional[P] = Field(default=None, json_schema_extra=absent_not_null_schema(UNIT_DEG_2THETA))
 
-    _not_null = field_validator("Strain_L", "Strain_G", mode="before")(_never_null)
+    _not_null = field_validator("Strain_L", "Strain_G", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("Strain_L", "Strain_G"))
+        return omit_absent(handler(self), self, ("Strain_L", "Strain_G"))
 
     @model_validator(mode="after")
     def _topas_strain(self) -> "StrainBroadening":
@@ -599,7 +582,7 @@ class StrainBroadening(CoreModel):
             p = getattr(self, name)
             problems += _positive(p, (name,), name, allow_zero=True)
             problems += limit_problems(p, 1e-4, 5.0, (name,), name)
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -609,11 +592,11 @@ class PeakBroadening(CoreModel):
     size_broadening: Optional[SizeBroadening] = Field(default=None, json_schema_extra=absent_not_null_schema())
     strain_broadening: Optional[StrainBroadening] = Field(default=None, json_schema_extra=absent_not_null_schema())
 
-    _not_null = field_validator("size_broadening", "strain_broadening", mode="before")(_never_null)
+    _not_null = field_validator("size_broadening", "strain_broadening", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("size_broadening", "strain_broadening"))
+        return omit_absent(handler(self), self, ("size_broadening", "strain_broadening"))
 
     @model_validator(mode="after")
     def _topas_broadening(self) -> "PeakBroadening":
@@ -630,11 +613,11 @@ class TopasPhase(Phase[BoundedRefinableParameter]):
     bound is stated (A138).
     """
 
-    scale: P = Field(json_schema_extra=_unit(UNIT_ARBITRARY), description="Phase scale factor (TOPAS magnitude), > 0")
+    scale: P = Field(json_schema_extra=unit_schema(UNIT_ARBITRARY), description="Phase scale factor (TOPAS magnitude), > 0")
     peak_broadening: Optional[PeakBroadening] = Field(default=None, json_schema_extra=absent_not_null_schema(),
                                                       description="Left out: no sample broadening")
 
-    _topas_not_null = field_validator("peak_broadening", mode="before")(_never_null)
+    _topas_not_null = field_validator("peak_broadening", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _topas_omit_absent(self, handler):
@@ -664,7 +647,7 @@ class TopasPhase(Phase[BoundedRefinableParameter]):
             if atom.Uiso is not None:
                 problems += limit_problems(atom.Uiso, lo / EIGHT_PI_SQ, hi / EIGHT_PI_SQ, ("atoms", label, "Uiso"),
                                            f"Uiso (TOPAS beq = 8 pi^2 Uiso, limits {lo:g}..{hi:g})")
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -674,25 +657,25 @@ class TopasPhase(Phase[BoundedRefinableParameter]):
 class SinglePeak(CoreModel):
     """One single peak: a TOPAS ``xo_Is`` with the instrument peak type convolved with its own sample widths."""
 
-    xo: P = Field(json_schema_extra=_unit(UNIT_DEG_2THETA), description="Position, inside the fit window")
-    I: P = Field(json_schema_extra=_unit(UNIT_ARBITRARY), description="Intensity")  # noqa: E741  TOPAS's name
+    xo: P = Field(json_schema_extra=unit_schema(UNIT_DEG_2THETA), description="Position, inside the fit window")
+    I: P = Field(json_schema_extra=unit_schema(UNIT_ARBITRARY), description="Intensity")  # noqa: E741  TOPAS's name
     gauss_fwhm: Optional[P] = Field(default=None, json_schema_extra=absent_not_null_schema(UNIT_DEG_2THETA),
                                     description="Sample Gaussian FWHM, >= 0; left out: not convolved")
     lor_fwhm: Optional[P] = Field(default=None, json_schema_extra=absent_not_null_schema(UNIT_DEG_2THETA),
                                   description="Sample Lorentzian FWHM, >= 0; left out: not convolved")
 
-    _not_null = field_validator("gauss_fwhm", "lor_fwhm", mode="before")(_never_null)
+    _not_null = field_validator("gauss_fwhm", "lor_fwhm", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("gauss_fwhm", "lor_fwhm"))
+        return omit_absent(handler(self), self, ("gauss_fwhm", "lor_fwhm"))
 
     @model_validator(mode="after")
     def _topas_single_peak(self) -> "SinglePeak":
         problems = limit_problems(self.I, *KEYWORD_LIMITS["I"], ("I",), "I")
         for name in ("gauss_fwhm", "lor_fwhm"):  # a negative FWHM stops TOPAS (C24)
             problems += _positive(getattr(self, name), (name,), name, allow_zero=True)
-        _raise(type(self).__name__, problems)
+        raise_problems(type(self).__name__, problems)
         return self
 
 
@@ -704,23 +687,8 @@ class RefinementControls(CoreModel):
 
     iters: CoreInt = Field(ge=0, description="TOPAS 'iters': maximum iterations; 0 = calculate only")
     chi2_convergence_criteria: CoreFloat = Field(gt=0, description="TOPAS 'chi2_convergence_criteria'")
-    x_calculation_step: CoreFloat = Field(gt=0, json_schema_extra=_unit(UNIT_DEG_2THETA),
+    x_calculation_step: CoreFloat = Field(gt=0, json_schema_extra=unit_schema(UNIT_DEG_2THETA),
                                           description="TOPAS 'x_calculation_step' (required for .xye data)")
-
-
-def _refined_flags(obj: Any, loc: tuple = ()) -> list[tuple]:
-    """Locations of every refine flag set to true in a validated model tree."""
-    if isinstance(obj, BoundedRefinableParameter):
-        return [loc] if obj.refine_flag else []
-    if isinstance(obj, ChebyshevBackground):
-        return [loc + ("refine_flag",)] if obj.refine_flag else []
-    if isinstance(obj, CoreModel):
-        return [hit for name in type(obj).model_fields for hit in _refined_flags(getattr(obj, name), loc + (name,))]
-    if isinstance(obj, dict):
-        return [hit for k, v in obj.items() for hit in _refined_flags(v, loc + (k,))]
-    if isinstance(obj, list):
-        return [hit for i, v in enumerate(obj) for hit in _refined_flags(v, loc + (i,))]
-    return []
 
 
 class _Payload(CoreModel):
@@ -734,46 +702,32 @@ class _Payload(CoreModel):
                                              description="Left out: no background")
     refinement_controls: RefinementControls
 
-    _not_null = field_validator("fit_range", "background", mode="before")(_never_null)
+    _not_null = field_validator("fit_range", "background", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
-        return _omit_none(handler(self), self, ("fit_range", "background"))
+        return omit_absent(handler(self), self, ("fit_range", "background"))
 
     def window(self) -> tuple[float, float]:
         """The fit window: ``fit_range``, open ends at the data limits."""
-        lo, hi = self.xrd_data.tth[0], self.xrd_data.tth[-1]
-        if self.fit_range is not None:
-            lo = lo if self.fit_range.min is None else self.fit_range.min
-            hi = hi if self.fit_range.max is None else self.fit_range.max
-        return lo, hi
+        return fit_window(self.fit_range, self.xrd_data)
 
     @model_validator(mode="after")
     def _payload_rules(self) -> "_Payload":
-        problems = []
-        try:
-            check_fit_range_within_data(self.fit_range, self.xrd_data)
-        except ValueError as exc:
-            problems.append(_error("fit_range", str(exc), ("fit_range",),
-                                   None if self.fit_range is None else self.fit_range.model_dump()))
+        problems = fit_range_problems(self.fit_range, self.xrd_data)
         if self.background is not None and self.background.peaks is not None:
             problems += self._outside_window([p.xo for p in self.background.peaks],
                                              lambda i: ("background", "peaks", i, "xo"), "background peak")
         problems += self._zero_error_envelope()
         problems += self._workflow_problems()
         if self.refinement_controls.iters == 0:  # simulation: nothing refined
-            for loc in _refined_flags(self):
-                problems.append(_error("simulation_refines", "iters is 0 (a simulation), so nothing may be refined; "
-                                       "set this refine flag to false", loc, True))
-        _raise(type(self).__name__, problems)
+            problems += refined_flag_problems(self, "iters is 0 (a simulation), so nothing may be refined; "
+                                                    "set this refine flag to false")
+        raise_problems(type(self).__name__, problems)
         return self
 
     def _outside_window(self, positions: list[P], loc, what: str) -> list[InitErrorDetails]:
-        lo, hi = self.window()
-        return [_error("outside_fit_window", "{what} position {value} is outside the fit window [{lo}, {hi}] "
-                       "(fit_range; open ends are the data limits)", loc(i), p.model_dump(),
-                       what=what, value=p.value, lo=lo, hi=hi)
-                for i, p in enumerate(positions) if not lo <= p.value <= hi]
+        return outside_window_problems(positions, self.window(), loc, what)
 
     def _zero_error_envelope(self) -> list[InitErrorDetails]:
         """TOPAS.INC ``ZE``: a refined zero error stays within 100 data steps of 0 (fixed envelope, A138)."""
@@ -795,11 +749,7 @@ class RietveldPayload(_Payload):
 
     phases: dict[CoreName, TopasPhase] = Field(min_length=1, json_schema_extra=name_keyed)
 
-    @field_validator("phases")
-    @classmethod
-    def _phase_names(cls, v: dict) -> dict:
-        check_names_unique_ignoring_case(v, "phase")
-        return v
+    _phase_names = field_validator("phases")(unique_phase_names)
 
     def warnings(self) -> list[StructuredWarning]:
         """Uiso emitted as TOPAS beq (A67, D8): one warning per atom, paths relative to the payload."""
@@ -839,7 +789,10 @@ def check_engine_version(engine_version: str) -> None:
                          f"TOPAS {SUPPORTED_ENGINE_VERSIONS}")
 
 
-class _TopasRecipe(CoreRecipe):
+class _TopasRecipe(EngineRecipe):
+    gateway_name: ClassVar[str] = "topas"
+    schema_declarations: ClassVar[Mapping[str, Any]] = DECLARATIONS
+
     engine_version: StrictStr = Field(description="TOPAS major version the recipe is written for (A144), e.g. '6'")
 
     @field_validator("engine_version")
@@ -847,12 +800,6 @@ class _TopasRecipe(CoreRecipe):
     def _engine_version(cls, v: str) -> str:
         check_engine_version(v)
         return v
-
-    @model_validator(mode="after")
-    def _versions(self) -> "_TopasRecipe":
-        check_engine_schema_version(self.core_schema_version, self.engine_schema_version,
-                                    gateway="topas", capabilities=DECLARATIONS)
-        return self
 
 
 class TopasRietveldRecipe(_TopasRecipe):
@@ -870,26 +817,5 @@ class TopasSpfRecipe(_TopasRecipe):
 
 
 TopasRecipe = Annotated[Union[TopasRietveldRecipe, TopasSpfRecipe], Field(discriminator="schema_name")]
-_RECIPE = TypeAdapter(TopasRecipe, config={"title": "TopasRecipe"})
-_RECIPE_MODELS = {"topas.rietveld": TopasRietveldRecipe, "topas.spf": TopasSpfRecipe}
-
-
-def validate_recipe(recipe) -> TopasRietveldRecipe | TopasSpfRecipe:
-    """Validate a ``topas.*`` recipe (dict or model); return the model (idempotent, A50)."""
-    if isinstance(recipe, (TopasRietveldRecipe, TopasSpfRecipe)):
-        return recipe
-    if not isinstance(recipe, dict):
-        return _RECIPE.validate_python(recipe)
-    model = _RECIPE_MODELS.get(recipe.get("schema_name"))
-    if model is None:
-        raise ValidationError.from_exception_data("TopasRecipe", [InitErrorDetails(
-            type=PydanticCustomError("schema_name", "schema_name '{name}' is not a topas workflow; expected one of "
-                                                    "{names}", {"name": recipe.get("schema_name"),
-                                                                "names": ", ".join(SCHEMA_NAMES)}),
-            loc=("schema_name",), input=recipe.get("schema_name"))])
-    return model.model_validate(recipe)
-
-
-def json_schema(schema_name: str) -> dict:
-    """The JSON Schema of one topas workflow."""
-    return _RECIPE_MODELS[schema_name].model_json_schema()
+validate_recipe = recipe_validator({"topas.rietveld": TopasRietveldRecipe, "topas.spf": TopasSpfRecipe},
+                                   engine="topas", title="TopasRecipe")
