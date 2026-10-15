@@ -163,10 +163,14 @@ the non-frozen modules (`fit_report.py`, `sites.py`, `routing.py`,
   `[value, refine_flag, min, max]` in `topas.*` and `easydiffraction.*`; the
   flag is a JSON boolean; `null` bounds mean open. Blocks that may be left out
   are left out, never `null`; unknown keys are errors.
-- **Validation never changes a recipe**: anything an engine would silently
-  alter is a validation error naming the value to write; documented defaults
-  (gsasii size/strain 10 µm / 0, background none) and informative findings are
-  structured warnings `{code, message, field_path}`.
+- **Validation never changes a recipe beyond its stated tolerance, and never
+  silently**: anything an engine would silently alter is a validation error
+  naming the value to write; a value stated within tolerance of its exact
+  symmetry-derived form is *held* in that form and reported
+  (`symmetry_value_derived`, level `info`); documented defaults (gsasii
+  size/strain 10 µm / 0, background none, 5 cycles) and informative findings
+  are structured warnings `{code, message, field_path[, level]}` (`level` is
+  `"warning"` when absent, or `"info"`).
 - Space groups are gemmi's canonical names (`"P m -3 m"`, `"F d -3 m:2"`);
   every member of a symmetry tie group is stated, with the same flag.
 - Results: uniform `rwp`/`r_exp`/`gof`/`chi2_red` from core `fitstats` over the

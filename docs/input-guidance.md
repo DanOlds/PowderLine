@@ -140,6 +140,13 @@ derives it).
 - **Atoms at the same position** (a mixed-occupancy site) are independent
   atoms with their own flags; PowderLine never ties them. User-defined ties
   between atoms are a future feature.
+  Every value the model holds in derived form is reported as a
+  `symmetry_value_derived` warning at level `info` (stated value, held value,
+  the relation): `y = 0.666667` on a 2c site gives one, `z = 0.25` gives none
+  because it is already exact. The note is **evidence** that a value is
+  symmetry-determined, never a statement of it — an exactly typed special
+  position produces no note. Which sites are special is the symmetry analysis's
+  answer, not the warnings list's.
 
 ### Refine flags and the symmetry
 

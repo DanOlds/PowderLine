@@ -1017,6 +1017,8 @@ class Phase(CoreModel, Generic[P]):
             bounds = tie_rules(("unit_cell",), cell_params, cell_ties, _CELL,
                                f"{cell_ties.crystal_system} cell ({sg!r})", lambda name: f"{fixed_angle(name)}")
             updates = _updated(cell_params, derived_cell, bounds)
+            _note_derived(self._warnings, "unit_cell", cell_params, derived_cell, cell_ties, fixed_angle,
+                               f"{cell_ties.crystal_system} cell ({sg!r})")
             if updates:
                 self.unit_cell = cell.model_copy(update=updates)  # the caller's cell stays as given
         model_cell = tuple(getattr(self.unit_cell, k).value for k in _CELL_FIELDS)
@@ -1045,6 +1047,7 @@ class Phase(CoreModel, Generic[P]):
                         f"({sg!r}, site {site.stated})", atom.Multiplicity)
             updates = _updated(xyz, derived_xyz, tie_rules(("atoms", label), xyz, ties.xyz, _COORDINATES, context,
                                                             lambda name: str(exact_xyz(name))))
+            _note_derived(self._warnings, f"atoms.{label}", xyz, derived_xyz, ties.xyz, exact_xyz, context)
             if atom.Uaniso is not None:
                 uij = {k: getattr(atom.Uaniso, k) for k in _UANISO_KEYS}
                 derived_u, write_u = _derive(ties.uij, {k: p.value for k, p in uij.items()},
@@ -1067,6 +1070,7 @@ class Phase(CoreModel, Generic[P]):
                         ))
                 u_updates = _updated(uij, derived_u, tie_rules(("atoms", label, "Uaniso"), uij, ties.uij, _UIJ,
                                                                 context, lambda _name: "0"))
+                _note_derived(self._warnings, f"atoms.{label}.Uaniso", uij, derived_u, ties.uij, lambda _name: 0, context)
                 if u_updates:
                     updates["Uaniso"] = atom.Uaniso.model_copy(update=u_updates)
             if updates:
@@ -1083,8 +1087,10 @@ class Phase(CoreModel, Generic[P]):
     def warnings(self) -> list:
         """Structured warnings from validating this phase (paths relative to it).
 
-        Informative only: a warning never comes with a changed value (A115), so
-        validating the same recipe again gives the same warnings.
+        Informative: the recipe itself is never changed (A115), and validating
+        the same recipe again gives the same warnings. ``symmetry_value_derived``
+        (level ``info``, P-34) records each value the model holds in its exact
+        symmetry-derived form because it was stated within tolerance of it.
         """
         return list(self._warnings)
 
@@ -1238,6 +1244,29 @@ def _derive(ties: Ties, stated: dict, exact, family: _Family) -> tuple[dict, dic
         if not _within(value, derived[name], tol):
             write[name] = (derived[name], tol)
     return derived, write
+
+
+def _note_derived(notes: list, prefix: str, params: dict, derived: dict, ties: Ties, exact, context: str) -> None:
+    """Append one ``symmetry_value_derived`` note (level ``info``) per value the model holds in its exact
+    symmetry-derived form instead of as stated (P-34).
+
+    Only values that actually moved are reported: a value stated exactly (``0.25`` for a quarter)
+    is held as stated and gets no note. The note is therefore *evidence* that a site is special
+    or a parameter tied, never a statement of it; the symmetry analysis itself
+    (:meth:`Phase.site`) is the reliable source for that.
+    """
+    for name, param in params.items():
+        if derived[name] == param.value:
+            continue
+        notes.append(StructuredWarning(
+            code="symmetry_value_derived",
+            message=(f"{context}: {name} stated {param.value!r} is held as {derived[name]!r}, the exact "
+                     f"value its symmetry relation requires ({_ties_text(ties, exact, only=[name])}); "
+                     f"the recipe is unchanged; this is evidence of a symmetry relation, not a statement "
+                     f"of one (an exactly stated value is held as stated and gets no note)"),
+            field_path=f"{prefix}.{name}",
+            level="info",
+        ))
 
 
 def _updated(params: dict, derived: dict, bounds: dict) -> dict:

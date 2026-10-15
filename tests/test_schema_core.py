@@ -1134,7 +1134,12 @@ def test_phase_special_position_thirds_read_from_6_decimals():
     }
     phase = Phase[RefinableParameter].model_validate(d)
     assert (phase.atoms["A1"].x.value, phase.atoms["A1"].y.value, phase.atoms["A1"].z.value) == (1 / 3, 2 / 3, 0.25)
-    assert phase.warnings() == []
+    # P-34: each value that moved is reported once, at level "info"; z = 0.25 is exact and gets nothing
+    notes = phase.warnings()
+    assert [(w["code"], w["field_path"], w["level"]) for w in notes] == [
+        ("symmetry_value_derived", "atoms.A1.x", "info"), ("symmetry_value_derived", "atoms.A1.y", "info")]
+    assert "stated 0.333333" in notes[0]["message"] and "held as 0.3333333333333333" in notes[0]["message"]
+    assert "x = 1/3" in notes[0]["message"] and "not a statement" in notes[0]["message"]
     assert d["atoms"]["A1"]["x"] == [0.333333, False]
     assert Phase[RefinableParameter].model_validate(phase.model_dump()).model_dump() == phase.model_dump()
 
@@ -1311,7 +1316,11 @@ def test_phase_uaniso_hexagonal_6h_coupled_member_read_within_1e_6():
             }
         },
     }
-    assert Phase[RefinableParameter].model_validate(d).atoms["A1"].Uaniso.U12.value == 0.0061735
+    phase = Phase[RefinableParameter].model_validate(d)
+    assert phase.atoms["A1"].Uaniso.U12.value == 0.0061735
+    assert [(w["code"], w["field_path"], w["level"]) for w in phase.warnings()] == [
+        ("symmetry_value_derived", "atoms.A1.Uaniso.U12", "info")]  # P-34
+    assert "U12 = U22/2" in phase.warnings()[0]["message"]
     d["atoms"]["A1"]["Uaniso"]["U12"][0] = 0.006176
     with pytest.raises(ValidationError) as exc_info:
         Phase[RefinableParameter].model_validate(d)
@@ -2376,7 +2385,10 @@ def test_symmetry_determined_values_follow_one_rule(case, sg, cell, xyz, expecte
         return
     phase = Phase[RP].model_validate(d)
     assert tuple(getattr(phase.atoms["A"], k).value for k in "xyz") == expected
-    assert phase.warnings() == []
+    # P-34: one info note per coordinate the model holds in derived form; none for one stated exactly
+    moved = {f"atoms.A.{k}" for k, stated_v, held in zip("xyz", xyz, expected) if stated_v != held}
+    assert {(w["code"], w["level"]) for w in phase.warnings()} <= {("symmetry_value_derived", "info")}
+    assert {w["field_path"] for w in phase.warnings()} == moved
     assert Phase[RP].model_validate(phase.model_dump()).model_dump() == phase.model_dump()
 
 

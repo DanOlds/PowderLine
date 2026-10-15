@@ -435,27 +435,30 @@ simulated peak heights changed at the 0.2.0 re-baseline.
 
 ## Warnings you may see
 
-| Code | Engine | Meaning |
-|---|---|---|
-| `gsasii_broadening_default_applied` | gsasii | size or strain left out; 10 µm / 0 applied, fixed |
-| `gsasii_refinement_message` | gsasii | a message GSAS-II stored with the refinement (correlations, singular parameters, SVD) |
-| `gsasii_fit_not_converged` | gsasii | the last cycle's χ² change was above GSAS-II's tolerance; values kept |
-| `gsasii_parameters_not_varied` | gsasii | GSAS-II varied fewer parameters than requested |
-| `uaniso_not_positive_definite` | core | the stated `Uaniso` has a principal value ≤ 0; used as stated |
-| `topas_adp_converted` | topas | `Uiso` written as `beq = 8π²·Uiso` |
-| `topas_parameter_at_limit` | topas | a refined value ended at a stated bound or a TOPAS default limit |
-| `topas_parameters_not_varied` | topas | TOPAS varied fewer parameters than requested |
-| `topas_phase_contributes_nothing` | topas | a phase's calculated intensities are all zero (informative) |
-| `topas_base_name_sanitized` | topas | the recipe's base name is not ASCII-safe for TOPAS; files are written as `topas.*` |
-| `topas_background_not_calculated` | topas | the background-only run wrote nothing; `y_bkg` empty |
-| `easydiffraction_parameter_at_limit` | easydiffraction | a refined value ended at a bound or physical limit |
-| `easydiffraction_parameters_not_varied` | easydiffraction | lmfit varied fewer parameters than requested |
-| `easydiffraction_phase_contributes_nothing` | easydiffraction | informative, as for topas |
-| `easydiffraction_fit_not_converged` | easydiffraction | lmfit stopped without success; values reported |
-| `easydiffraction_negative_width` | easydiffraction | the refined profile makes a width negative near the window |
-| `easydiffraction_reflections_not_available` | easydiffraction | CrysFML: no peak lists |
-| `easydiffraction_position_translated` | easydiffraction | an atom held in another writing of the same position |
-| `easydiffraction_crysfml_start_dependent` | easydiffraction | every CrysFML refinement (single precision) |
+`level` is `warning` (act on it or decide about it; the CLI prints these) or `info` (a record of something PowderLine did that changes no outcome; the CLI counts these and lists them with `--verbose`). Absent in a result means `warning`.
+
+| Code | Engine | Level | Meaning |
+|---|---|---|---|
+| `gsasii_broadening_default_applied` | gsasii | warning | size or strain left out; 10 µm / 0 applied, fixed |
+| `gsasii_refinement_message` | gsasii | warning | a message GSAS-II stored with the refinement (correlations, singular parameters, SVD) |
+| `gsasii_fit_not_converged` | gsasii | warning | the last cycle's χ² change was above GSAS-II's tolerance; values kept |
+| `gsasii_parameters_not_varied` | gsasii | warning | GSAS-II varied fewer parameters than requested |
+| `uaniso_not_positive_definite` | core | warning | the stated `Uaniso` has a principal value ≤ 0; used as stated |
+| `symmetry_value_derived` | core | info | a coordinate, cell value or Uij stated within tolerance of its exact symmetry-derived value is held in that form (stated and held values in the message); evidence of a symmetry relation, not a statement of one — an exactly stated value gets no note (P-34) |
+| `topas_adp_converted` | topas | warning | `Uiso` written as `beq = 8π²·Uiso` |
+| `topas_parameter_at_limit` | topas | warning | a refined value ended at a stated bound or a TOPAS default limit |
+| `topas_parameters_not_varied` | topas | warning | TOPAS varied fewer parameters than requested |
+| `topas_phase_contributes_nothing` | topas | warning | a phase's calculated intensities are all zero (informative) |
+| `topas_base_name_sanitized` | topas | warning | the recipe's base name is not ASCII-safe for TOPAS; files are written as `topas.*` |
+| `topas_background_not_calculated` | topas | warning | the background-only run wrote nothing; `y_bkg` empty |
+| `easydiffraction_parameter_at_limit` | easydiffraction | warning | a refined value ended at a bound or physical limit |
+| `easydiffraction_parameters_not_varied` | easydiffraction | warning | lmfit varied fewer parameters than requested |
+| `easydiffraction_phase_contributes_nothing` | easydiffraction | warning | informative, as for topas |
+| `easydiffraction_fit_not_converged` | easydiffraction | warning | lmfit stopped without success; values reported |
+| `easydiffraction_negative_width` | easydiffraction | warning | the refined profile makes a width negative near the window |
+| `easydiffraction_reflections_not_available` | easydiffraction | warning | CrysFML: no peak lists |
+| `easydiffraction_position_translated` | easydiffraction | warning | an atom held in another writing of the same position |
+| `easydiffraction_crysfml_start_dependent` | easydiffraction | warning | every CrysFML refinement (single precision) |
 
 ## Upstream status
 
