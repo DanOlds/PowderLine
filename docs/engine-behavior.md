@@ -476,6 +476,8 @@ simulated peak heights changed at the 0.2.0 re-baseline.
 | `easydiffraction_position_translated` | easydiffraction | warning | an atom held in another writing of the same position |
 | `easydiffraction_crysfml_start_dependent` | easydiffraction | warning | every CrysFML refinement (single precision) |
 
+The table is the registry `powderline.exceptions.WARNING_CODES`: a test asserts that the two list the same codes with the same engine and level, and that every code emitted under `src/powderline` is registered.
+
 ## Upstream status
 
 Problems found in the engines are written up for their developers in the

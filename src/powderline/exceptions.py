@@ -30,7 +30,8 @@ This module must never import an engine (enforced by an import-block test).
 
 from __future__ import annotations
 
-from typing import Literal, Optional, TypedDict
+from types import MappingProxyType
+from typing import Literal, Mapping, NamedTuple, Optional, TypedDict
 
 
 class PowderLineError(Exception):
@@ -156,3 +157,46 @@ class StructuredWarning(_StructuredWarningRequired, total=False):
     """
 
     level: Literal["warning", "info"]  # optional (total=False); absent means "warning"
+
+
+class WarningCode(NamedTuple):
+    """Who emits a structured-warning code and at which level (see :data:`WARNING_CODES`)."""
+
+    owner: str  # "core", "gsasii", "topas" or "easydiffraction"
+    level: Literal["warning", "info"]
+
+
+# The vocabulary of structured warnings (P-37): every code PowderLine emits,
+# its owner and its level. Nothing checks a code at emission; a test asserts
+# that this registry, the ``code="..."`` literals under ``src/powderline`` and
+# the "Warnings you may see" table in ``docs/engine-behavior.md`` agree, so a
+# new code is registered and documented or the suite fails.
+WARNING_CODES: Mapping[str, WarningCode] = MappingProxyType({
+    # core (schema_core)
+    "uaniso_not_positive_definite": WarningCode("core", "warning"),
+    "symmetry_value_derived": WarningCode("core", "info"),
+    # gsasii
+    "gsasii_broadening_default_applied": WarningCode("gsasii", "warning"),
+    "gsasii_background_default_applied": WarningCode("gsasii", "warning"),
+    "gsasii_refinement_cycles_default_applied": WarningCode("gsasii", "warning"),
+    "gsasii_refinement_message": WarningCode("gsasii", "warning"),
+    "gsasii_fit_not_converged": WarningCode("gsasii", "warning"),
+    "gsasii_parameters_not_varied": WarningCode("gsasii", "warning"),
+    # topas
+    "topas_adp_converted": WarningCode("topas", "warning"),
+    "topas_parameter_at_limit": WarningCode("topas", "warning"),
+    "topas_parameters_not_varied": WarningCode("topas", "warning"),
+    "topas_phase_contributes_nothing": WarningCode("topas", "info"),
+    "topas_base_name_sanitized": WarningCode("topas", "warning"),
+    "topas_background_not_calculated": WarningCode("topas", "warning"),
+    "topas_generate_only": WarningCode("topas", "info"),
+    # easydiffraction
+    "easydiffraction_parameter_at_limit": WarningCode("easydiffraction", "warning"),
+    "easydiffraction_parameters_not_varied": WarningCode("easydiffraction", "warning"),
+    "easydiffraction_phase_contributes_nothing": WarningCode("easydiffraction", "info"),
+    "easydiffraction_fit_not_converged": WarningCode("easydiffraction", "warning"),
+    "easydiffraction_negative_width": WarningCode("easydiffraction", "warning"),
+    "easydiffraction_reflections_not_available": WarningCode("easydiffraction", "warning"),
+    "easydiffraction_position_translated": WarningCode("easydiffraction", "warning"),
+    "easydiffraction_crysfml_start_dependent": WarningCode("easydiffraction", "warning"),
+})
