@@ -1,13 +1,5 @@
 # PowderLine Configuration File
-# Copy this file to .powderline_config.yaml and add your API keys
-# The actual config file (.powderline_config.yaml) is not tracked by git
-
-# Materials Project API Configuration
-materials_project:
-  api_key: "YOUR_API_KEY_HERE"
-  # Get your free API key at: https://next-gen.materialsproject.org/api
-  # Alternatively, set the MP_API_KEY environment variable
-  # (a real key set here takes precedence over the environment variable)
+# Copy this file to .powderline_config.yaml. It is not tracked by git.
 
 # ─── TOPAS (topas.* recipes) ────────────────────────────────────────────────
 # A run that executes TOPAS needs the installed version declared here (or via
@@ -18,7 +10,7 @@ materials_project:
 #   version: 6
 
 # ─── GSAS-II simulation defaults ─────────────────────────────────────────────
-# Simulations (mp-simulate) run through the GSAS-II engine: all parameters
+# Simulation recipes built by SimulationRecipeBuilder run through the GSAS-II engine: all parameters
 # below follow GSAS-II conventions and units. TOPAS is NOT used here — it has
 # different conventions for polarization, axial divergence, and the
 # instrumental broadening parameters.

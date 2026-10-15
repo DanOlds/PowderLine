@@ -62,7 +62,7 @@ reproducible, automatable, and accessible.
 | `recipes.py` | `load_recipe_asset` (JSON / YAML) |
 | `exceptions.py` | `PowderLineError`, `SymmetryError`, `GatewayNotInstalledError`, `EngineNotAvailableError`, `EngineVersionError`, `EngineExecutionError`, `ExecutionBackendError` (both with `.reason` / `.result`), the `StructuredWarning` shape |
 | `results.py` | the run-result envelope (re/12): `ENVELOPE_VERSION`, the reason-code sets, `failure_envelope`, `generated_envelope`, `with_status_fields`, `raise_if_failed` |
-| `config_loader.py`, `mp_interface.py` | `.powderline_config.yaml` and the Materials Project client (engine-free; the simulation tool itself lives in the gsasii gateway) |
+| `config_loader.py` | `.powderline_config.yaml` (the `simulation_defaults` block; engine-free) |
 | `_status.py` | console status glyphs |
 
 ### Gateways (`src/powderline/gateways/<engine>/`)
@@ -392,7 +392,6 @@ pixi run -e dev test-all     # every suite, the pre-merge gauntlet
 pixi run -e gsasii pytest tests/test_example_LaB6_regression.py -q   # one engine's suite
 pixi run docs                # Sphinx with -W (zero warnings is the standard)
 pixi run -e gsasii gsas-server start|status|stop|restart|logs
-pixi run -e gsasii mp-simulate --material-id mp-2680
 pixi run update-code-hash    # after a signed edit to a frozen gsasii module
 pixi reinstall powderline --all   # after editing entry points / [project.scripts]
 ```
@@ -547,7 +546,7 @@ weaken core), `test_api`, `test_cli`, `test_registry`, `test_compat`,
 `test_easydiffraction_schema`, `test_easydiffraction_native`,
 `test_easydiffraction_space_groups` (easydiffraction),
 `test_convert_recipe_026` (the migration tool), `test_cross_engine_comparison`,
-the Materials Project tests (mocked API).
+`test_simulation_builder` (the structure → simulation-recipe builder).
 
 **Regression strategy:** the gsasii examples' outputs are compared within
 the tolerances of [regression-tolerance.md](regression-tolerance.md)
@@ -603,19 +602,17 @@ guard: `powderline.run()` trusts its caller.
   PowderLine's own errors derive from `PowderLineError`; the CLI exits 1 on
   any failure.
 
-## Materials Project simulation (`mp-simulate`)
+## The simulation recipe builder
 
-`powderline.gateways.gsasii.mp_simulate` (task `pixi run -e gsasii mp-simulate`)
-fetches a structure from the Materials Project (`mp_interface.py`, core;
-mocked in tests), builds a `gsasii.rietveld` 1.0.0 simulation recipe
-(`simulation_builder.py`: the conventional cell reduced to symmetry-unique
-sites with an orbit self-check, two-origin groups moved to origin choice 2,
-canonical space-group name, every default stated, SH/L 0.002) from
-`.powderline_config.yaml`'s `simulation_defaults`, runs GSAS-II through
-`GSASClient` (or `--no-server`), and exports the pattern as `.chi`
-(`pattern_exporter.py`, built from the in-band result data). User docs:
-[mp-simulation.md](mp-simulation.md). A future engine-agnostic simulation
-plugin with its own configuration is on the futures list.
+`powderline.gateways.gsasii.simulation_builder.SimulationRecipeBuilder` turns a
+crystal-structure dict (`space_group`, `unit_cell`, `atoms`, `formula`) into a
+`gsasii.rietveld` 1.0.0 simulation recipe: the conventional cell reduced to
+symmetry-unique sites with an orbit self-check, two-origin groups moved to
+origin choice 2, the canonical space-group name, every default stated, SH/L
+0.002, instrument defaults from `.powderline_config.yaml`'s
+`simulation_defaults`. The Materials Project fetch and `.chi` export that
+drove it (`mp-simulate`) left PowderLine in 0.2.0 (P-36); RandomXRD carries
+its own copy.
 
 ## Future roadmap
 
@@ -624,7 +621,7 @@ plugin with its own configuration is on the futures list.
   scattering types after per-engine verification; TOPAS 7 after a
   compatibility run on a TOPAS 7 machine; `unsafe_mode` for deliberately
   relaxed checks; a recipe builder / CIF importer upstream of the schemas;
-  an engine-agnostic Materials Project plugin.
+  a structure-source plugin (Materials Project, CIF) upstream of the builder.
 - Output: a recipe-shaped result for round-trip / sequential refinement
   (KI-04); the GSAS-II server returning its artifacts in-band (KI-12).
 

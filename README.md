@@ -27,7 +27,6 @@ and single-peak fits without hand-driving the underlying refinement software.
 - **Strict validation, engine-free:** a recipe validates in a core-only
   environment; every problem is reported at its field, and engine quirks are
   refused or warned about, never papered over.
-- **Materials Project integration:** simulate a pattern from a crystal structure.
 - **Standardized outputs:** fixed-filename CSV/TXT reports plus each engine's
   native artifacts (the GSAS-II `.gpx`, the TOPAS `.inp` and output files).
 
@@ -145,15 +144,6 @@ same machine can neither use your server nor impersonate it. To switch it off
 — e.g. on a shared workstation — set `POWDERLINE_NO_SERVER=1`: default
 (`auto`) runs then go in-process, explicit server mode (`--use-server` /
 `execution_mode='server'`) fails, and nothing is auto-started.
-
-**Simulate a pattern from Materials Project** (requires an MP API key in
-`.powderline_config.yaml` — see `.powderline_config.yaml.example` — or in the
-`MP_API_KEY` environment variable; emits a `gsasii.rietveld` recipe and runs
-GSAS-II):
-
-```bash
-pixi run -e gsasii mp-simulate --material-id mp-2680 --output patterns/
-```
 
 ## 4. Refinement engines
 

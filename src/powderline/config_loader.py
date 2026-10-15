@@ -1,8 +1,8 @@
 """Configuration file loader for PowderLine.
 
-Loads API keys and default parameters from YAML config file. The Materials
-Project API key falls back to the MP_API_KEY environment variable when the
-config file is absent or holds the placeholder.
+Loads the simulation defaults (``simulation_defaults``) from ``.powderline_config.yaml``; the
+TOPAS section is read by ``gateways.topas.runner``. Nothing else lives in the file since the
+Materials Project tool left PowderLine (P-36, 0.2.0).
 """
 
 import os
@@ -54,8 +54,7 @@ class ConfigLoader:
         
         if config_file is None:
             print(f"{WARN}  No config file found. Using defaults.")
-            print("   To use Materials Project API, create .powderline_config.yaml")
-            print("   See .powderline_config.yaml.example for template")
+            print("   See .powderline_config.yaml.example for the template")
             self.config = self._get_defaults()
             return
         
@@ -114,19 +113,6 @@ class ConfigLoader:
                 }
             }
         }
-    
-    def get_mp_api_key(self) -> Optional[str]:
-        """Get Materials Project API key.
-
-        Resolution order: `materials_project.api_key` in the config file,
-        then the `MP_API_KEY` environment variable. A placeholder config
-        value is passed through unchanged (so callers can report it) only
-        when the environment variable is also unset.
-        """
-        config_key = self.config.get('materials_project', {}).get('api_key')
-        if config_key and config_key != "YOUR_API_KEY_HERE":
-            return config_key
-        return os.environ.get('MP_API_KEY') or config_key
     
     def get_simulation_defaults(self) -> Dict[str, Any]:
         """Get default simulation parameters."""

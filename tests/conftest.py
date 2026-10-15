@@ -63,7 +63,7 @@ CORE_GUARD_ENV = "POWDERLINE_CORE_GUARD"
 #: Top-level packages no core/topas_gen test may import: the engines and their
 #: calculators, and the Materials Project stack, which lives in the gsasii env
 #: (P-21), so a test that needs it is `gsasii`.
-CORE_GUARD_BLOCKED = ("GSASII", "easydiffraction", "cryspy", "pycrysfml", "crysfml", "mp_api", "pymatgen")
+CORE_GUARD_BLOCKED = ("GSASII", "easydiffraction", "cryspy", "pycrysfml", "crysfml")
 
 ENGINE_MARKERS = tuple(m for m in SUITE_MARKERS if m not in ("core", "topas_gen"))
 
@@ -325,17 +325,16 @@ def example_DRX_33_reference_refined_params_csv(example_DRX_33_dir):
 # ─── MP Pipeline fixtures ─────────────────────────────────────────────────────
 
 @pytest.fixture
-def mp_lab6_structure_data():
-    """Synthetic structure data in MPInterface.get_structure() format for LaB6 (mp-2680).
+def lab6_structure_data():
+    """Synthetic structure data for LaB6 in the builder's input format (the shape RandomXRD's Materials Project fetch produced).
 
     Uses LaB6 lattice parameters from examples/example_LaB6/input.json.
-    No Materials Project API call is made — this fixture is safe to use in CI.
     """
     return {
         'material_id': 'mp-2680',
         'cif': '',  # Not used by SimulationRecipeBuilder
         'formula': 'LaB6',
-        # Condensed spglib-style symbol, as emitted by MPInterface; the
+        # Condensed spglib-style symbol (as Materials Project emits); the
         # simulation builder writes the canonical gemmi name (A105)
         'space_group': 'Pm-3m',
         'unit_cell': {

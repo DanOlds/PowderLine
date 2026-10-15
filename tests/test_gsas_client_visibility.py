@@ -199,7 +199,7 @@ def test_invisible_output_guard_in_auto_start_branch(monkeypatch, tmp_path, caps
 
 def test_submit_simulation_wrong_keyword_raises():
     """Regression guard: 'recipe_path' keyword no longer exists on
-    submit_simulation (mp_simulate.py once passed recipe_path=..., causing a
+    submit_simulation (the former mp_simulate tool once passed recipe_path=..., causing a
     runtime TypeError; the correct keyword is recipe=)."""
     client = GSASClient()
     with pytest.raises(TypeError, match="recipe_path"):

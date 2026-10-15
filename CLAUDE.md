@@ -53,7 +53,7 @@ Core (engine-free; `import powderline` imports no engine):
 - `symmetry.py` (gemmi), `compat.py` (declared schema compatibility,
   `support_matrix()`), `fitstats.py` (uniform Rwp/Rexp/GoF/χ²_red), `reports.py`
   (standardized report writers), `recipes.py`, `exceptions.py`,
-  `config_loader.py`, `mp_interface.py`, `_status.py`.
+  `config_loader.py` (simulation defaults), `_status.py`.
 
 Gateways (`src/powderline/gateways/<engine>/`), each a **schema layer**
 (`schema.py`: the engine schema 1.0.0 on core 1.0.0, `DECLARATIONS`,
@@ -69,8 +69,9 @@ imported lazily from `run()`):
   `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`;
   `server.py` / `client.py` (persistent FastAPI server + `GSASClient`, the
   `auto`/`server` execution modes; per-user state dir, token-signed requests
-  and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2, KI-14); `mp_simulate.py`, `simulation_builder.py`,
-  `pattern_exporter.py` (Materials Project simulation, emits `gsasii.rietveld`).
+  and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2, KI-14); `simulation_builder.py`
+  (a crystal-structure dict → a `gsasii.rietveld` simulation recipe; the Materials Project
+  fetch/export tool that used it left PowderLine in 0.2.0, P-36 — RandomXRD carries its own).
 - `topas/` (TOPAS 6; recipes state `engine_version: "6"`, runs need the
   installed version declared): `native_writer.py` (model → INP + `.xye`;
   limits on data points; `= p/q;` constants), `native_run.py` (run `tc.exe`,
@@ -106,8 +107,6 @@ tooling). `pixi install -e <env>`.
 - `pixi run -e gsasii gsas-server start|status|stop|restart|logs` — the
   persistent GSAS-II server (task in the `gsasii` feature; without `-e` pixi
   reports it ambiguous).
-- `pixi run -e gsasii mp-simulate --material-id mp-2680` — simulate a pattern
-  from Materials Project (`--formula`, `--wavelength`, `--no-server`, `--keep-recipe`).
 - `pixi run docs` / `pixi run docs-clean` — Sphinx HTML with `-W` (zero warnings).
 - `PYTHONPATH=src python scripts/gen_schema_field_tables.py [--check]` — after
   editing a schema module or a gateway's declarations (regenerates

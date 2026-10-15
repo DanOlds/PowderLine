@@ -14,7 +14,7 @@ preview = ["pixi-build"]
 #                    No engine -- a gsasii.* recipe validates here but a run
 #                    raises EngineNotAvailableError naming the env to use.
 #   gsasii           + GSAS-II (pixi-build) and the GSAS-II-only tooling
-#                    (server, Materials Project simulation).
+#                    (server).
 #   easydiffraction  + easydiffraction (Python >=3.12); no GSAS-II.
 #   all              every engine.
 #   dev              all + docs/test tooling: the contributor env.
@@ -121,13 +121,14 @@ cython = ">=3.0.11,<4"
 pkg-config = ">=0.29.2,<0.30"
 pyproject-metadata = ">=0.9.0,<0.10"
 wheel = ">=0.45.1,<0.46"
-# Materials Project simulation pipeline (mp-simulate runs GSAS-II).
+# UNUSED since P-36 (0.2.0): the Materials Project simulation tool left PowderLine (RandomXRD
+# carries its own copy). Kept only because dropping them needs a re-lock (network); remove both
+# lines and run `pixi lock` at the next re-lock.
 mp-api = ">=0.46.4,<1"
 emmet-core = ">=0.87.1,<0.88"
 
 [feature.gsasii.tasks]
 gsas-server = { cmd = "python -m powderline.gateways.gsasii.server", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
-mp-simulate = { cmd = "python -m powderline.gateways.gsasii.mp_simulate", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
 ui = { cmd = "python -m GSASII", env = { GSASII_NOPATHHACKING = "true" } } # the GSAS-II GUI
 # The GSAS-II suite, slow regressions included (they are its point); the
 # regression tests spawn `pixi run -e <this env> kicker` via

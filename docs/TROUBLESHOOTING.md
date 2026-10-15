@@ -577,8 +577,7 @@ writes its output where only *it* can see it and truthfully reports success.
 
 The check is freshness-based: `fit_profile.txt` must have been (re)written by
 the run just submitted, so a stale file from a previous run into the same
-output directory does not hide the problem. (mp-simulate's `.chi` export is
-immune either way — it is built from the in-band result data.)
+output directory does not hide the problem.
 
 **Solution:**
 
@@ -589,7 +588,6 @@ immune either way — it is built from the in-band result data.)
 2. **Or skip the server for this run:**
    ```bash
    pixi run -e gsasii kicker input.json --no-server
-   pixi run -e gsasii mp-simulate --material-id mp-2680 --no-server --output patterns/
    ```
 
 (KI-12 tracks the fix that removes the shared-filesystem assumption.)

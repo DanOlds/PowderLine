@@ -1,6 +1,6 @@
-"""Materials Project simulation pipeline, end to end through GSAS-II (re/09 split from test_mp_pipeline).
+"""The simulation recipe builder, end to end through GSAS-II (re/09 split from test_simulation_builder).
 
-Build the recipe from the synthetic MP structure (no API call), validate it,
+Build the recipe from the synthetic structure, validate it,
 run the simulation in-process and check the outputs. Needs GSAS-II: ``gsasii`` + ``slow``.
 """
 
@@ -12,16 +12,16 @@ pytest.importorskip("GSASII.GSASIIscriptable")
 
 import powderline  # noqa: E402
 from powderline.gateways.gsasii.simulation_builder import SimulationRecipeBuilder  # noqa: E402
-from test_mp_pipeline import _validate  # noqa: E402
+from test_simulation_builder import _validate  # noqa: E402
 
 
-def test_mp_pipeline_end_to_end(mp_lab6_structure_data, tmp_output_dir):
+def test_mp_pipeline_end_to_end(lab6_structure_data, tmp_output_dir):
     """Full stack: build recipe → validate → run simulation → check outputs.
 
     Uses subprocess execution mode to bypass the server requirement.
     Requires GSAS-II to be installed (part of the standard pixi environment).
     """
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(mp_lab6_structure_data)
+    recipe = SimulationRecipeBuilder().build_recipe_from_structure(lab6_structure_data)
     model = _validate(recipe).recipe
 
     result = powderline.run(model, output_dir=tmp_output_dir, execution_mode="subprocess")

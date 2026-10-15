@@ -272,6 +272,15 @@ recipes do not validate; see the
 
 ### Removed
 
+- **The Materials Project simulation tool** (`mp-simulate`, `mp_simulate.py`,
+  `pattern_exporter.py`, `mp_interface.py`, the `materials_project` config
+  block, `docs/mp-simulation.md`) (P-36). It was part of how RandomXRD was set
+  up; RandomXRD vendors its own PowderLine snapshot and keeps its copy. Its
+  `.chi` export was not a Fit2D CHI file and carried an unannounced
+  background. What stays: `simulation_builder.SimulationRecipeBuilder`
+  (`build_recipe_from_structure`, was `build_recipe_from_mp_structure`) and the
+  `simulation_defaults` config block. `mp-api` / `emmet-core` leave the `gsasii`
+  pixi feature at the next re-lock.
 - **The unified 0.26.0 schema** (`schema_name` `GSASII_Rietveld` /
   `GSASII_SPF`, `schema_version`) and the cross-engine translation layer
   (`powderline.schema`, the legacy GSAS-II executor, the TOPAS writer /

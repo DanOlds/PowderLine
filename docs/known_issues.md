@@ -435,7 +435,7 @@ mitigation, not a fix, and it keeps a (cheap) filesystem check in the client.
 `output_dir` in its own view); `gateways/gsasii/client.py`
 `_server_output_visible` / `_submit_to_server_guarded`;
 `tests/test_gsas_client_visibility.py`.
-mp-simulate's `.chi` export already consumes the in-band `fit_profile` dict,
+The (since removed) `.chi` export consumed the in-band `fit_profile` dict,
 showing the in-band path works.
 
 **Decision.** Planned fix in a future server-protocol branch: the server runs

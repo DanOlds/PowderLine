@@ -1,6 +1,7 @@
 """Build ``gsasii.rietveld`` simulation recipes from crystal structures.
 
-This module converts crystal structure data (from Materials Project or other
+This module converts crystal structure data (a plain dict: ``space_group``, ``unit_cell``,
+``atoms``, ``formula``, optional ``material_id``; any source, e.g. a Materials Project fetch, or other
 sources) into PowderLine recipes configured for simulation mode
 (``refinement_cycles`` 1, every refine flag false). It ships with the GSAS-II
 gateway (master plan A43): the simulation runs through GSAS-II, so every
@@ -185,7 +186,7 @@ def unique_sites(space_group: str, sites: List[Dict[str, Any]]) -> List[Dict[str
     """Reduce a conventional cell's atom list to one representative per orbit.
 
     ``sites`` holds every atom of the conventional cell (what
-    ``MPInterface.get_structure`` returns; a co-occupied site is several
+    a structure fetch returns; a co-occupied site is several
     entries with the same coordinates). GSAS-II expands each stated atom by
     the space group itself, so passing the whole cell would count a site
     ``multiplicity`` times over (6x for the boron of LaB6; v0.1.1's
@@ -356,8 +357,8 @@ class SimulationRecipeBuilder:
             'broadening': {key: [broadening[key], False] for key in ('U', 'V', 'W', 'X', 'Y', 'Z')},
         }
 
-    def _build_phase_from_mp_data(self, mp_structure_data: Dict[str, Any], phase_name: str) -> Dict[str, Any]:
-        """Build the gsasii phase block (A93) from Materials Project data.
+    def _build_phase_from_mp_data(self, structure_data: Dict[str, Any], phase_name: str) -> Dict[str, Any]:
+        """Build the gsasii phase block (A93) from structure data.
 
         Uses the structure data provided by MP API directly, avoiding CIF
         parsing. Structural fallbacks (Uiso, occupancy) are applied ONLY to
@@ -368,7 +369,7 @@ class SimulationRecipeBuilder:
         representative per orbit (:func:`unique_sites`).
         """
         # Use MP-provided data (unit_cell, space_group, sites already extracted)
-        if not mp_structure_data.get('unit_cell') or not mp_structure_data.get('space_group') or not mp_structure_data.get('sites'):
+        if not structure_data.get('unit_cell') or not structure_data.get('space_group') or not structure_data.get('sites'):
             raise ValueError(
                 "MP structure data missing required fields. "
                 "Ensure unit_cell, space_group, and sites are present."
@@ -378,16 +379,16 @@ class SimulationRecipeBuilder:
         default_uiso = phase_defaults['Uiso']
         default_occupancy = phase_defaults['occupancy']
 
-        space_group, to_origin_2 = space_group_setting(mp_structure_data['space_group'])
+        space_group, to_origin_2 = space_group_setting(structure_data['space_group'])
         if to_origin_2 is not None:
-            print(f"{WARN}  Phase '{phase_name}': space group {mp_structure_data['space_group']!r} stated in "
+            print(f"{WARN}  Phase '{phase_name}': space group {structure_data['space_group']!r} stated in "
                   f"origin choice 1 (spglib's standard setting), which GSAS-II cannot use; the coordinates are "
                   f"moved to origin choice 2 ({to_origin_2.triplet()}) and the phase written as {space_group!r}.")
 
         sites = []
         missing_uiso = []
         missing_occupancy = []
-        for site in mp_structure_data['sites']:
+        for site in structure_data['sites']:
             label = site['label']
             # A key that is absent OR explicitly None both count as missing
             uiso = site.get('Uiso')
@@ -426,7 +427,7 @@ class SimulationRecipeBuilder:
                 'Uiso': [site['Uiso'], False],
             }
 
-        cell = mp_structure_data['unit_cell']
+        cell = structure_data['unit_cell']
         size_defaults = phase_defaults['size_broadening']
         strain_defaults = phase_defaults['strain_broadening']
         return {
@@ -448,14 +449,14 @@ class SimulationRecipeBuilder:
             },
         }
 
-    def build_recipe_from_mp_structure(
+    def build_recipe_from_structure(
         self,
-        mp_structure_data: Dict[str, Any],
+        structure_data: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Build a complete ``gsasii.rietveld`` simulation recipe from MP structure data.
 
         Args:
-            mp_structure_data: Structure data from MPInterface.get_structure()
+            structure_data: Structure data (see the module docstring for the keys)
 
         Returns:
             Complete PowderLine recipe dictionary (``gsasii.rietveld``, core
@@ -465,7 +466,7 @@ class SimulationRecipeBuilder:
             Sample identity (name, description) is managed externally by the
             caller (e.g. via directory names or a database).
         """
-        formula = mp_structure_data['formula']
+        formula = structure_data['formula']
         phase_name = formula
 
         return {
@@ -496,7 +497,7 @@ class SimulationRecipeBuilder:
 
                 # Phase definition (one block: structure, scale, broadening)
                 'phases': {
-                    phase_name: self._build_phase_from_mp_data(mp_structure_data, phase_name),
+                    phase_name: self._build_phase_from_mp_data(structure_data, phase_name),
                 },
 
                 # Simulation mode: 1 cycle, no refinement
@@ -506,9 +507,9 @@ class SimulationRecipeBuilder:
             },
             'metadata': {
                 'materials_project': {
-                    'material_id': mp_structure_data.get('material_id'),
+                    'material_id': structure_data.get('material_id'),
                     'formula': formula,
-                    'space_group_as_stated': mp_structure_data['space_group'],
+                    'space_group_as_stated': structure_data['space_group'],
                 },
             },
         }

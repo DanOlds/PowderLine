@@ -1,4 +1,4 @@
-"""Tests for the SimulationRecipeBuilder (Materials Project simulation pipeline, gsasii gateway).
+"""Tests for the SimulationRecipeBuilder (structure dict -> gsasii.rietveld simulation recipe).
 
 Covers the emitted ``gsasii.rietveld`` 1.0.0 shape (A93 phase block, A103
 instrument blocks, A105 canonical space group, A96/A119 everything stated,
@@ -72,21 +72,21 @@ def _diamond_origin_1():
 
 # ─── The emitted shape (gsasii 1.0.0) ────────────────────────────────────────
 
-def test_builder_recipe_passes_schema_validation(mp_lab6_structure_data):
+def test_builder_recipe_passes_schema_validation(lab6_structure_data):
     """Builder output validates as written (A115) with no structured warning: every default is stated.
 
     This is the primary regression guard — it would have caught every known
     breakage introduced between schema 0.21 and 0.26, and now the 1.0.0 rules.
     """
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(mp_lab6_structure_data)
+    recipe = SimulationRecipeBuilder().build_recipe_from_structure(lab6_structure_data)
     result = _validate(recipe)
     assert result.recipe.schema_name == "gsasii.rietveld"
     assert result.warnings == []
 
 
-def test_builder_recipe_top_level_fields(mp_lab6_structure_data):
+def test_builder_recipe_top_level_fields(lab6_structure_data):
     """Top level: schema_name and the two 1.0.0 versions, payload, metadata; no 0.26.0 keys."""
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(mp_lab6_structure_data)
+    recipe = SimulationRecipeBuilder().build_recipe_from_structure(lab6_structure_data)
 
     assert recipe["schema_name"] == "gsasii.rietveld"
     assert recipe["core_schema_version"] == "1.0.0"
@@ -99,9 +99,9 @@ def test_builder_recipe_top_level_fields(mp_lab6_structure_data):
         assert removed not in recipe
 
 
-def test_builder_payload_blocks(mp_lab6_structure_data):
+def test_builder_payload_blocks(lab6_structure_data):
     """The payload is the 1.0.0 layout: instrument blocks (A103), background, one phase block (A93), controls."""
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(mp_lab6_structure_data)
+    recipe = SimulationRecipeBuilder().build_recipe_from_structure(lab6_structure_data)
     payload = recipe["payload"]
     assert set(payload) == {"xrd_data", "instrument", "fit_range", "background", "phases", "refinement_controls"}
     assert "refinement_cycles" not in recipe
@@ -128,9 +128,9 @@ def test_builder_payload_blocks(mp_lab6_structure_data):
     assert phase["scale"] == [1.0, False]  # stated (A96)
 
 
-def test_builder_atoms_are_unique_sites_with_stated_values(mp_lab6_structure_data):
+def test_builder_atoms_are_unique_sites_with_stated_values(lab6_structure_data):
     """The 7-atom conventional cell becomes 2 sites (1a La, 6f B); occupancy and Uiso stated; no Multiplicity."""
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(mp_lab6_structure_data)
+    recipe = SimulationRecipeBuilder().build_recipe_from_structure(lab6_structure_data)
     atoms = recipe["payload"]["phases"]["LaB6"]["atoms"]
     assert list(atoms) == ["La1", "B1"]
     assert atoms["La1"] == {"element": "La", "x": [0.0, False], "y": [0.0, False], "z": [0.0, False],
@@ -139,9 +139,9 @@ def test_builder_atoms_are_unique_sites_with_stated_values(mp_lab6_structure_dat
                            "occupancy": [1.0, False], "ADP": "Uiso", "Uiso": [0.01, False]}
 
 
-def test_builder_peak_broadening_field_names(mp_lab6_structure_data):
+def test_builder_peak_broadening_field_names(lab6_structure_data):
     """size_broadening / strain_broadening carry model, isotropic_size / isotropic_strain and LG_eta, all stated."""
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(mp_lab6_structure_data)
+    recipe = SimulationRecipeBuilder().build_recipe_from_structure(lab6_structure_data)
     pb = recipe["payload"]["phases"]["LaB6"]["peak_broadening"]
     assert pb == {
         "size_broadening": {"model": "isotropic", "isotropic_size": [10.0, False], "LG_eta": [1.0, False]},
@@ -149,14 +149,14 @@ def test_builder_peak_broadening_field_names(mp_lab6_structure_data):
     }
 
 
-def test_builder_all_refine_flags_false(mp_lab6_structure_data):
+def test_builder_all_refine_flags_false(lab6_structure_data):
     """All refine flags must be False in simulation mode.
 
     Simulation (refinement_cycles=1) is a pure forward calculation; the gsasii
     schema rejects any refine flag in it (A88), so this is also what makes the
     recipe validate.
     """
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(mp_lab6_structure_data)
+    recipe = SimulationRecipeBuilder().build_recipe_from_structure(lab6_structure_data)
 
     flags = _collect_refine_flags(recipe["payload"])
     assert len(flags) >= 25, "No refinable parameters found — helper or recipe structure may be wrong"
@@ -171,10 +171,10 @@ def test_builder_all_refine_flags_false(mp_lab6_structure_data):
 
 # ─── Configuration flow-through ─────────────────────────────────────────────
 
-def test_builder_custom_wavelength(mp_lab6_structure_data):
+def test_builder_custom_wavelength(lab6_structure_data):
     """Custom wavelength in defaults must land in instrument.radiation.wavelength (and the description)."""
     builder = SimulationRecipeBuilder(simulation_defaults={"instrument_defaults": {"wavelength": 0.7}})
-    recipe = builder.build_recipe_from_mp_structure(mp_lab6_structure_data)
+    recipe = builder.build_recipe_from_structure(lab6_structure_data)
 
     inst = recipe["payload"]["instrument"]
     assert inst["radiation"]["wavelength"] == [0.7, False]
@@ -182,7 +182,7 @@ def test_builder_custom_wavelength(mp_lab6_structure_data):
     _validate(recipe)
 
 
-def test_builder_phase_defaults_flow_into_recipe(mp_lab6_structure_data):
+def test_builder_phase_defaults_flow_into_recipe(lab6_structure_data):
     """Configured phase_defaults (scale, models, LG_eta, size/strain) must land
     in the phase block, and instrument_defaults.polarization in corrections."""
     defaults = {
@@ -194,7 +194,7 @@ def test_builder_phase_defaults_flow_into_recipe(mp_lab6_structure_data):
             "strain_broadening": {"isotropic_strain": 1500.0, "LG_eta": 0.7},
         },
     }
-    recipe = SimulationRecipeBuilder(simulation_defaults=defaults).build_recipe_from_mp_structure(mp_lab6_structure_data)
+    recipe = SimulationRecipeBuilder(simulation_defaults=defaults).build_recipe_from_structure(lab6_structure_data)
 
     phase = recipe["payload"]["phases"]["LaB6"]
     assert phase["scale"] == [2.0, False]
@@ -213,7 +213,7 @@ def test_builder_phase_defaults_flow_into_recipe(mp_lab6_structure_data):
     assert _validate(recipe).warnings == []
 
 
-def test_builder_partial_config_merges_with_hardcoded_defaults(mp_lab6_structure_data):
+def test_builder_partial_config_merges_with_hardcoded_defaults(lab6_structure_data):
     """A partial simulation_defaults dict must be deep-merged over the
     hardcoded defaults, not replace them."""
     builder = SimulationRecipeBuilder(
@@ -226,15 +226,15 @@ def test_builder_partial_config_merges_with_hardcoded_defaults(mp_lab6_structure
     assert builder.defaults["phase_defaults"]["size_broadening"]["isotropic_size"] == 10.0
     assert "data_range" in builder.defaults
 
-    _validate(builder.build_recipe_from_mp_structure(mp_lab6_structure_data))
+    _validate(builder.build_recipe_from_structure(lab6_structure_data))
 
 
-def test_builder_sh_l_below_the_floor_is_the_schemas_error(mp_lab6_structure_data):
+def test_builder_sh_l_below_the_floor_is_the_schemas_error(lab6_structure_data):
     """The builder states what it is given; a config SH/L below 0.002 is refused by the schema (A91), not fixed."""
     from pydantic import ValidationError
 
     builder = SimulationRecipeBuilder(simulation_defaults={"instrument_defaults": {"axial_divergence": 0.001}})
-    recipe = builder.build_recipe_from_mp_structure(mp_lab6_structure_data)
+    recipe = builder.build_recipe_from_structure(lab6_structure_data)
     with pytest.raises(ValidationError, match="axial_divergence"):
         powderline.validate(recipe)
 
@@ -289,7 +289,7 @@ def test_builder_rejects_bad_chebyshev_coefficients():
 
 # ─── Structural fallbacks and the unique-site reduction ─────────────────────
 
-def test_builder_warns_on_missing_structural_values(mp_lab6_structure_data, capsys):
+def test_builder_warns_on_missing_structural_values(lab6_structure_data, capsys):
     """Missing Uiso (always, for MP data) and missing occupancy must trigger
     a warning naming the affected input atoms; provided values must not.
 
@@ -297,11 +297,11 @@ def test_builder_warns_on_missing_structural_values(mp_lab6_structure_data, caps
     with an explicit None — each must receive the default value (never pass
     None through into the recipe). The warning names the input atoms (B3,
     B5), before the reduction to unique sites merges them into B1's orbit."""
-    data = mp_lab6_structure_data
+    data = lab6_structure_data
     data["sites"][3]["occupancy"] = None  # B3: present-but-None counts as missing
     del data["sites"][5]["occupancy"]     # B5: key absent entirely
 
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(data)
+    recipe = SimulationRecipeBuilder().build_recipe_from_structure(data)
     out = capsys.readouterr().out
 
     assert "no Uiso in structure source" in out
@@ -319,17 +319,17 @@ def test_builder_warns_on_missing_structural_values(mp_lab6_structure_data, caps
     _validate(recipe)
 
 
-def test_builder_occupancy_passthrough(mp_lab6_structure_data):
+def test_builder_occupancy_passthrough(lab6_structure_data):
     """Partial occupancies from MP sites must be carried into recipe atoms; a
     co-occupied site is two atoms (distinct labels) at the same coordinates."""
-    data = mp_lab6_structure_data
+    data = lab6_structure_data
     data["sites"][0:1] = [
         {'element': 'La', 'x': 0.0, 'y': 0.0, 'z': 0.0, 'occupancy': 0.5, 'label': 'La1'},
         {'element': 'Ce', 'x': 0.0, 'y': 0.0, 'z': 0.0, 'occupancy': 0.5, 'label': 'Ce1'},
     ]
     data["is_ordered"] = False
 
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(data)
+    recipe = SimulationRecipeBuilder().build_recipe_from_structure(data)
 
     atoms = recipe["payload"]["phases"][data["formula"]]["atoms"]
     assert list(atoms) == ["La1", "Ce1", "B1"]
@@ -342,7 +342,7 @@ def test_builder_occupancy_passthrough(mp_lab6_structure_data):
     _validate(recipe)
 
 
-def test_builder_valid_config_does_not_mutate_input(mp_lab6_structure_data):
+def test_builder_valid_config_does_not_mutate_input(lab6_structure_data):
     """The builder must not modify the caller's simulation_defaults dict
     (it may be a live reference into ConfigLoader.config)."""
     import copy
@@ -352,7 +352,7 @@ def test_builder_valid_config_does_not_mutate_input(mp_lab6_structure_data):
     }
     snapshot = copy.deepcopy(defaults)
     builder = SimulationRecipeBuilder(simulation_defaults=defaults)
-    builder.build_recipe_from_mp_structure(mp_lab6_structure_data)
+    builder.build_recipe_from_structure(lab6_structure_data)
     assert defaults == snapshot
 
 
@@ -410,7 +410,7 @@ def test_space_group_setting_unknown_symbol():
 
 def test_builder_two_origin_group_written_in_origin_2(capsys):
     """Diamond as spglib standardizes it (origin 1, C at 0,0,0) becomes F d -3 m:2 with C on 8a (1/8,1/8,1/8)."""
-    recipe = SimulationRecipeBuilder().build_recipe_from_mp_structure(_diamond_origin_1())
+    recipe = SimulationRecipeBuilder().build_recipe_from_structure(_diamond_origin_1())
     out = capsys.readouterr().out
     assert "origin choice 1" in out and "x-1/8,y-1/8,z-1/8" in out
 
