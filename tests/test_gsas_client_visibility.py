@@ -116,13 +116,14 @@ def test_rewritten_fit_profile_counts_as_fresh(client, monkeypatch, tmp_path):
 def test_server_error_result_not_subject_to_file_check(client, monkeypatch, tmp_path):
     """A server-reported failure is returned as-is (no file check, no fallback
     beyond the existing error path)."""
+    from powderline import results
     monkeypatch.setattr(client, "_submit_to_server",
-                        lambda rd, od: {"success": False, "error": "boom"})
+                        lambda rd, od: results.failure_envelope("engine", "diverged", "boom"))
     monkeypatch.setattr(client, "_submit_via_subprocess",
                         lambda rd, od, verbose: pytest.fail("must not fall back"))
 
     result = client.submit_simulation(RECIPE, tmp_path)
-    assert result["success"] is False
+    assert result["status"] == "failed" and result["failure"]["reason"] == "diverged"
     assert result["method"] == "server"
 
 
@@ -147,11 +148,12 @@ def test_use_server_false_with_fallback_disabled_errors_honestly(monkeypatch, tm
                         lambda: pytest.fail("server must not be consulted"))
 
     result = c.submit_simulation(RECIPE, tmp_path, use_server=False)
-    assert result["success"] is False
+    assert result["status"] == "failed" and result["failure"]["kind"] == "backend"
+    assert result["failure"]["reason"] == "server_unavailable"
     assert result["method"] == "none"
-    assert "use_server=False" in result["error"]
-    assert "fallback_to_subprocess=False" in result["error"]
-    assert "Server not available" not in result["error"]
+    assert "use_server=False" in result["failure"]["message"]
+    assert "fallback_to_subprocess=False" in result["failure"]["message"]
+    assert "Server not available" not in result["failure"]["message"]
 
 
 def test_invisible_output_with_fallback_disabled_returns_error(monkeypatch, tmp_path, capsys):
@@ -167,9 +169,9 @@ def test_invisible_output_with_fallback_disabled_returns_error(monkeypatch, tmp_
 
     result = c.submit_simulation(RECIPE, tmp_path)
 
-    assert result["success"] is False
+    assert result["status"] == "failed" and result["failure"]["reason"] == "output_not_visible"
     assert result["method"] == "server"
-    assert "did not write output files visible" in result["error"]
+    assert "did not write output files visible" in result["failure"]["message"]
     out = capsys.readouterr().out
     assert "fallback is disabled" in out
     assert "Falling back" not in out
@@ -362,8 +364,8 @@ def test_forged_server_result_is_never_trusted(monkeypatch, own_endpoint, tmp_pa
     with pytest.raises(gsas_client.ServerIdentityError):
         c._submit_to_server(RECIPE, tmp_path / "out")
     result = c.submit_simulation(RECIPE, tmp_path / "out", auto_start_server=False)
-    assert result["success"] is False
-    assert "did not prove" in result["error"]
+    assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
+    assert "did not prove" in result["failure"]["message"]
 
 
 # --- POWDERLINE_NO_SERVER ---
@@ -396,8 +398,8 @@ def test_no_server_env_server_mode_errors(no_server, monkeypatch, tmp_path):
     monkeypatch.setattr(c, "_submit_via_subprocess",
                         lambda *a: pytest.fail("must not run in-process"))
     result = c.submit_simulation(RECIPE, tmp_path)
-    assert result["success"] is False
-    assert "POWDERLINE_NO_SERVER" in result["error"]
+    assert result["status"] == "failed" and result["failure"]["reason"] == "server_disabled"
+    assert "POWDERLINE_NO_SERVER" in result["failure"]["message"]
 
 
 def test_no_server_env_blocks_background_start(no_server, monkeypatch):
@@ -409,3 +411,32 @@ def test_no_server_env_blocks_background_start(no_server, monkeypatch):
 def test_no_server_env_direct_probe_contacts_nothing(no_server, monkeypatch, own_endpoint):
     _fake_health(monkeypatch, lambda h: pytest.fail("must not contact a server"))
     assert GSASClient().is_server_available() is False
+
+
+# --- re/12: the client returns envelopes; a failed one is never followed by an in-process re-run ------
+
+def test_server_failed_envelope_is_raised_not_rerun(client, monkeypatch, tmp_path):
+    """Review focus 3: a failed envelope from the server is returned as-is; the client never re-runs in-process."""
+    from powderline import results
+    failed = results.failure_envelope("engine", "diverged", "server says diverged", method="server")
+    monkeypatch.setattr(client, "is_server_available", lambda: True)
+    monkeypatch.setattr(client, "_submit_to_server", lambda *a, **k: dict(failed))
+    calls = []
+    monkeypatch.setattr(client, "_submit_via_subprocess", lambda *a, **k: calls.append(1) or {})
+    result = client.submit_simulation(RECIPE, tmp_path)
+    assert result["status"] == "failed" and result["failure"]["reason"] == "diverged"
+    assert result["method"] == "server" and calls == []
+
+
+def test_post_timeout_is_a_backend_failure_without_fallback(client, monkeypatch, tmp_path):
+    import httpx
+    monkeypatch.setattr(client, "is_server_available", lambda: True)
+
+    def timeout(*a, **k):
+        raise httpx.ReadTimeout("300 s")
+    monkeypatch.setattr(client, "_submit_to_server", timeout)
+    calls = []
+    monkeypatch.setattr(client, "_submit_via_subprocess", lambda *a, **k: calls.append(1) or {})
+    result = client.submit_simulation(RECIPE, tmp_path)   # fallback_to_subprocess=True by default
+    assert result["status"] == "failed" and result["failure"]["reason"] == "timeout"
+    assert calls == [], "a timed-out request must never fall back: the server may still be writing"

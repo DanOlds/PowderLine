@@ -70,6 +70,9 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from powderline import results as envelopes
+from powderline.exceptions import EngineExecutionError
+
 # Server configuration
 HOST = "127.0.0.1"
 PORT_ENV = 'POWDERLINE_SERVER_PORT'
@@ -600,7 +603,14 @@ class SimulationRequest(BaseModel):
 
 
 class SimulationResponse(BaseModel):
-    success: bool
+    """The wire envelope (re/12, ``powderline.results``, ``envelope_version`` 1): every application outcome
+    is HTTP 200 with one of these; ``status`` is ``ok`` or ``failed`` (with ``failure``); 4xx/5xx are
+    auth/transport only. ``success`` is the deprecated alias, absent on a failed envelope."""
+    envelope_version: Optional[str] = None
+    status: Optional[str] = None
+    converged: Optional[bool] = None
+    failure: Optional[dict] = None
+    success: Optional[bool] = None
     run_id: Optional[str] = None
     rwp: Optional[float] = None
     elapsed_time: Optional[float] = None
@@ -717,17 +727,19 @@ class GSASServer:
 
             result = server._run_simulation(req.model_dump())
 
-            elapsed = result.get('elapsed_time', 0)
+            elapsed = result.get('elapsed_time') or 0
             run_id = result.get('run_id', 'n/a')
-            if result.get('success'):
+            if result.get('status') == 'ok':
                 server.logger.info(f"Request #{server.request_count} (run_id={run_id}) completed in {elapsed:.1f}s")
             else:
+                failure = result.get('failure') or {}
                 server.logger.warning(
-                    f"Request #{server.request_count} (run_id={run_id}) failed: {result.get('error', 'Unknown error')}"
+                    f"Request #{server.request_count} (run_id={run_id}) failed "
+                    f"({failure.get('kind')}/{failure.get('reason')}): {failure.get('message', 'Unknown error')}"
                 )
-                if result.get('traceback'):
+                if failure.get('traceback'):
                     server.logger.debug(
-                        f"Request #{server.request_count} traceback:\n{result['traceback']}"
+                        f"Request #{server.request_count} traceback:\n{failure['traceback']}"
                     )
             return SimulationResponse(**result)
 
@@ -784,10 +796,10 @@ class GSASServer:
                      and optional 'verbose'
 
         Returns:
-            Dictionary with keys: 'success', 'run_id', 'rwp', 'elapsed_time',
-            'method', 'output_files', 'fit_profile' (dict), 'unit_cell_data' (dict),
+            An envelope (``powderline.results``): ``ok`` with the result keys ('run_id', 'rwp',
+            'elapsed_time', 'method', 'output_files', 'fit_profile' (dict), 'unit_cell_data' (dict),
             'peak_list_data' (dict), 'refined_parameters' (list), 'spf_peaks' (dict),
-            'spf_convergence_diagnostics' (dict), and optional 'error', 'traceback'.
+            'spf_convergence_diagnostics' (dict), 'converged', ...), or ``failed`` with a 'failure' record.
         """
         from powderline.gateways.gsasii.routing import model_from_request, run_refinement
         from pydantic import ValidationError
@@ -797,11 +809,8 @@ class GSASServer:
         verbose = request.get('verbose', False)
 
         if recipe_dict is None:
-            return {
-                'success': False,
-                'error': 'Missing recipe_data in request',
-                'method': 'server'
-            }
+            return envelopes.failure_envelope("backend", "backend_error", "Missing recipe_data in request",
+                                              method="server")
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -811,22 +820,24 @@ class GSASServer:
         except ValidationError as e:
             error_lines = [f"{' -> '.join(str(loc) for loc in err['loc'])}: {err['msg']}"
                           for err in e.errors()]
-            return {
-                'success': False,
-                'error': f"Recipe validation failed:\n" + "\n".join(error_lines),
-                'method': 'server'
-            }
+            return envelopes.failure_envelope("backend", "backend_error",
+                                              "Recipe validation failed:\n" + "\n".join(error_lines),
+                                              method="server")
         except Exception as e:
-            return {
-                'success': False,
-                'error': f"Failed to parse recipe: {str(e)}",
-                'method': 'server'
-            }
+            return envelopes.failure_envelope("backend", "backend_error", f"Failed to parse recipe: {str(e)}",
+                                              method="server")
 
-        # Run refinement directly using loaded GSAS-II libraries
-        result = run_refinement(recipe, output_dir, verbose=verbose, method='server')
-
-        return result
+        # Run refinement directly using loaded GSAS-II libraries; every outcome is an envelope (re/12)
+        files = lambda: sorted(str(f) for f in output_dir.glob('*') if f.is_file())  # noqa: E731
+        try:
+            result = run_refinement(recipe, output_dir, verbose=verbose, method='server')
+        except EngineExecutionError as e:  # R30: PowderLine's own failure (divergence, site, peak fit)
+            return e.result or envelopes.failure_envelope("engine", e.reason, str(e), method="server",
+                                                          output_files=files())
+        if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
+            return envelopes.legacy_failure(result)
+        return envelopes.with_status_fields(result, status="ok",
+                                            converged=(result.get('engine_details') or {}).get('converged'))
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals."""

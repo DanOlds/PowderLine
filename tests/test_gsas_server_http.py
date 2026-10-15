@@ -178,11 +178,10 @@ def test_simulate_endpoint_invalid_recipe(test_server):
         assert resp.status_code == 200, "Should return 200 even for errors (error in response body)"
         data = resp.json()
 
-        assert "success" in data, "Response should contain 'success' field"
-        assert data["success"] is False, "Should indicate failure"
-        assert "error" in data, "Response should contain 'error' field"
-        assert "recipe" in data["error"].lower() or "validation" in data["error"].lower(), \
-            "Error message should mention recipe validation failure"
+        assert data["status"] == "failed" and data["envelope_version"] == "1"
+        assert data["failure"]["kind"] == "backend" and data["failure"]["reason"] == "backend_error"
+        msg = data["failure"]["message"].lower()
+        assert "recipe" in msg or "validation" in msg, "the message should mention recipe validation failure"
 
 
 def test_simulate_endpoint_optional_verbose(test_server):
@@ -343,6 +342,7 @@ def test_refinement_through_authenticated_server(test_server, server_state_root,
     monkeypatch.setattr(gsas_server, "state_dir", lambda: server_state_root / "powderline")
     client = GSASClient(fallback_to_subprocess=False)
     result = client.submit_simulation(recipe_LaB6_dict, tmp_path, auto_start_server=False)
-    assert result["success"] is True, result.get("error")
+    assert result["status"] == "ok", result.get("failure")
+    assert result["envelope_version"] == "1" and result["converged"] in (True, False, None)
     assert result["method"] == "server"
     assert (tmp_path / "fit_profile.txt").exists()

@@ -25,7 +25,7 @@ from typing import Literal
 import pandas as pd
 
 from powderline import results as envelopes
-from powderline.exceptions import EngineNotAvailableError
+from powderline.exceptions import EngineExecutionError, EngineNotAvailableError
 from powderline.gateways.gsasii import schema
 from powderline.gateways.gsasii.routing import run_refinement
 from powderline.registry import Gateway, check_engine_version, validate_only_summary
@@ -138,9 +138,12 @@ def run(
             version check (A53). Not reachable through ``powderline.run()``.
 
     Returns:
-        **Normal refinement** (``validate_only=False``):
+        **Normal refinement** (``validate_only=False``) — the ``ok`` envelope
+        (re/12, :mod:`powderline.results`); a failed run raises, see below:
 
-        - ``success`` (bool)
+        - ``status`` (``"ok"``), ``converged`` (bool, or ``None`` for a
+          simulation and for single peak fitting), ``envelope_version``
+          (``"1"``); ``success`` is a deprecated always-``True`` alias
         - ``run_id`` (str) — UUID4 string uniquely identifying this run
         - ``rwp`` (float | None) — final weighted-profile R factor
         - ``elapsed_time`` (float) — wall-clock seconds
@@ -161,8 +164,6 @@ def run(
           diagnostics for peaks with convergence issues (empty when all
           converged or for non-SPF runs)
         - ``output_files`` (list[str]) — paths written to ``output_dir``
-        - ``error`` (str | None) — error message when ``success=False``
-        - ``traceback`` (str | None)
         - ``r_exp``, ``gof``, ``chi2_red``, ``simulation_mode``,
           ``engine_details`` and the structured ``warnings`` list (A125,
           A129, A115)
@@ -177,6 +178,12 @@ def run(
         ValueError: an invalid ``execution_mode``.
         EngineNotAvailableError: GSAS-II is not importable (not for ``validate_only``).
         EngineVersionError: the installed GSAS-II is outside ``ENGINE_VERSION_SPEC``.
+        EngineExecutionError: the engine ran and failed (``.reason``: ``diverged``,
+            ``unusable_site``, ``peak_fit_failed``, ``engine_crashed``; ``.result`` is the
+            failed envelope listing the files written before the failure, which are kept).
+        ExecutionBackendError: the engine did not run (``.reason``: ``server_unavailable``,
+            ``server_disabled``, ``output_not_visible``, ``communication_failed``,
+            ``timeout``, ``backend_error``).
         OSError: ``output_dir`` cannot be created.
     """
     # 0. Validate execution_mode early to catch typos
@@ -212,13 +219,21 @@ def run(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 5. Dispatch by execution_mode
+    # 5. Dispatch by execution_mode; every outcome is an envelope (powderline.results) and a failed one
+    #    is raised (re/12 spec §6.2)
     if execution_mode == 'subprocess':
-        result = run_refinement(recipe, output_dir, verbose=verbose, method='subprocess')
+        try:
+            result = run_refinement(recipe, output_dir, verbose=verbose, method='subprocess')
+        except EngineExecutionError as exc:  # R30: PowderLine's own failure, raised by the frozen executor
+            result = exc.result or envelopes.failure_envelope(
+                "engine", exc.reason, str(exc), method="subprocess",
+                output_files=sorted(str(f) for f in output_dir.glob('*') if f.is_file()))
+        if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
+            result = envelopes.legacy_failure(result)
+        result['warnings'] = warnings + list(result.get('warnings') or [])  # GSASClient adds them on its paths
     else:
         from powderline.gateways.gsasii.client import GSASClient
-        fallback = execution_mode != 'server'
-        client = GSASClient(fallback_to_subprocess=fallback)
+        client = GSASClient(fallback_to_subprocess=execution_mode != 'server')
         result = client.submit_simulation(
             recipe=recipe,
             output_dir=output_dir,
@@ -226,14 +241,12 @@ def run(
             auto_start_server=True,
         )
 
-    if execution_mode == 'subprocess':  # GSASClient adds them on its own paths
-        result['warnings'] = warnings + list(result.get('warnings') or [])
-
+    envelopes.raise_if_failed(result)
     return _frames(result)
 
 
 def _frames(result: dict) -> dict:
-    """Normalise the structured fields to DataFrames and guarantee the ``error``/``traceback`` keys.
+    """Normalise the structured fields to DataFrames and stamp the ``ok`` envelope fields.
 
     ``run_refinement()`` and the server return JSON-serializable primitives;
     converting here ensures callers always receive DataFrames regardless of

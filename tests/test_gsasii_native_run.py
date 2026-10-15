@@ -50,7 +50,7 @@ def lab6_result(tmp_path_factory):
 
 def test_standard_fit_statistics_and_engine_details(lab6_result):
     r = lab6_result
-    assert r["success"], r.get("error")
+    assert r["status"] == "ok", r.get("failure")
     for key in ("rwp", "r_exp", "gof", "chi2_red"):  # A125
         assert isinstance(r[key], float)
     d = r["engine_details"]
@@ -85,7 +85,7 @@ def test_gsasii_open_ends_skip_zero_weight_edges(tmp_path):
     for i in list(range(20)) + list(range(len(w) - 20, len(w))):
         w[i] = 0.0
     r = powderline.run(recipe, tmp_path, execution_mode="subprocess")
-    assert r["success"], r.get("error")
+    assert r["status"] == "ok", r.get("failure")
     assert r["engine_details"]["n_obs"] == sum(1 for v in w if v > 0) == len(w) - 40
 
 def test_warnings_carried_with_full_paths(lab6_result):
@@ -115,7 +115,7 @@ def test_refined_corrections_are_varied(tmp_path):
     for p in recipe["payload"]["instrument"]["corrections"].values():
         p[1] = True
     r = powderline.run(recipe, tmp_path, execution_mode="subprocess")
-    assert r["success"], r.get("error")
+    assert r["status"] == "ok", r.get("failure")
     assert {":0:Zero", ":0:Polariz.", ":0:SH/L"} <= set(r["refined_parameters"]["parameter_name"])
 
 
@@ -182,7 +182,7 @@ def test_spf_peak_fit_failure_is_a_clear_engine_error():
 def test_spf_runs_with_standard_statistics(tmp_path):
     old = json.loads((ROOT / "tests" / "data" / "convert_026" / "example_LaB6_singlepeakfit" / "input.json").read_text(encoding="utf-8"))
     r = powderline.run(conv.convert(old)[0], tmp_path, execution_mode="subprocess")
-    assert r["success"], r.get("error")
+    assert r["status"] == "ok", r.get("failure")
     assert r["engine_details"]["parameters_varied"] > 0 and isinstance(r["r_exp"], float)
     assert not r["spf_peaks"].empty
     assert isinstance(r["engine_details"]["gof"], float)  # DoPeakFit's own reduced chi^2 (EB-52; ledger R16)
@@ -274,7 +274,7 @@ def test_two_cycles_lab6_not_converged(tmp_path):
     recipe = _lab6()
     recipe["payload"]["refinement_controls"]["refinement_cycles"] = 2
     r = powderline.run(recipe, tmp_path, execution_mode="subprocess")
-    assert r["success"], r.get("error")
+    assert r["status"] == "ok", r.get("failure")
     assert r["engine_details"]["converged"] is False
     assert "gsasii_fit_not_converged" in [w["code"] for w in r["warnings"]]
 
@@ -291,7 +291,7 @@ def test_simulation_reports_statistics_and_says_it_is_one(tmp_path):
     """A simulation gets the standard statistics, like a refinement, and simulation_mode True (A129)."""
     old = json.loads((ROOT / "tests" / "data" / "convert_026" / "example_DRX_33_simulation" / "input.json").read_text(encoding="utf-8"))
     r = powderline.run(conv.convert(old)[0], tmp_path, execution_mode="subprocess")
-    assert r["success"], r.get("error")
+    assert r["status"] == "ok", r.get("failure")
     assert r["simulation_mode"] is True and isinstance(r["rwp"], float)
     assert r["engine_details"]["parameters_varied"] == 0
 

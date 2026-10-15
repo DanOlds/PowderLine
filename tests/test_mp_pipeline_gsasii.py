@@ -26,7 +26,7 @@ def test_mp_pipeline_end_to_end(mp_lab6_structure_data, tmp_output_dir):
 
     result = powderline.run(model, output_dir=tmp_output_dir, execution_mode="subprocess")
 
-    assert result["success"], result.get("error")
+    assert result["status"] == "ok", result.get("failure")
     assert result["simulation_mode"] is True  # A129
     assert result["engine_details"]["parameters_varied"] == 0
     assert (tmp_output_dir / "fit_profile.txt").exists(), (

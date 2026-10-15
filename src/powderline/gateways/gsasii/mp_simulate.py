@@ -20,6 +20,7 @@ import json
 from pathlib import Path
 import tempfile
 
+from powderline.exceptions import PowderLineError
 from powderline._status import CHECK, CROSS, emoji
 from powderline.config_loader import ConfigLoader
 from powderline.mp_interface import (
@@ -258,17 +259,18 @@ Setup:
                 use_server=not args.no_server
             )
 
-            if not result['success']:
-                print(f"{CROSS} Simulation failed!")
-                print(f"\nError: {result.get('error', 'Unknown error')}")
-                if not args.verbose:
-                    print("\nRun with --verbose for detailed output")
-                sys.exit(1)
+            from powderline import results as envelopes
+            envelopes.raise_if_failed(result)  # re/12: a failed envelope raises
 
             elapsed = result.get('elapsed_time', 0)
             method = result.get('method', 'unknown')
             print(f"{CHECK} Simulation complete ({elapsed:.1f}s via {method})")
 
+        except PowderLineError as e:
+            print(f"{CROSS} Simulation failed ({getattr(e, 'reason', 'error')}): {e}")
+            if not args.verbose:
+                print("\nRun with --verbose for detailed output")
+            sys.exit(1)
         except Exception as e:
             print(f"{CROSS} Failed to run simulation: {e}")
             sys.exit(1)

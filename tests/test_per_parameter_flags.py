@@ -71,7 +71,7 @@ def uiso_atom(element, x, y, z, refine=()):
 def run(recipe_dict, tmp_path):
     model = validate_recipe(recipe_dict)
     result = run_refinement(model, tmp_path, verbose=False, method="subprocess")
-    assert result["success"], f"refinement failed: {result.get('error')}"
+    assert result["success"], f"refinement failed: {result.get('error')}"  # the frozen executor's own dict (run_refinement directly)
     gpx = G2.G2Project(str(tmp_path / "dummy.gpx"))
     vary = list(gpx.data["Covariance"]["data"].get("varyList", []))
     return result, gpx, vary
