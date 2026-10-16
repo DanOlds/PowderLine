@@ -35,13 +35,10 @@ numpy = ">=2.0"
 scipy = ">=1.15"
 matplotlib = ">=3.10"
 pandas = ">=2.0"
-h5py = ">=3.12"
 
 # PowderLine runtime deps
 pydantic = ">=2.0"
 pyyaml = ">=6.0"
-pybaselines = ">=1.2"
-xmltodict = ">=0.14"
 requests = ">=2.32"
 
 # PowderLine server mode (powderline.gateways.gsasii.{server,client})

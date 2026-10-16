@@ -4,7 +4,6 @@ Moved verbatim from ``powderline/kicker.py`` (multi-engine refactor, re/01).
 """
 from __future__ import annotations
 import uuid
-import json
 from typing import Any
 from pathlib import Path
 from GSASII import GSASIIscriptable as G2  # type: ignore

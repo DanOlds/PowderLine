@@ -33,7 +33,6 @@ from powderline.exceptions import SymmetryError
 
 
 # Fractional-coordinate tolerances (plan §5).
-_POS_TOL = 1e-5   # position / orbit equality mod 1
 _MAT_TOL = 1e-6   # rotation-matrix / projector comparisons
 
 #: Core schema special-position rules (A69, A73), as a fractional *image

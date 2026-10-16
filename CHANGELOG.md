@@ -220,9 +220,10 @@ recipes do not validate; see the
 **Symmetry helpers (core)**
 - `powderline.symmetry` (formerly `powderline.topas.symmetry`) raises
   `powderline.exceptions.SymmetryError` instead of `TopasTranslationError`
-  (row 1, A56/A57/A61); `resolve_space_group`, `site_dof` and `adp_dof` accept
-  rhombohedral `:R`, while `cell_constraints` refuses it with a "not
-  implemented" message (row 2, A62); trigonal/hexagonal sites are classified
+  (row 1, A56/A57/A61); `resolve_space_group` accepts rhombohedral `:R`
+  (row 2, A62; the pre-refactor `cell_constraints` / `site_dof` / `adp_dof`
+  that this row also covered were removed later in this release, see
+  Removed); trigonal/hexagonal sites are classified
   correctly, so TOPAS-writer warnings for those groups change wording or
   appear/disappear (emitted INP values unchanged) (row 3, A74).
 - **gemmi is pinned exactly** (`==0.7.5`); the locked version is unchanged
@@ -355,10 +356,10 @@ recipes do not validate; see the
 
 ### Fixed
 
-- `powderline.symmetry.cell_constraints` handles the mirror-only monoclinic
-  groups Pm, Pc, Cm, Cc (space groups 6–9) in every setting; before, all 41
-  settings failed with "could not determine the monoclinic unique axis"
-  (row 4, A102).
+- `powderline.symmetry` finds the monoclinic unique axis of the mirror-only
+  groups Pm, Pc, Cm, Cc (space groups 6–9) in every setting (today through
+  `cell_tie_groups`; before, all 41 settings failed with "could not determine
+  the monoclinic unique axis") (row 4, A102).
 - Site-symmetry classification for trigonal and hexagonal groups (the
   column-only test was wrong when rotations are not orthogonal in fractional
   coordinates; checked against GSAS-II for all 230 groups) (row 3, A74).

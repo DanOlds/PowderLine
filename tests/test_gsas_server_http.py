@@ -134,7 +134,7 @@ def test_health_endpoint_format(test_server):
     data = resp.json()
 
     # Verify all expected fields are present
-    required_fields = {"status", "pid", "uptime_seconds", "request_count"}
+    required_fields = {"status", "pid", "uptime_seconds", "request_count", "powderline_version", "code_hash"}
     assert required_fields.issubset(data.keys()), \
         f"Missing required fields: {required_fields - data.keys()}"
 

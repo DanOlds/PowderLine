@@ -932,8 +932,6 @@ def test_render_background_spf_has_no_peaks():
 def test_writer_open_ends_are_the_weighted_data_limits():
     """A154: without fit_range the INP still states start_X/finish_X, the first/last weighted points (zero-weight
     edge points are not in the .xye), so TOPAS's Chebyshev basis spans the same points as GSAS-II's."""
-    from powderline.gateways.topas.native_writer import fmt
-
     recipe = _rietveld()
     recipe["payload"].pop("fit_range", None)
     w = recipe["payload"]["xrd_data"]["Itth_weights"]
