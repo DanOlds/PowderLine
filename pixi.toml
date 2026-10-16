@@ -121,11 +121,6 @@ cython = ">=3.0.11,<4"
 pkg-config = ">=0.29.2,<0.30"
 pyproject-metadata = ">=0.9.0,<0.10"
 wheel = ">=0.45.1,<0.46"
-# UNUSED since P-36 (0.2.0): the Materials Project simulation tool left PowderLine (RandomXRD
-# carries its own copy). Kept only because dropping them needs a re-lock (network); remove both
-# lines and run `pixi lock` at the next re-lock.
-mp-api = ">=0.46.4,<1"
-emmet-core = ">=0.87.1,<0.88"
 
 [feature.gsasii.tasks]
 gsas-server = { cmd = "python -m powderline.gateways.gsasii.server", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
