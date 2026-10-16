@@ -83,8 +83,8 @@ Each gateway is a package with the same two layers:
 | Gateway | Runtime modules |
 |---|---|
 | `gsasii/` (GSAS-II 5.7.9) | the **frozen** setup/execution code moved verbatim from the pre-refactor `kicker.py`: `helpers.py`, `project.py`, `setters.py`, `executors.py`, `extractors.py`, `constraints.py` (code-hashed; see [policies](policies.md#frozen-gsas-ii-code-and-the-edits-ledger)); non-frozen additions `routing.py` (one entry for in-process, server and client), `fit_report.py` (uniform statistics, `engine_details`, convergence, divergence), `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`; `server.py` / `client.py` (the persistent FastAPI server and `GSASClient`: per-user, loopback, ephemeral port, signed requests and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2); `simulation_builder.py` (structure dict → simulation recipe; see [the builder](#the-simulation-recipe-builder)) |
-| `topas/` (TOPAS 6) | `native_writer.py` (model → INP + `.xye`), `native_run.py` (run `tc.exe`, read TOPAS's files strictly, build the result; the background-only second run), `peak_list.py`, `conversions.py`, `runner.py` (find `tc.exe`, read `.powderline_config.yaml`), `errors.py` |
-| `easydiffraction/` (0.21.1) | `native_builder.py` (model → easydiffraction `Project`; the CrysPy template rule; anisotropic atoms first), `native_run.py` (calculate or lmfit fit, the result), `space_group_table.py` / `space_group_support.py` (the 531 settings and the per-calculator verified sets), `errors.py` |
+| `topas/` (TOPAS 6) | `native_writer.py` (model → INP + `.xye`), `native_run.py` (run `tc.exe`, read TOPAS's files strictly, build the result; the background-only second run), `peak_list.py`, `runner.py` (find `tc.exe`, read `.powderline_config.yaml`) |
+| `easydiffraction/` (0.21.1) | `native_builder.py` (model → easydiffraction `Project`; the CrysPy template rule; anisotropic atoms first), `native_run.py` (calculate or lmfit fit, the result), `space_group_table.py` / `space_group_support.py` (the 531 settings and the per-calculator verified sets) |
 
 The entry points are declared in `pyproject.toml`
 (`[project.entry-points."powderline.gateways"]`); the metadata is written at
@@ -553,7 +553,7 @@ weaken core), `test_api`, `test_cli`, `test_registry`, `test_compat`,
 `test_per_parameter_flags`, `test_run_refinement_missing_keys`,
 `test_constraints_mapping`, `test_code_hash`, the server/client tests
 (gsasii), `test_topas_schema`, `test_topas_native`, `test_topas_native_golden`
-(12 INPs byte-identical to the TOPAS 6 goldens), `test_topas_conversions`,
+(12 INPs byte-identical to the TOPAS 6 goldens),
 `test_topas_runner`, `test_topas_symmetry` (topas),
 `test_easydiffraction_schema`, `test_easydiffraction_native`,
 `test_easydiffraction_space_groups` (easydiffraction),

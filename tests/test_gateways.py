@@ -529,18 +529,15 @@ import powderline.gateways.easydiffraction
 import powderline.gateways.easydiffraction.gateway
 import powderline.gateways.easydiffraction.native_run
 allowed = {
-    "powderline.gateways.topas": {"schema", "native_writer", "native_run", "peak_list", "conversions", "runner",
-                                  "gateway", "errors"},
+    "powderline.gateways.topas": {"schema", "native_writer", "native_run", "peak_list", "runner", "gateway"},
     "powderline.gateways.easydiffraction": {"schema", "native_builder", "native_run", "space_group_support",
-                                            "space_group_table", "gateway", "errors"},
+                                            "space_group_table", "gateway"},
 }
 for pkg, names in allowed.items():
     loaded = {m[len(pkg) + 1:] for m in sys.modules if m.startswith(pkg + ".")}
     assert loaded <= names, f"{pkg} loaded unexpected modules: {sorted(loaded - names)}"
 for engine in ("GSASII", "easydiffraction", "cryspy"):
     assert engine not in sys.modules, engine
-from powderline.gateways.topas import TopasTranslationError
-from powderline.gateways.easydiffraction import EasyDiffractionTranslationError
 print("OK")
 """
     proc = run_subprocess_utf8([sys.executable, "-c", script], capture_output=True, text=True)

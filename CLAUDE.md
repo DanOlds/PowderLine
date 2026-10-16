@@ -83,11 +83,11 @@ imported lazily from `run()`):
   installed version declared): `native_writer.py` (model → INP + `.xye`;
   limits on data points; `= p/q;` constants), `native_run.py` (run `tc.exe`,
   strict file reads, the background-only second run, result), `peak_list.py`,
-  `conversions.py`, `runner.py`, `errors.py`. No Python engine: generate-only
+  `runner.py`. No Python engine: generate-only
   without `tc.exe`.
 - `easydiffraction/` (`==0.21.1`, env `easydiffraction`, Python ≥ 3.12):
   `native_builder.py`, `native_run.py`, `space_group_table.py`,
-  `space_group_support.py` (per-calculator verified settings), `errors.py`.
+  `space_group_support.py` (per-calculator verified settings).
 
 Docs: `docs/schemas.md`, `docs/fields.md` (generated tables), `docs/input-guidance.md`,
 `docs/engine-behavior.md`, `docs/policies.md`, `docs/migration-0.26-to-1.0.md`,

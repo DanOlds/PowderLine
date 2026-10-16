@@ -1,10 +1,9 @@
 """Drive ``tc.exe`` (TOPAS) from Python — Windows execution, Linux-testable.
 
 The refinement itself runs only where TOPAS is installed (Windows). This module
-keeps discovery pure and the subprocess call injectable so the whole pipeline is
-exercisable on a box without TOPAS: point discovery at a directory containing a
-dummy ``tc.exe``, pass a fake ``runner`` that drops the expected output files,
-and the CLI's generate → run → parse path runs end to end (see test_topas_runner).
+is the pure discovery half: where ``tc.exe`` is. :func:`native_run.run_tc` runs
+it with an injectable ``runner``, so the generate → run → parse path is
+exercisable on a box without TOPAS (see test_topas_runner, test_topas_native).
 
 Where ``tc.exe`` is looked for (P-35, 2026-10-15): the explicit ``topas_dir``
 argument, else ``.powderline_config.yaml`` ``topas.dir`` -- and nowhere else.
@@ -16,8 +15,6 @@ directory declared a run is generate-only. No GSAS-II import.
 
 from __future__ import annotations
 
-import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -27,21 +24,6 @@ _CONFIG_PATHS = (".powderline_config.yaml", "~/.powderline_config.yaml")
 
 #: tc executable names to probe within a TOPAS directory.
 _TC_NAMES = ("tc.exe", "tc")
-
-
-@dataclass
-class RunResult:
-    """Outcome of a (possibly skipped) TOPAS run.
-
-    ``status`` is ``"ran"`` (rc 0), ``"failed"`` (tc ran, rc != 0), or
-    ``"tc_not_found"`` (no executable discovered — the caller degrades to
-    generate-only, exit 0).
-    """
-
-    status: str
-    returncode: int | None
-    tc_path: Path | None
-    command: list[str]
 
 
 def _read_topas_config() -> dict:
@@ -94,23 +76,3 @@ def discover_tc_exe(topas_dir=None, topas_version=None) -> Path | None:
             return tc
     return None
 
-
-def run_topas(inp_path, topas_dir=None, topas_version=None, runner=subprocess.run) -> RunResult:
-    """Run ``tc "<inp_path>"`` with ``cwd`` set to the TOPAS directory.
-
-    Mirrors the maintainer's proven invocation (full INP path; TOPAS dir as the
-    working directory) but uses ``cwd=`` instead of ``os.chdir`` — no global cwd
-    mutation, exception-safe, thread-safe. ``runner`` (default ``subprocess.run``)
-    is injected for testing. Returns a :class:`RunResult`; never raises on a
-    missing tc (that is ``tc_not_found``).
-    """
-    inp_path = Path(inp_path).resolve()
-    tc = discover_tc_exe(topas_dir, topas_version)
-    if tc is None:
-        return RunResult(status="tc_not_found", returncode=None, tc_path=None, command=[])
-
-    command = [str(tc), str(inp_path)]
-    completed = runner(command, cwd=str(tc.parent))
-    returncode = int(getattr(completed, "returncode", 0) or 0)
-    status = "ran" if returncode == 0 else "failed"
-    return RunResult(status=status, returncode=returncode, tc_path=tc, command=command)

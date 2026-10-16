@@ -932,7 +932,7 @@ def test_render_background_spf_has_no_peaks():
 def test_writer_open_ends_are_the_weighted_data_limits():
     """A154: without fit_range the INP still states start_X/finish_X, the first/last weighted points (zero-weight
     edge points are not in the .xye), so TOPAS's Chebyshev basis spans the same points as GSAS-II's."""
-    from powderline.gateways.topas.conversions import fmt
+    from powderline.gateways.topas.native_writer import fmt
 
     recipe = _rietveld()
     recipe["payload"].pop("fit_range", None)
@@ -1271,3 +1271,30 @@ def test_divergence_reason_is_diverged():
     with pytest.raises(EngineExecutionError) as e:
         raise native_run._diverged("the pattern")
     assert e.value.reason == "diverged"
+
+
+# --- fmt: byte-stable number formatting (moved here from the deleted conversions module, re/17) ---
+
+from powderline.gateways.topas.native_writer import fmt  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (90.0, "90"),
+        (4.15682, "4.15682"),
+        (-0.0, "0"),
+        (0.0, "0"),
+        (0.001, "0.001"),
+        (1.0, "1"),
+        (109.96, "109.96"),
+    ],
+)
+def test_fmt(value, expected):
+    assert fmt(value) == expected
+
+
+def test_fmt_is_deterministic_and_roundtrips():
+    for v in (0.677449, 4.1813, 1e-05, 18.71740850558368):
+        assert fmt(v) == fmt(v)
+        assert float(fmt(v)) == pytest.approx(v, rel=1e-9)

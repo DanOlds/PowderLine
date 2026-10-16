@@ -57,15 +57,13 @@ def test_guard_blocks_engine_imports(core_guard_active):
 def test_guard_refuses_real_tc_execution(core_guard_active, tmp_path):
     if not core_guard_active:
         pytest.skip("core guard off: unrestricted run")
-    from powderline.gateways.topas import native_run, runner
+    from powderline.gateways.topas import native_run
 
     with pytest.raises(RuntimeError, match="core guard"):
         native_run.run_tc(tmp_path / "tc.exe", tmp_path / "x.inp")
     tc_dir = tmp_path / "TOPAS6"
     tc_dir.mkdir()
     (tc_dir / "tc.exe").write_text("")
-    with pytest.raises(RuntimeError, match="core guard"):
-        runner.run_topas(tmp_path / "x.inp", topas_dir=str(tc_dir))
     # an injected runner is the tested path and still works
     calls = []
     native_run.run_tc(tc_dir / "tc.exe", tmp_path / "x.inp", runner=lambda cmd, **kw: calls.append(cmd))

@@ -2,7 +2,7 @@
 
 The ``topas.rietveld`` / ``topas.spf`` path (:mod:`.schema`,
 :mod:`.native_writer`, :mod:`.native_run`, :mod:`.peak_list`,
-:mod:`.conversions`, :mod:`.runner`, :mod:`.gateway`) must run on Windows,
+:mod:`.runner`, :mod:`.gateway`) must run on Windows,
 where GSAS-II does not install cleanly. ``powderline <recipe.json>`` serves
 these recipes (the one CLI, P-06).
 
@@ -12,9 +12,3 @@ decision log kept with the maintainers' development notes); they label *why* a
 formula or behavior is the way it is and appear verbatim in some emitted INP
 headers, so they are stable identifiers - do not renumber them.
 """
-
-from __future__ import annotations
-
-from .errors import TopasTranslationError
-
-__all__ = ["TopasTranslationError"]

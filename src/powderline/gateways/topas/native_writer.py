@@ -46,7 +46,6 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Optional
 
-from powderline.gateways.topas.conversions import fmt
 from powderline.gateways.topas.schema import (
     EIGHT_PI_SQ,
     KEYWORD_LIMITS,
@@ -59,6 +58,25 @@ from powderline.schema_core import BoundedRefinableParameter, fit_limits_on_data
 from powderline.symmetry import analyze_site, cell_tie_groups, coupling_groups
 
 P = BoundedRefinableParameter
+
+
+def fmt(value: float) -> str:
+    """Format a float for byte-stable INP output (``%.10g``, no exponent noise).
+
+    Integral floats render without a trailing ``.0`` (matches the recipe's own
+    ``a 4.15682`` / ``al 90`` style). ``-0.0`` normalises to ``0``.
+
+    >>> fmt(90.0)
+    '90'
+    >>> fmt(4.15682)
+    '4.15682'
+    >>> fmt(-0.0)
+    '0'
+    """
+    v = float(value)
+    if v == 0.0:
+        v = 0.0  # collapse -0.0
+    return "%.10g" % v
 
 RESULTS_SUFFIX = "_results.csv"
 PROFILE_SUFFIX = "_profile.txt"

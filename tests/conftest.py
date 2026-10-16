@@ -124,7 +124,7 @@ def _install_core_guard():
     # runner would call its default (un-injected) subprocess.run, it gets a
     # runner that raises instead. Discovery still works (a run without tc.exe
     # is the generate-only path, tested in topas_gen); tests inject fake runners.
-    from powderline.gateways.topas import native_run, runner
+    from powderline.gateways.topas import native_run
 
     def _refusing_runner(command, **kwargs):
         raise RuntimeError(
@@ -132,17 +132,12 @@ def _install_core_guard():
             "topas_exec test, not core/topas_gen."
         )
 
-    real_run_tc, real_run_topas = native_run.run_tc, runner.run_topas
+    real_run_tc = native_run.run_tc
 
     def guarded_run_tc(tc, inp, runner=subprocess.run):
         return real_run_tc(tc, inp, runner=_refusing_runner if runner is subprocess.run else runner)
 
-    def guarded_run_topas(inp_path, topas_dir=None, topas_version=None, runner=subprocess.run):
-        return real_run_topas(inp_path, topas_dir, topas_version,
-                              runner=_refusing_runner if runner is subprocess.run else runner)
-
     native_run.run_tc = guarded_run_tc
-    runner.run_topas = guarded_run_topas
 
 
 def pytest_configure(config):

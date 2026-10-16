@@ -59,48 +59,6 @@ def test_discovery_consults_only_declared_locations(tmp_path, monkeypatch):
     assert runner._candidate_dirs(tmp_path / "arg", {"dir": str(tmp_path)}) == [tmp_path / "arg"]
 
 
-# --- run_topas (injected subprocess) ---------------------------------------
-
-
-def test_run_topas_not_found(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner, "_read_topas_config", lambda: {})
-    res = runner.run_topas(tmp_path / "x.inp")
-    assert res.status == "tc_not_found"
-    assert res.tc_path is None
-
-
-def test_run_topas_invokes_with_cwd_and_full_path(tmp_path):
-    tc = _make_tc(tmp_path / "TOPAS8")
-    inp = tmp_path / "job" / "example.inp"
-    inp.parent.mkdir()
-    inp.write_text("' inp")
-    calls = {}
-
-    def fake_runner(command, cwd=None):
-        calls["command"] = command
-        calls["cwd"] = cwd
-        return type("CP", (), {"returncode": 0})()
-
-    res = runner.run_topas(inp, topas_dir=tmp_path / "TOPAS8", runner=fake_runner)
-    assert res.status == "ran"
-    assert res.returncode == 0
-    assert calls["command"] == [str(tc), str(inp.resolve())]  # full input path
-    assert calls["cwd"] == str(tc.parent)                     # cwd = TOPAS dir
-
-
-def test_run_topas_nonzero_is_failed(tmp_path):
-    _make_tc(tmp_path / "TOPAS8")
-    inp = tmp_path / "x.inp"
-    inp.write_text("")
-    res = runner.run_topas(
-        inp,
-        topas_dir=tmp_path / "TOPAS8",
-        runner=lambda command, cwd=None: type("CP", (), {"returncode": 2})(),
-    )
-    assert res.status == "failed"
-    assert res.returncode == 2
-
-
 def test_read_topas_config_malformed_raises(tmp_path, monkeypatch):
     cfg = tmp_path / ".powderline_config.yaml"
     cfg.write_text("topas: {version: 6, dir: [oops\n", encoding="utf-8")

@@ -7,7 +7,3 @@ optional ``easydiffraction`` pixi environment (Python >=3.12 + easydiffraction).
 Importing this package imports no engine; ``powderline <recipe.json>`` serves
 these recipes (the one CLI, P-06).
 """
-
-from .errors import EasyDiffractionTranslationError
-
-__all__ = ["EasyDiffractionTranslationError"]
