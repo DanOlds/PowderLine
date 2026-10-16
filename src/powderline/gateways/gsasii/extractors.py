@@ -3,28 +3,15 @@
 Moved verbatim from ``powderline/kicker.py`` (multi-engine refactor, re/01).
 """
 from __future__ import annotations
-import sys
-import uuid
-import yaml
 import json
-import argparse
-import random as ran
 import numpy as np
 import pandas as pd
-from typing import Any, Dict, List, Literal, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional
 from pathlib import Path
-from pydantic import ValidationError
-from GSASII import GSASIIscriptable as G2  # type: ignore
 from GSASII import GSASIIlattice as G2lat
 from GSASII import GSASIImapvars as G2mv
-from GSASII import GSASIIobj as G2obj
-from GSASII import GSASIIspc as G2spc
-from GSASII import GSASIIElem as G2elem
 from GSASII import GSASIIpwd as G2pwd
 from powderline.gateways.gsasii.schema import GsasiiRietveldRecipe, GsasiiSpfRecipe
-from powderline.gateways.gsasii.constraints import atom_refinement_plan, cell_refinement_plan
-from powderline._status import CHECK, CROSS, INFO, WARN, emoji
-from dataclasses import dataclass
 
 from powderline.gateways.gsasii.report_rows import pandas_csv_rows
 from powderline.reports import (
@@ -160,143 +147,6 @@ def extract_refined_params_from_project(proj: Any, verbose: bool = False) -> Dic
             ) from e
     elif verbose:
         print("  Note: covariance matrix is absent; dependent parameter ESDs skipped.")
-
-    return param_dict
-
-
-def extract_refined_params_from_lst(lst_file: Path) -> Dict[str, Dict[str, Any]]:
-    """
-    PRESERVED (disabled at call site) — see commented block in run_refinement() for context.
-
-    Extract all refined parameters with values and ESDs from .lst file.
-
-    NOTE: This function is incomplete and its call site has been intentionally disabled.
-    The covariance matrix path (extract_refined_params_from_project) is the only supported
-    extraction method. This function does not cover atom parameters and uses a custom naming
-    scheme (e.g. "cell:a") that differs from the GSAS-II-native names in proj.data.
-
-    # TODO: Remove this function once a test is written confirming that covariance matrix
-    # ESD output (extract_refined_params_from_project) matches what .lst parsing previously
-    # produced for the parameters it did cover (instrument, background, unit cell).
-    # Do not delete until that regression test exists and passes.
-
-    Parses the GSAS-II .lst file to extract parameter names, values, and ESDs.
-    This is used as a fallback or complement to proj.data extraction.
-
-    Args:
-        lst_file: Path to the .lst file
-
-    Returns:
-        Dictionary mapping parameter names to {"value": float, "esd": float|None}
-        Parameters without ESDs (fixed parameters) have esd=None.
-
-    Note:
-        Currently extracts instrument parameters, background, and unit cell.
-        Additional parameter types (atoms, etc.) can be added as needed.
-    """
-    if not lst_file.exists():
-        return {}
-
-    param_dict = {}
-    content = lst_file.read_text()
-    lines = content.split('\n')
-
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-
-        # Instrument parameters section
-        if 'Instrument Parameters:' in line:
-            # Look for the "names :" line
-            i += 1
-            while i < len(lines) and not lines[i].strip().startswith('names :'):
-                i += 1
-
-            if i < len(lines):
-                names_line = lines[i]
-                # Next line should be "value :"
-                i += 1
-                if i < len(lines) and lines[i].strip().startswith('value :'):
-                    values_line = lines[i]
-                    # Next line should be "sig :" (ESDs)
-                    i += 1
-                    sig_line = ""
-                    if i < len(lines) and lines[i].strip().startswith('sig   :'):
-                        sig_line = lines[i]
-
-                    # Parse the three lines
-                    names = names_line.split(':')[1].strip().split()
-                    values = values_line.split(':')[1].strip().split()
-                    sigs = sig_line.split(':')[1].strip().split() if sig_line else []
-
-                    for j, name in enumerate(names):
-                        if j < len(values):
-                            try:
-                                value = float(values[j])
-                                esd = float(sigs[j]) if j < len(sigs) and sigs[j] else None
-                                # Use GSAS-II naming convention for instrument params
-                                param_name = f":0:{name}"
-                                param_dict[param_name] = {"value": value, "esd": esd}
-                            except (ValueError, IndexError):
-                                pass
-
-        # Background coefficients section
-        elif 'Background function:' in line and 'chebyschev' in line:
-            # Next line should be "value :"
-            i += 1
-            if i < len(lines) and lines[i].strip().startswith('value :'):
-                values_line = lines[i]
-                # Next line should be "sig :"
-                i += 1
-                sig_line = ""
-                if i < len(lines) and lines[i].strip().startswith('sig   :'):
-                    sig_line = lines[i]
-
-                values = values_line.split(':')[1].strip().split()
-                sigs = sig_line.split(':')[1].strip().split() if sig_line else []
-
-                for j, value_str in enumerate(values):
-                    try:
-                        value = float(value_str)
-                        esd = float(sigs[j]) if j < len(sigs) and sigs[j] else None
-                        param_name = f":0:Back;{j}"
-                        param_dict[param_name] = {"value": value, "esd": esd}
-                    except (ValueError, IndexError):
-                        pass
-
-        # Unit cell parameters section
-        elif 'New unit cell:' in line:
-            # Look for values line
-            i += 1
-            while i < len(lines) and not lines[i].strip().startswith('values:'):
-                i += 1
-
-            if i < len(lines):
-                values_line = lines[i]
-                # Next line should be "esds  :"
-                i += 1
-                esds_line = ""
-                if i < len(lines) and lines[i].strip().startswith('esds  :'):
-                    esds_line = lines[i]
-
-                # Parse - note that unit cell params are phase-specific
-                # For now, store with generic name (can be enhanced later to include phase name)
-                values = values_line.split(':')[1].strip().split()
-                esds = esds_line.split(':')[1].strip().split() if esds_line else []
-
-                cell_param_names = ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'volume']
-                for j, name in enumerate(cell_param_names):
-                    if j < len(values):
-                        try:
-                            value = float(values[j])
-                            esd = float(esds[j]) if j < len(esds) and esds[j] else None
-                            # Store with generic cell param naming
-                            param_name = f"cell:{name}"
-                            param_dict[param_name] = {"value": value, "esd": esd}
-                        except (ValueError, IndexError):
-                            pass
-
-        i += 1
 
     return param_dict
 

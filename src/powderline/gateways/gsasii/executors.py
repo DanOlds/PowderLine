@@ -3,27 +3,11 @@
 Moved verbatim from ``powderline/kicker.py`` (multi-engine refactor, re/01).
 """
 from __future__ import annotations
-import sys
 import uuid
-import yaml
 import json
-import argparse
-import random as ran
-import numpy as np
-import pandas as pd
-from typing import Any, Dict, List, Literal, Optional, Sequence, Union
+from typing import Any
 from pathlib import Path
-from pydantic import ValidationError
 from GSASII import GSASIIscriptable as G2  # type: ignore
-from GSASII import GSASIIlattice as G2lat
-from GSASII import GSASIImapvars as G2mv
-from GSASII import GSASIIobj as G2obj
-from GSASII import GSASIIspc as G2spc
-from GSASII import GSASIIElem as G2elem
-from GSASII import GSASIIpwd as G2pwd
-from powderline.gateways.gsasii.constraints import atom_refinement_plan, cell_refinement_plan
-from powderline._status import CHECK, CROSS, INFO, WARN, emoji
-from dataclasses import dataclass
 from powderline.gateways.gsasii.schema import GsasiiRietveldRecipe, GsasiiSpfRecipe, gsasii_iparm1
 from powderline.gateways.gsasii.fit_report import fit_report
 from powderline.gateways.gsasii.sites import check_sites
@@ -462,9 +446,6 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
         if verbose:
             print("\nExtracting refined parameters with ESDs...")
 
-        # NOTE: .lst fallback (extract_refined_params_from_lst) is preserved for Phase 2
-        # reference but its call site is intentionally disabled: .lst parsing is incomplete
-        # (no atom/HAP params; different naming scheme) and obscured covariance failures.
         param_dict = extract_refined_params_from_project(proj, verbose=verbose)
 
         # Only raise if GSAS-II populated a varyList (i.e. parameters were actually varied)
@@ -483,16 +464,6 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
             )
 
         # --- .lst fallback (disabled) ---
-        # NOTE: preserved for Phase 2 reference — .lst parsing is incomplete
-        # (no atom/HAP params; different naming scheme); covariance extraction is the
-        # only supported path.
-        # if len(param_dict) == 0:
-        #     lst_file = output_dir / OUTPUT_NAMING.lst_filename
-        #     if lst_file.exists():
-        #         if verbose:
-        #             print("  Covariance data not available, parsing .lst file...")
-        #         param_dict = extract_refined_params_from_lst(lst_file)
-
         unit_cell_data, peak_list_data = _extract_phase_reports(
             proj, hist, recipe, param_dict, output_dir
         )

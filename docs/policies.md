@@ -75,7 +75,9 @@ change in behaviour is never incidental:
 
 The code that sets up and executes a GSAS-II refinement, in
 `src/powderline/gateways/gsasii/{helpers,project,setters,executors,extractors,constraints}.py`,
-is **frozen**: it was moved verbatim out of the pre-refactor `kicker.py`, and
+is **frozen**: it was moved verbatim out of `kicker.py` at the verified re/01
+baseline `daace24` (the `require_phase` decorator in place of five inline phase
+checks, A46; a refactor-branch commit, not on `main`), and
 every statement that touches the GSAS-II project dictionary is protected.
 `src/powderline/_code_hash.json` holds a hash of each module, and
 `tests/test_code_hash.py` fails when a module changes without the hash being

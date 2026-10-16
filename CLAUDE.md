@@ -70,8 +70,8 @@ layer** (`gateway.py` factory `get_gateway()` with `capabilities()`,
 imported lazily from `run()`):
 - `gsasii/` (GSAS-II `==5.7.9`, env `gsasii`): the **frozen** setup/execution
   code `helpers.py`, `project.py`, `setters.py`, `executors.py`,
-  `extractors.py`, `constraints.py` (moved verbatim from the pre-refactor
-  `kicker.py`; code-hashed); non-frozen `routing.py`, `fit_report.py`
+  `extractors.py`, `constraints.py` (moved verbatim from `kicker.py` at the
+  re/01 baseline `daace24`; code-hashed); non-frozen `routing.py`, `fit_report.py`
   (uniform statistics, `engine_details`, convergence, divergence = failure),
   `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`;
   `server.py` / `client.py` (persistent FastAPI server + `GSASClient`, the
