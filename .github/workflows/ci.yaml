@@ -55,6 +55,8 @@ jobs:
           cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
       - name: Engine-free suites (core + topas_gen, core guard on)
         run: pixi run test
+      - name: Generated field tables and support matrix are current
+        run: pixi run fields-check
 
   gsasii:
     # GSAS-II suite incl. the slow regressions against the committed references.

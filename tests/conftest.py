@@ -256,12 +256,6 @@ def recipe_LaB6_model(recipe_LaB6_dict):
     return powderline.validate(recipe_LaB6_dict).recipe
 
 
-@pytest.fixture
-def recipe_LaB6_singlepeakfit_dict():
-    """example_LaB6_singlepeakfit recipe loaded as a plain dict."""
-    return json.loads((EXAMPLES / "example_LaB6_singlepeakfit" / "input.json").read_text(encoding="utf-8"))
-
-
 # ─── Shared tmp_output_dir ────────────────────────────────────────────────────
 
 @pytest.fixture
