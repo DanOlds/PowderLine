@@ -544,3 +544,64 @@ def test_start_error_is_reset_between_attempts(monkeypatch, tmp_path):
     monkeypatch.setenv("POWDERLINE_NO_SERVER", "1")
     assert c._start_server_background(verbose=False) is False
     assert c._start_error is None  # the disabled case is not an error worth repeating
+
+
+# --- re/17 H7: a server running older code than this checkout is stale ------------------------------------
+
+def _health_body(**over):
+    import powderline
+    body = {"status": "ok", "pid": 1, "uptime_seconds": 1.0, "request_count": 0,
+            "powderline_version": powderline.__version__, "code_hash": gsas_server.source_tree_hash()}
+    body.update(over)
+    return body
+
+
+def test_server_is_stale_only_when_version_or_hash_differ(monkeypatch, own_endpoint):
+    _fake_health(monkeypatch, lambda h: _signed_response("my-token", h, _health_body()))
+    assert GSASClient().server_is_stale() is False
+    _fake_health(monkeypatch, lambda h: _signed_response("my-token", h, _health_body(code_hash="0" * 32)))
+    assert GSASClient().server_is_stale() is True
+    _fake_health(monkeypatch, lambda h: _signed_response("my-token", h, _health_body(powderline_version="0.0.1")))
+    assert GSASClient().server_is_stale() is True
+
+
+def test_server_without_the_fields_is_stale(monkeypatch, own_endpoint):
+    """A server from before re/17 reports neither field: it is older than this code by definition."""
+    _fake_health(monkeypatch, lambda h: _signed_response("my-token", h, {"status": "ok"}))
+    assert GSASClient().server_is_stale() is True
+
+
+def test_unreachable_health_is_unknown_not_stale(monkeypatch, tmp_path):
+    monkeypatch.setattr(gsas_server, "state_dir", lambda: tmp_path)  # no endpoint at all
+    assert GSASClient().server_is_stale() is None
+
+
+def test_stale_server_falls_back_in_process_in_auto_mode(client, monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(client, "server_is_stale", lambda: True)
+    monkeypatch.setattr(client, "_submit_to_server", lambda rd, od: pytest.fail("a stale server must not run the job"))
+    calls = []
+    monkeypatch.setattr(client, "_submit_via_subprocess",
+                        lambda rd, od, verbose: calls.append(1) or {"success": True})
+    result = client.submit_simulation(RECIPE, tmp_path)
+    assert calls and result["method"] == "subprocess"
+    out = capsys.readouterr().out
+    assert "stale" in out and "gsas-server restart" in out
+
+
+def test_stale_server_with_fallback_disabled_is_server_unavailable(monkeypatch, tmp_path):
+    c = GSASClient(fallback_to_subprocess=False)
+    monkeypatch.setattr(c, "is_server_available", lambda: True)
+    monkeypatch.setattr(c, "server_is_stale", lambda: True)
+    monkeypatch.setattr(c, "_submit_to_server", lambda rd, od: pytest.fail("a stale server must not run the job"))
+    monkeypatch.setattr(c, "_submit_via_subprocess", lambda rd, od, verbose: pytest.fail("must not fall back"))
+    result = c.submit_simulation(RECIPE, tmp_path)
+    assert result["status"] == "failed" and result["failure"]["reason"] == "server_unavailable"
+    assert "stale" in result["failure"]["message"] and "gsas-server restart" in result["failure"]["message"]
+
+
+def test_current_server_is_used(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(client, "server_is_stale", lambda: False)
+    monkeypatch.setattr(client, "_submit_to_server", lambda rd, od: {"success": True})
+    monkeypatch.setattr(client, "_server_output_visible", lambda result, od, before: True)
+    monkeypatch.setattr(client, "_submit_via_subprocess", lambda rd, od, verbose: pytest.fail("server was current"))
+    assert client.submit_simulation(RECIPE, tmp_path)["method"] == "server"

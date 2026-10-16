@@ -159,6 +159,53 @@ class GSASClient:
             return False  # a 401 on /health = a listener that does not hold our token: not available
         return resp.status_code == 200
 
+    def _health(self) -> Optional[Dict[str, Any]]:
+        """The signed ``/health`` body of this user's server, or None when it cannot be read."""
+        import httpx
+
+        if server_disabled():
+            return None
+        endpoint = self._endpoint()
+        if endpoint is None:
+            return None
+        try:
+            resp = self._signed_request(endpoint, 'GET', '/health', timeout=2.0)
+            if resp.status_code != 200:
+                return None
+            body = resp.json()
+        except (httpx.HTTPError, OSError, ValueError, ServerIdentityError, ServerRejectedRequest):
+            return None
+        return body if isinstance(body, dict) else None
+
+    def server_is_stale(self) -> Optional[bool]:
+        """Whether the server runs other code than this process (re/17 H7).
+
+        True when its ``/health`` reports a different PowderLine version or source-tree hash
+        (:func:`server.source_tree_hash`) -- or neither field, which only a server from before
+        this check does; False when both match; None when ``/health`` cannot be read.
+        """
+        from powderline import __version__
+
+        health = self._health()
+        if health is None:
+            return None
+        return (health.get("code_hash") != gsas_server.source_tree_hash()
+                or health.get("powderline_version") != __version__)
+
+    STALE_SERVER_MESSAGE = (
+        "GSAS-II server is stale: it runs other PowderLine code (version or source tree) than this "
+        "process, and it caches its modules. Restart it with: pixi run gsas-server restart"
+    )
+
+    def _handle_stale_server(self) -> Dict[str, Any] | None:
+        """Warn about a stale server; None when the caller may fall back in-process, else the failure envelope."""
+        print("   WARNING: the GSAS-II server is stale (it runs other PowderLine code than this process).")
+        if self.fallback_to_subprocess:
+            print("   Falling back to in-process execution. To fix the server: pixi run gsas-server restart")
+            return None
+        print("   In-process fallback is disabled. To fix the server: pixi run gsas-server restart")
+        return envelopes.failure_envelope("backend", "server_unavailable", self.STALE_SERVER_MESSAGE, method="none")
+
     @staticmethod
     def _stat_fit_profile(output_dir: Path) -> tuple | None:
         """(mtime_ns, size) of output_dir/fit_profile.txt, or None if absent."""
@@ -307,12 +354,18 @@ class GSASClient:
                 print("   Using in-process mode (use_server=False)")
         # Try server first
         elif self.is_server_available():
-            if not verbose:
-                print(f"   Using GSAS-II server mode")
-            result = self._server_attempt(recipe_dict, output_dir, verbose)
-            if result is not None:
-                return result
-            # fall through to in-process fallback below
+            if self.server_is_stale():
+                error = self._handle_stale_server()
+                if error is not None:
+                    return error
+                # fall through to in-process fallback below
+            else:
+                if not verbose:
+                    print(f"   Using GSAS-II server mode")
+                result = self._server_attempt(recipe_dict, output_dir, verbose)
+                if result is not None:
+                    return result
+                # fall through to in-process fallback below
 
         # Try to start server if not available and auto_start_server enabled
         elif auto_start_server:

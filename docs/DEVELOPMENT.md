@@ -425,8 +425,14 @@ set `PYTHONPATH` through the task-level `env` dict (cross-platform;
 | in-process | `... --no-server` | skips the server; GSAS-II imported in this process |
 
 The server amortizes GSAS-II's import (~2.6 s) over many runs (batch jobs:
-0.1–0.3 s per run against 1–2 s in-process). It **caches code**: restart it
-after editing anything under `src/` it executes.
+0.1–0.3 s per run against 1–2 s in-process). It **caches code**, so restart it
+after editing anything under `src/` it executes; since re/17 a forgotten
+restart is caught: `/health` reports the PowderLine version and an MD5 of the
+source tree the server loaded (`server.source_tree_hash()`), the client
+compares both with its own and treats a mismatch as a **stale** server —
+`auto` mode says so and runs in-process, `--use-server` fails with
+`server_unavailable` naming `gsas-server restart`, and `gsas-server status`
+prints `Code: STALE`.
 
 **Server state and security (per user, v0.1.2):** the server binds `127.0.0.1`
 on a free ephemeral port and writes its lock, PID, log, and an endpoint file

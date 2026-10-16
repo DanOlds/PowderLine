@@ -134,7 +134,8 @@ Additive or input-side edits go **only** through the maintainers' signed-off
 edits ledger (`_dev/dossiers/multi-engine/tasks/re04-frozen-edits.md`), each
 row with its proof, then `pixi run update-code-hash`. New behaviour goes in
 the non-frozen modules (`fit_report.py`, `sites.py`, `routing.py`,
-`gateway.py`). Restart the GSAS-II server after any edit it runs.
+`gateway.py`). Restart the GSAS-II server after any edit it runs (the client
+compares the server's source-tree hash with its own and refuses a stale one).
 
 ## Engines / environment notes
 

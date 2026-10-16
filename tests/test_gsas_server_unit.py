@@ -12,6 +12,7 @@ Import note: gsas_server.py does NOT import GSAS-II at module top (only stdlib
 request handlers. A plain module import is therefore safe without GSAS-II.
 """
 import json
+from pathlib import Path
 import os
 import secrets
 import signal
@@ -573,6 +574,7 @@ def app_client():
     server.request_count = 0
     server.start_time = None
     server.token = TOKEN
+    server.code_hash = gsas_server.source_tree_hash()
     server.logger = logging.getLogger("powderline.server.test")
     calls = []
     server._run_simulation = lambda req: calls.append(req) or {
@@ -813,6 +815,7 @@ def test_bind_failure_is_a_state_error_before_the_endpoint_is_written(monkeypatc
     server.request_count = 0
     server.start_time = None
     server.token = TOKEN
+    server.code_hash = gsas_server.source_tree_hash()
     server.logger = logging.getLogger("powderline.server.test")
 
     def refuse(port):
@@ -920,3 +923,34 @@ def test_health_is_served_while_a_job_holds_the_lock(app_client):
     elapsed = _time.monotonic() - t0
     t.join(10)
     assert resp.status_code == 200 and elapsed < 0.4, f"/health waited {elapsed:.2f}s behind a job"
+
+
+# --- re/17 H7: /health reports the code the server loaded ---------------------------------------------
+
+def test_source_tree_hash_is_stable_and_follows_the_source(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.py").write_text("y = 2\n")
+    (tmp_path / "notes.txt").write_text("ignored\n")
+    first = gsas_server.source_tree_hash(tmp_path)
+    assert first == gsas_server.source_tree_hash(tmp_path) and len(first) == 32
+    (tmp_path / "notes.txt").write_text("still ignored\n")
+    assert gsas_server.source_tree_hash(tmp_path) == first
+    (tmp_path / "sub" / "b.py").write_text("y = 3\n")
+    assert gsas_server.source_tree_hash(tmp_path) != first
+
+
+def test_source_tree_hash_default_is_the_installed_package():
+    import powderline
+    assert gsas_server.source_tree_hash() == gsas_server.source_tree_hash(Path(powderline.__file__).parent)
+
+
+def test_health_reports_version_and_code_hash(app_client):
+    import powderline
+    client, _ = app_client
+    nonce, headers = _signed_headers("GET", "/health")
+    resp = client.get("/health", headers=headers)
+    assert resp.status_code == 200 and _response_signed(resp, nonce)
+    body = resp.json()
+    assert body["powderline_version"] == powderline.__version__
+    assert body["code_hash"] == gsas_server.source_tree_hash()

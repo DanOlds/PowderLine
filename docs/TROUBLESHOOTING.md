@@ -594,6 +594,28 @@ output directory does not hide the problem.
 
 ---
 
+## Server Is Stale (runs older code)
+
+**Problem:** `WARNING: the GSAS-II server is stale`, a `--use-server` run that
+fails with reason `server_unavailable` and a message naming the stale server,
+or `gsas-server status` printing `Code: STALE`.
+
+**Cause:** The persistent server imports PowderLine and GSAS-II once and keeps
+them; after `git pull`, a checkout switch or an edit under `src/`, the running
+server still executes the old code. Its `/health` reports the PowderLine
+version and an MD5 of the source tree it loaded; the client compares both with
+its own and refuses to use a mismatching server (`auto` mode falls back to
+in-process execution; `server` mode fails honestly). A server started before
+this check existed reports neither field and is treated as stale.
+
+**Solution:**
+
+```bash
+pixi run -e gsasii gsas-server restart
+```
+
+---
+
 ## Environment Issues
 
 **Problem:** Mixing conda environments or system Python, or running an engine

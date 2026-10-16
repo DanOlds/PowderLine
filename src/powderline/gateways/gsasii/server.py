@@ -713,6 +713,28 @@ def setup_logging() -> logging.Logger:
     return logger
 
 
+
+def source_tree_hash(root=None) -> str:
+    """MD5 over every ``*.py`` under ``root`` (default: the installed ``powderline`` package): relative
+    POSIX path and bytes, in sorted order (re/17 H7).
+
+    The server computes it once at start, so it names the code the process loaded. A client whose
+    own tree hashes differently runs other code than the server, which caches its modules: the
+    server is *stale* and must be restarted (``gsas-server restart``).
+    """
+    if root is None:
+        import powderline
+        root = Path(powderline.__file__).parent
+    root = Path(root)
+    digest = hashlib.md5()
+    for path in sorted(root.rglob("*.py"), key=lambda q: q.relative_to(root).as_posix()):
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 # --- Server class ---
 
 class GSASServer:
@@ -729,6 +751,8 @@ class GSASServer:
         self.start_time = None
         # Per-start credential; clients read it from the owner-only state dir.
         self.token = secrets.token_urlsafe(32)
+        # The code this process loaded (re/17 H7): /health reports it; a client on another tree sees a stale server.
+        self.code_hash = source_tree_hash()
 
         # Set up logging
         self.logger = logger or setup_logging()
@@ -798,11 +822,15 @@ class GSASServer:
         @app.get("/health")
         def health():
             uptime = (datetime.now() - server.start_time).total_seconds() if server.start_time else 0
+            from powderline import __version__
+
             return {
                 "status": "ok",
                 "pid": os.getpid(),
                 "uptime_seconds": uptime,
                 "request_count": server.request_count,
+                "powderline_version": __version__,
+                "code_hash": server.code_hash,
             }
 
         return SignedRequestMiddleware(app, self.token)
@@ -1140,6 +1168,13 @@ def _run_action(action: str) -> None:
                 print(f"   CPU: {info['cpu_percent']:.1f}%")
             if 'memory_mb' in info:
                 print(f"   Memory: {info['memory_mb']:.1f} MB")
+            from powderline.gateways.gsasii.client import GSASClient
+            stale = GSASClient().server_is_stale()
+            if stale is True:
+                print("   Code: STALE - the server runs other PowderLine code than this checkout (it caches modules); "
+                      "run: pixi run gsas-server restart")
+            elif stale is False:
+                print("   Code: current (matches this checkout)")
             print(f"\n   To view logs: pixi run gsas-server logs")
         else:
             print("Server is not running")
