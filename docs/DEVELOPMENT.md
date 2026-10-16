@@ -554,7 +554,7 @@ weaken core), `test_api`, `test_cli`, `test_registry`, `test_compat`,
 `test_constraints_mapping`, `test_code_hash`, the server/client tests
 (gsasii), `test_topas_schema`, `test_topas_native`, `test_topas_native_golden`
 (12 INPs byte-identical to the TOPAS 6 goldens),
-`test_topas_runner`, `test_topas_symmetry` (topas),
+`test_topas_runner` (topas),
 `test_easydiffraction_schema`, `test_easydiffraction_native`,
 `test_easydiffraction_space_groups` (easydiffraction),
 `test_convert_recipe_026` (the migration tool), `test_cross_engine_comparison`,

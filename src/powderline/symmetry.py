@@ -2,13 +2,6 @@
 
 Pure, engine-free capabilities:
 
-* :func:`cell_constraints` -- crystal-system cell equalities and fixed angles,
-  so the writer can share one ``prm`` name across equal cell lengths and emit
-  symmetry-fixed angles as bare constants.
-* :func:`site_dof` -- per-axis site-symmetry degrees of freedom (FREE / FIXED /
-  COUPLED) plus the orbit size, so the writer can decide whether a *refined*
-  atomic coordinate is legal and warn on suspicious multiplicities.
-
 * :func:`analyze_site` -- the core schema's site validation (KI-03; A35, A69,
   A73): multiplicity + DOF from the space group, the ambiguous-band error, and
   the canonical (exact) special-position coordinates every gateway sends to its
@@ -40,7 +33,7 @@ from powderline.exceptions import SymmetryError
 
 
 # Fractional-coordinate tolerances (plan §5).
-_POS_TOL = 1e-5   # position / orbit equality mod 1 (legacy site_dof/adp_dof)
+_POS_TOL = 1e-5   # position / orbit equality mod 1
 _MAT_TOL = 1e-6   # rotation-matrix / projector comparisons
 
 #: Core schema special-position rules (A69, A73), as a fractional *image
@@ -57,60 +50,6 @@ _MAX_DENOMINATOR = 48  # fixed special-position coordinates are multiples of 1/2
 _AXIS_LETTERS = ("x", "y", "z")
 _LENGTHS = ("a", "b", "c")
 _ANGLES = ("alpha", "beta", "gamma")
-
-
-# --- data returned to the writer -------------------------------------------
-
-
-@dataclass(frozen=True)
-class CellRules:
-    """Crystal-system cell constraints for one space group.
-
-    Attributes:
-        crystal_system: gemmi's crystal-system string (``"cubic"`` etc.).
-        length_groups: groups of cell-length names that must share one refined
-            ``prm``. Every length appears in exactly one group; a singleton
-            group is an independent length. E.g. cubic ``(("a", "b", "c"),)``,
-            monoclinic ``(("a",), ("b",), ("c",))``.
-        fixed_angles: angle names fixed by symmetry -- emitted as bare numeric
-            constants from the recipe structure (a ``refine=true`` flag on any
-            of these is a hard error).
-        free_angles: angle names that are genuine refinable DOF (monoclinic
-            unique-axis angle, or all three for triclinic).
-        unique_axis: ``"a"``/``"b"``/``"c"`` for monoclinic, else ``None``.
-    """
-
-    crystal_system: str
-    length_groups: tuple[tuple[str, ...], ...]
-    fixed_angles: tuple[str, ...]
-    free_angles: tuple[str, ...]
-    unique_axis: str | None = None
-
-
-@dataclass(frozen=True)
-class SiteDof:
-    """Per-axis site degrees of freedom and orbit size for one atomic site.
-
-    Attributes:
-        axes: classification for ``(x, y, z)`` -- each ``"FREE"``, ``"FIXED"``
-            or ``"COUPLED"``.
-        coupled_axes: axis letters (``"x"``/``"y"``/``"z"``) that are coupled
-            (non-axis-aligned allowed-displacement subspace); empty when none.
-        orbit_size: number of distinct symmetry-equivalent positions (the true
-            multiplicity for this position and space group).
-        stabilizer_order: number of symmetry operations that fix the position.
-    """
-
-    axes: tuple[str, str, str]
-    coupled_axes: tuple[str, ...]
-    orbit_size: int
-    stabilizer_order: int
-
-    def is_free(self, axis: str) -> bool:
-        return self.axes[_AXIS_LETTERS.index(axis)] == "FREE"
-
-    def classification(self, axis: str) -> str:
-        return self.axes[_AXIS_LETTERS.index(axis)]
 
 
 # --- space-group resolution -------------------------------------------------
@@ -212,7 +151,7 @@ def _expanded_ops(sg: gemmi.SpaceGroup) -> list[tuple[np.ndarray, np.ndarray]]:
     return ops
 
 
-# --- (a) cell rules ---------------------------------------------------------
+# --- cell helpers --------------------------------------------------------
 
 
 def _monoclinic_unique_axis(ops: list[tuple[np.ndarray, np.ndarray]]) -> str:
@@ -236,63 +175,12 @@ def _monoclinic_unique_axis(ops: list[tuple[np.ndarray, np.ndarray]]) -> str:
     )
 
 
-def cell_constraints(space_group: str) -> CellRules:
-    """Cell-length equality groups and fixed/free angles for ``space_group``.
-
-    See :class:`CellRules`. Unknown symbols raise :class:`SymmetryError` (via
-    :func:`resolve_space_group`), as does the rhombohedral ``:R`` setting (its
-    tied angles are not expressible as :class:`CellRules`).
-    """
-    sg = resolve_space_group(space_group)
-    system = sg.crystal_system_str()
-
-    singles = tuple((name,) for name in _LENGTHS)
-    all_angles_fixed = _ANGLES
-
-    if system == "cubic":
-        return CellRules(system, (("a", "b", "c"),), all_angles_fixed, ())
-    if system == "tetragonal":
-        return CellRules(system, (("a", "b"), ("c",)), all_angles_fixed, ())
-    if system in ("hexagonal", "trigonal"):
-        if sg.ext == "R":
-            # Rhombohedral axes need alpha=beta=gamma tied together, which
-            # CellRules cannot express; refuse rather than return wrong rules.
-            raise SymmetryError(
-                f"cell rules for the rhombohedral ':R' setting are not implemented "
-                f"({space_group!r}); use the hexagonal (:H) setting"
-            )
-        # Hexagonal axes (incl. the :H setting of rhombohedral groups): a=b, 90/90/120.
-        return CellRules(system, (("a", "b"), ("c",)), all_angles_fixed, ())
-    if system == "orthorhombic":
-        return CellRules(system, singles, all_angles_fixed, ())
-    if system == "monoclinic":
-        unique = _monoclinic_unique_axis(_expanded_ops(sg))
-        free_angle = {"a": "alpha", "b": "beta", "c": "gamma"}[unique]
-        fixed = tuple(a for a in _ANGLES if a != free_angle)
-        return CellRules(system, singles, fixed, (free_angle,), unique_axis=unique)
-    if system == "triclinic":
-        return CellRules(system, singles, (), _ANGLES)
-
-    raise SymmetryError(
-        f"unsupported crystal system {system!r} for space group {space_group!r}"
-    )
-
-
-# --- (b) site DOF -----------------------------------------------------------
+# --- site helpers --------------------------------------------------------
 
 
 def _wrap_symmetric(delta: np.ndarray) -> np.ndarray:
     """Map a fractional difference into (-0.5, 0.5] per component (mod-1 aware)."""
     return (delta + 0.5) % 1.0 - 0.5
-
-
-def _orbit_size(ops, xyz: np.ndarray) -> int:
-    points: list[np.ndarray] = []
-    for R, t in ops:
-        y = (R @ xyz + t) % 1.0
-        if not any(np.all(np.abs(_wrap_symmetric(y - p)) < _POS_TOL) for p in points):
-            points.append(y)
-    return len(points)
 
 
 def _classify(projector: np.ndarray) -> list[str]:
@@ -331,62 +219,7 @@ def _adp_projector(stab_rots) -> np.ndarray:
     return projector / len(stab_rots)
 
 
-def site_dof(space_group: str, xyz) -> SiteDof:
-    """Classify the site DOF of fractional position ``xyz`` in ``space_group``.
-
-    Algorithm (plan §5(b)):
-
-    1. Expand all symmetry operations (with centering).
-    2. Stabiliser = ops with ``R x + t == x (mod 1)`` within ``_POS_TOL``.
-    3. Allowed-displacement subspace = fixed space of the stabiliser rotations,
-       given by the Reynolds projector ``P = mean(R_i)``.
-    4. Per axis: see :func:`_classify` (FIXED = row of P is zero, FREE =
-       ``P e_j == e_j``, else COUPLED).
-    """
-    x = np.asarray(xyz, dtype=float)
-    if x.shape != (3,):
-        raise ValueError("xyz must be a 3-vector")
-    ops = _expanded_ops(resolve_space_group(space_group))
-
-    stab_rots = [R for (R, t) in ops if np.all(np.abs(_wrap_symmetric(R @ x + t - x)) < _POS_TOL)]
-    if not stab_rots:  # pragma: no cover - identity is always in the group
-        raise SymmetryError("empty stabilizer (should be impossible)")
-
-    axes = _classify(sum(stab_rots) / len(stab_rots))
-    coupled = [_AXIS_LETTERS[j] for j in range(3) if axes[j] == "COUPLED"]
-
-    return SiteDof(
-        axes=(axes[0], axes[1], axes[2]),
-        coupled_axes=tuple(coupled),
-        orbit_size=_orbit_size(ops, x),
-        stabilizer_order=len(stab_rots),
-    )
-
-
-# --- (c) anisotropic ADP site symmetry (advisory) ---------------------------
-
-_ADP_LABELS = ("u11", "u22", "u33", "u12", "u13", "u23")
-
-
-@dataclass(frozen=True)
-class AdpDof:
-    """Per-component symmetry DOF of the anisotropic ADP tensor at a site.
-
-    ``components`` classifies ``u11,u22,u33,u12,u13,u23`` as ``"FREE"``,
-    ``"FIXED"`` (forced to 0 by site symmetry), or ``"COUPLED"`` (locked to
-    another component). Advisory: the permissive writer warns when a recipe
-    refines a non-FREE component; it does not enforce the constraint.
-    """
-
-    components: tuple[str, str, str, str, str, str]
-    stabilizer_order: int
-
-    def classification(self, comp: str) -> str:
-        return self.components[_ADP_LABELS.index(comp)]
-
-    def free(self) -> tuple[str, ...]:
-        return tuple(c for c, cls in zip(_ADP_LABELS, self.components) if cls == "FREE")
-
+# --- Uij helpers ---------------------------------------------------------
 
 def _sym_from_vec(v: np.ndarray) -> np.ndarray:
     return np.array([[v[0], v[3], v[4]], [v[3], v[1], v[5]], [v[4], v[5], v[2]]])
@@ -394,24 +227,6 @@ def _sym_from_vec(v: np.ndarray) -> np.ndarray:
 
 def _vec_from_sym(u: np.ndarray) -> np.ndarray:
     return np.array([u[0, 0], u[1, 1], u[2, 2], u[0, 1], u[0, 2], u[1, 2]])
-
-
-def adp_dof(space_group: str, xyz) -> AdpDof:
-    """Classify the anisotropic-ADP DOF of a site (which ``u_ij`` are free).
-
-    The symmetric U tensor transforms as ``U -> R U R^T`` under a site-symmetry
-    rotation ``R``; the site-allowed U is the fixed space of the stabiliser,
-    given by the Reynolds projector on the 6-dim symmetric-tensor space,
-    classified by :func:`_classify` (e.g. cubic ``m-3m`` -> ``u11=u22=u33``
-    coupled, off-diagonals FIXED).
-    """
-    x = np.asarray(xyz, dtype=float)
-    if x.shape != (3,):
-        raise ValueError("xyz must be a 3-vector")
-    ops = _expanded_ops(resolve_space_group(space_group))
-    stab = [R for (R, t) in ops if np.all(np.abs(_wrap_symmetric(R @ x + t - x)) < _POS_TOL)]
-    comps = _classify(_adp_projector(stab))
-    return AdpDof(components=tuple(comps), stabilizer_order=len(stab))
 
 
 # --- (d) core site validation (KI-03; A35, A69, A73) ------------------------
@@ -640,34 +455,6 @@ def check_cell(space_group: str, cell) -> tuple[float, ...]:
 _UIJ_NAMES = ("U11", "U22", "U33", "U12", "U13", "U23")
 
 
-def check_uij(space_group: str, xyz, uij) -> tuple[tuple[float, ...], bool]:
-    """Fit the anisotropic ADPs ``uij`` (U11, U22, U33, U12, U13, U23) to the site symmetry.
-
-    ``U`` must be invariant under the site's stabilizer (``R U R^T = U``, the
-    convention GSAS-II uses). The site-symmetric tensor is the least-change
-    (orthogonal) projection of ``uij`` onto the invariant tensors. Components further than :data:`UIJ_TOL` from it raise
-    :class:`SymmetryError`; otherwise the symmetric values are returned, with a
-    flag saying whether any component changed (by more than 1e-12).
-    """
-    site = analyze_site(space_group, xyz)
-    ops = _expanded_ops(resolve_space_group(space_group, explicit_setting=True))
-    x = np.asarray(site.canonical)
-    stab = [R for R, t in ops if np.max(np.abs(_wrap_symmetric(R @ x + t - x))) < SPECIAL_POSITION_TOL]
-    stated = np.asarray(uij, dtype=float)
-    symmetric = _orthogonal_projector(_adp_projector(stab)) @ stated
-    symmetric = np.where(np.abs(symmetric - stated) <= ADJUSTMENT_REPORT_TOL, stated, symmetric)
-    bad = [f"{n} = {v:g} (site-symmetric value {s:.6g})"
-           for n, v, s in zip(_UIJ_NAMES, stated, symmetric) if abs(v - s) > UIJ_TOL]
-    if bad:
-        raise SymmetryError(
-            f"anisotropic ADPs break the site symmetry at {_fmt_xyz(x)} in {space_group!r}: "
-            + "; ".join(bad)
-        )
-    if not np.any(np.abs(symmetric - stated) > ADJUSTMENT_REPORT_TOL):
-        return tuple(float(v) for v in stated), False
-    return tuple(float(v) for v in symmetric), True
-
-
 # --- (f) tie groups: cell (A95) and site coupling groups (A94, A98, A102) ---
 
 
@@ -759,9 +546,8 @@ def cell_tie_groups(space_group: str) -> CellTies:
     Every free group is one parameter (A94): cubic ``{a, b, c}``; tetragonal and
     hexagonal axes ``{a, b}``, ``{c}``; rhombohedral axes (``:R``) ``{a, b, c}`` and
     ``{alpha, beta, gamma}``; monoclinic: each length plus the unique-axis angle
-    (A102); triclinic: all six independent. Unlike :func:`cell_constraints`
-    (kept for the legacy callers, which rely on its ``:R`` refusal), this covers
-    ``:R``. The setting must be explicit (A62).
+    (A102); triclinic: all six independent; ``:R`` is covered. The setting must
+    be explicit (A62).
     """
     sg = resolve_space_group(space_group, explicit_setting=True)
     system = sg.crystal_system_str()

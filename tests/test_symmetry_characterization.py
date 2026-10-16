@@ -9,9 +9,7 @@ own ``SytSym`` / ``GetCSxinel`` / ``GetCSuinel``. They must agree on:
 - per-axis coordinate DOF (FIXED / FREE / COUPLED);
 - per-component Uij DOF.
 
-The older ``site_dof`` / ``adp_dof`` (their first consumer, the deleted TOPAS
-translation writer, is gone; the functions stay in core) are held to the same
-reference. GSAS-II is read only; nothing in it is changed. Skipped
+GSAS-II is read only; nothing in it is changed. Skipped
 where GSAS-II is not installed. A disagreement must be escalated, not
 tolerated (A35).
 """
@@ -32,7 +30,7 @@ G2spc = pytest.importorskip("GSASII.GSASIIspc")
 gemmi = pytest.importorskip("gemmi")
 
 from powderline.exceptions import SymmetryError  # noqa: E402
-from powderline.symmetry import _expanded_ops, adp_dof, analyze_site, site_dof  # noqa: E402
+from powderline.symmetry import _expanded_ops, analyze_site  # noqa: E402
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 _POINTS_PER_PATTERN = 2  # per space group: 12 patterns x this many draws
@@ -106,8 +104,8 @@ def test_site_analysis_matches_gsasii(number):
     for x in _positions(rng):
         site = analyze_site(name, x)  # exact grid points never fall in the ambiguous band
         sitesym, mult = G2spc.SytSym(list(x), sgdata)[0:2]
-        ours = {"multiplicity": site.multiplicity, "legacy multiplicity": site_dof(name, x).orbit_size}
-        theirs = {"multiplicity": mult, "legacy multiplicity": mult}
+        ours = {"multiplicity": site.multiplicity}
+        theirs = {"multiplicity": mult}
         try:
             xyz = _gsas_classes(G2spc.GetCSxinel(sitesym)[0])
             uij = _gsas_classes(G2spc.GetCSuinel(sitesym)[0])
@@ -117,10 +115,8 @@ def test_site_analysis_matches_gsasii(number):
             # Multiplicity is still compared.
             pass
         else:
-            ours.update({"xyz": site.axes, "uij": site.adp,
-                         "legacy xyz": site_dof(name, x).axes,
-                         "legacy uij": adp_dof(name, x).components})
-            theirs.update({"xyz": xyz, "uij": uij, "legacy xyz": xyz, "legacy uij": uij})
+            ours.update({"xyz": site.axes, "uij": site.adp})
+            theirs.update({"xyz": xyz, "uij": uij})
         for key in ours:
             if tuple(np.atleast_1d(ours[key])) != tuple(np.atleast_1d(theirs[key])):
                 disagreements.append((x, sitesym, key, ours[key], theirs[key]))

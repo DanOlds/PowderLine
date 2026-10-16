@@ -1,11 +1,11 @@
-"""Tests for powderline.symmetry core validation functions (check_cell, check_uij, analyze_site).
+"""Tests for powderline.symmetry core validation functions (check_cell, analyze_site).
 
 Core-only: no GSAS-II needed; must run in a core-only environment.
 """
 import pytest
 
 from powderline.exceptions import SymmetryError
-from powderline.symmetry import check_cell, check_uij, analyze_site, SiteAnalysis
+from powderline.symmetry import check_cell, analyze_site, SiteAnalysis
 from fractions import Fraction
 
 pytestmark = pytest.mark.core
@@ -128,53 +128,6 @@ def test_check_cell_rhombohedral_r_setting_angle_perturbed_rejected():
         check_cell(sg, cell)
 
 
-# --- check_uij --------------------------------------------------------------
-
-
-def test_check_uij_identity_unchanged():
-    """check_uij: conforming tensor returned unchanged, adjusted=False."""
-    sg = "P m -3 m"
-    xyz = (0.0, 0.0, 0.0)
-    # Cubic m-3m: U11=U22=U33, off-diag 0
-    uij = (0.01, 0.01, 0.01, 0.0, 0.0, 0.0)
-    symmetric, adjusted = check_uij(sg, xyz, uij)
-    assert adjusted is False
-    assert symmetric == uij  # returned exactly, not just closely
-
-
-def test_check_uij_adjusted_within_tol():
-    """check_uij: tensor within UIJ_TOL adjusted, adjusted=True."""
-    sg = "P 63/m m c"
-    xyz = (0.2, 0.4, 0.25)
-    # Site 6h: U11 free, U22 free, U33 free, U12 = U22/2, U13=U23=0
-    # State U12 slightly off from U22/2 by < UIJ_TOL
-    uij = (0.012, 0.024, 0.02, 0.012 + 5e-7, 0.0, 0.0)
-    symmetric, adjusted = check_uij(sg, xyz, uij)
-    assert adjusted is True
-    # Check U12 became exactly U22/2
-    assert abs(symmetric[3] - symmetric[1] / 2) < 1e-15
-
-
-def test_check_uij_beyond_tol_raises():
-    """check_uij: tensor beyond UIJ_TOL raises SymmetryError."""
-    sg = "P m -3 m"
-    xyz = (0.0, 0.0, 0.0)
-    # Cubic m-3m: U11=U22=U33; state U11 != U22 by > UIJ_TOL
-    uij = (0.01, 0.02, 0.01, 0.0, 0.0, 0.0)
-    with pytest.raises(SymmetryError, match="break the site symmetry"):
-        check_uij(sg, xyz, uij)
-
-
-def test_check_uij_general_position_unchanged():
-    """check_uij: general position in P 1 accepts any tensor unchanged."""
-    sg = "P 1"
-    xyz = (0.123, 0.456, 0.789)
-    uij = (0.01, 0.02, 0.03, 0.005, 0.007, 0.009)
-    symmetric, adjusted = check_uij(sg, xyz, uij)
-    assert adjusted is False
-    assert symmetric == uij  # returned exactly, not just closely
-
-
 # --- analyze_site -----------------------------------------------------------
 
 
@@ -260,7 +213,7 @@ import gemmi  # noqa: E402
 import numpy as np  # noqa: E402
 
 from powderline import symmetry as sym  # noqa: E402
-from powderline.symmetry import cell_constraints, cell_tie_groups, coupling_groups  # noqa: E402
+from powderline.symmetry import cell_tie_groups, coupling_groups  # noqa: E402
 from symmetry_sites import distinct_special_sites  # noqa: E402
 
 _UIJ = ("U11", "U22", "U33", "U12", "U13", "U23")
@@ -388,8 +341,7 @@ def test_cell_tie_groups(space_group, groups, fixed, system, axis):
 
 def test_cell_tie_groups_every_setting_agree_with_the_metric():
     """Every gemmi setting: each name is in one group or fixed; changing a whole group together
-    keeps a symmetric cell symmetric, changing one member alone (or a fixed angle) breaks it;
-    off ':R', the groups agree with cell_constraints."""
+    keeps a symmetric cell symmetric, changing one member alone (or a fixed angle) breaks it."""
     for sg in gemmi.spacegroup_table():
         name = sg.xhm()
         ties = cell_tie_groups(name)
@@ -409,19 +361,45 @@ def test_cell_tie_groups_every_setting_agree_with_the_metric():
         for angle in ties.fixed:
             with pytest.raises(SymmetryError, match="inconsistent"):
                 check_cell(name, tuple(v + (0.01 if k == angle else 0.0) for k, v in cell.items()))
-        if sg.ext != "R":
-            rules = cell_constraints(name)
-            assert [g.members for g in ties.groups if g.members[0] in "abc"] == list(rules.length_groups)
-            assert (ties.fixed, ties.unique_axis) == (rules.fixed_angles, rules.unique_axis)
-
-
-def test_cell_constraints_keeps_its_rhombohedral_refusal():
-    """Deliberate change #2 stands: legacy callers rely on cell_constraints refusing ':R'."""
-    with pytest.raises(SymmetryError, match="rhombohedral ':R' setting are not implemented"):
-        cell_constraints("R -3 m:R")
-    assert [g.members for g in cell_tie_groups("R -3 m:R").groups] == [("a", "b", "c"), ("alpha", "beta", "gamma")]
 
 
 def test_cell_tie_groups_require_an_explicit_setting():
     with pytest.raises(SymmetryError, match="rhombohedral; specify the setting"):
         cell_tie_groups("R -3 m")
+
+
+# --- error cases shared by every caller (moved from the deleted test_topas_symmetry, re/17) ---
+
+
+def test_unknown_symbol_errors():
+    from powderline import symmetry as sym
+    with pytest.raises(SymmetryError, match="unrecognized"):
+        sym.resolve_space_group("NotASpaceGroup")
+
+
+def test_symmetry_error_is_a_core_value_error():
+    # A61: a ValueError (pydantic reports it with the field location inside a
+    # validator) and a PowderLineError; no gateway error type involved.
+    from powderline import symmetry as sym
+    from powderline.exceptions import PowderLineError
+    with pytest.raises(SymmetryError) as info:
+        sym.resolve_space_group("NotASpaceGroup")
+    assert isinstance(info.value, ValueError)
+    assert isinstance(info.value, PowderLineError)
+    assert type(info.value).__module__ == "powderline.exceptions"
+
+
+def test_rhombohedral_R_setting_accepted_by_core():
+    # A62: core resolves both rhombohedral settings; engines that cannot handle
+    # :R (TOPAS, easydiffraction) reject it in their own layer.
+    from powderline import symmetry as sym
+    assert sym.resolve_space_group("R -3 m :R").ext == "R"
+    assert analyze_site("R -3 m :R", (0.0, 0.0, 0.0)).multiplicity == 1
+    assert analyze_site("R -3 m :H", (0.0, 0.0, 0.0)).multiplicity == 3
+
+
+def test_monoclinic_unique_axis_failure_raises_symmetry_error():
+    import numpy as np
+    from powderline import symmetry as sym
+    with pytest.raises(SymmetryError, match="monoclinic unique axis"):
+        sym._monoclinic_unique_axis([(np.eye(3), np.zeros(3))])
