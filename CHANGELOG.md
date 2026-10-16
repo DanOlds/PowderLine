@@ -285,6 +285,19 @@ recipes do not validate; see the
   structured-warning code with its owner and level; a test holds it, the
   codes emitted under `src/` and the engine-behaviour table in agreement.
 
+- **The GSAS-II server tells you when it is stale** (re/17, review finding 5):
+  `/health` reports the PowderLine version and an MD5 of the source tree the
+  server loaded; the client compares both with its own and refuses a
+  mismatching server — `auto` mode says so and runs in-process, `--use-server`
+  fails with `server_unavailable` naming `gsas-server restart`, `gsas-server
+  status` prints `Code: STALE`. No new reason code.
+- **Frozen GSAS-II modules, housekeeping through the ledger** (P-38, rows
+  R31–R32): the dead `.lst` parameter extractor and the unused imports the
+  verbatim move carried along are gone; the code hash is regenerated; the
+  baseline wording in policies, DEVELOPMENT and CLAUDE.md names the verified
+  re/01 commit `daace24`. Nothing the modules do to the project dictionary
+  changes.
+
 ### Removed
 
 - **The Materials Project simulation tool** (`mp-simulate`, `mp_simulate.py`,
@@ -331,6 +344,15 @@ recipes do not validate; see the
 - The `easydiff` pixi environment name (now `easydiffraction`) and GSAS-II
   from the default environment (now the `gsasii` environment).
 
+- **Code only tests called** (re/17, review finding 14): the legacy TOPAS
+  conversion/equation helpers (`topas/conversions.py`; `fmt` lives in
+  `native_writer`), `topas/runner.run_topas` and `RunResult` (production runs
+  TOPAS through `native_run.run_tc`), the two unused `errors.py` exception
+  modules, and the pre-refactor `symmetry` API (`cell_constraints`,
+  `site_dof`, `adp_dof`, `check_uij`); their tests with them.
+- **Three unused dependencies**: `h5py`, `pybaselines`, `xmltodict` leave
+  `pyproject.toml` and the pixi manifest.
+
 ### Fixed
 
 - `powderline.symmetry.cell_constraints` handles the mirror-only monoclinic
@@ -359,6 +381,10 @@ recipes do not validate; see the
   nothing translated between engines; a fit window needs two weighted points;
   a gsasii simulation writes no `refined_parameters.csv`; example commands
   name the `gsasii` env; the getting-started recipe validates (and is tested).
+
+- CI runs `scripts/gen_schema_field_tables.py --check` (pixi task
+  `fields-check`) in the core job, so a schema edit without regenerated field
+  tables fails; `probes/` is ignored; one unused test fixture removed (re/17).
 
 ### Known limitations carried into 0.2.0
 
