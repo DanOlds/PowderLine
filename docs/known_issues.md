@@ -30,17 +30,18 @@ directly rather than registered (keeps the register lean).
 - Each entry states: what, evidence (`file:line` where applicable), current
   decision, revisit trigger. Reference related issues by id.
 
-**0.2.0 dispositions are proposals.** The multi-engine refactor (PowderLine
+**0.2.0 dispositions are confirmed.** The multi-engine refactor (PowderLine
 0.2.0, native schemas 1.0.0) changed the ground under several entries. Each
-affected entry below carries a *Disposition (0.2.0, proposed)* paragraph that
-cites the decision which changed it; the heading status is amended with the
-proposal. **The maintainer confirms or amends each one**; no id is retired
-silently, and every id stays listed. The user-facing account of what the
+affected entry below carries a *Disposition (0.2.0, confirmed 2026-10-16)*
+paragraph that cites the decision which changed it; the heading status is
+amended with the outcome. The maintainer (Dan, acting, 2026-10-16; P-39,
+P-41) confirmed each one as written; no id is retired silently, and every
+id stays listed. The user-facing account of what the
 engines do is the [engine behaviour page](engine-behavior.md).
 
 ---
 
-## KI-01 — Malformed fixed cell computes a wrong pattern silently `accepted · critical` → proposed: resolved for native recipes (0.2.0)
+## KI-01 — Malformed fixed cell computes a wrong pattern silently `accepted · critical` → resolved for native recipes (0.2.0)
 
 **What.** A metrically symmetry-illegal cell (e.g. cubic phase with `a≠b≠c`) that
 is *not* refined is used verbatim: GSAS-II computes peak positions from the raw,
@@ -60,8 +61,7 @@ fixed distorted cell.
 validation option is added. If added, it should be *opt-in / warn* so the
 legitimate symmetry-breaking-simulation use survives.
 
-**Disposition (0.2.0, proposed: resolved by A77/A123; maintainer to
-confirm).** Core schema 1.0.0 refuses a cell that does not fit the space group
+**Disposition (0.2.0, confirmed 2026-10-16: resolved by A77/A123).** Core schema 1.0.0 refuses a cell that does not fit the space group
 (tied lengths and angles equal the first member, fixed angles exact, within
 1e-9), in every engine schema, with a message giving the value to write. The
 pass-through no longer exists for native recipes; the "deliberate
@@ -70,7 +70,7 @@ GSAS-II's own behaviour is recorded as EB-06.
 
 ---
 
-## KI-02 — Oblique (monoclinic/triclinic) per-parameter cell holds are limited `implemented (schema 0.26, historical) · minor` → proposed: retired (0.2.0)
+## KI-02 — Oblique (monoclinic/triclinic) per-parameter cell holds are limited `implemented (schema 0.26, historical) · minor` → retired (0.2.0)
 
 **What.** Holding a reciprocal-metric A-term equals holding a *direct* cell
 parameter only for orthogonal cells. For monoclinic, only the unique-axis length
@@ -97,8 +97,7 @@ provenance work. True independent oblique direct-parameter holds would
 require a fundamentally different (nonlinear) constraint approach — unlikely to
 change.
 
-**Disposition (0.2.0, proposed: retired by A95, deliberate change 11;
-maintainer to confirm).** The group-OR no longer exists: a `gsasii.*` recipe
+**Disposition (0.2.0, confirmed 2026-10-16: retired by A95, deliberate change 11).** The group-OR no longer exists: a `gsasii.*` recipe
 that refines a strict subset of a GSAS-II cell group (monoclinic `{a, c, β}`
 for b-unique; all six for triclinic and rhombohedral axes) or of a symmetry
 tie group is a **validation error** at the offending field, so a flag is never
@@ -110,7 +109,7 @@ transparency this entry asked for.
 
 ---
 
-## KI-03 — Site symmetry & multiplicity are derived, and failures are swallowed `planned-fix · major` → proposed: resolved (0.2.0)
+## KI-03 — Site symmetry & multiplicity are derived, and failures are swallowed `planned-fix · major` → resolved (0.2.0)
 
 **What.** PowderLine derives each atom's site symmetry and multiplicity at load
 via `G2spc.SytSym`, inside a bare `except Exception: pass`, defaulting to `""`
@@ -127,8 +126,7 @@ interpretation from GSAS-II for future multi-engine support.
 **Revisit.** At minimum, stop swallowing the exception when the surrounding area
 is next touched.
 
-**Disposition (0.2.0, proposed: resolved in re/03–re/04; maintainer to
-confirm).** Core derives each atom's site symmetry, multiplicity and tie
+**Disposition (0.2.0, confirmed 2026-10-16: resolved in re/03–re/04).** Core derives each atom's site symmetry, multiplicity and tie
 groups with gemmi (engine-free), cross-checks a stated `Multiplicity` (A69 T3,
 A101), and the gsasii gateway compares GSAS-II's reading of every site with
 core's after phase setup, stopping with a clear error that names an
@@ -138,7 +136,7 @@ EB-40, EB-05). Nothing is swallowed; the recipe does not state site symmetry
 
 ---
 
-## KI-04 — Recipe→output provenance is implicit; no round-trip `planned-fix · major`
+## KI-04 — Recipe→output provenance is implicit; no round-trip `planned-fix · major` → open, partly addressed (0.2.0)
 
 **What.** Outputs are CSV/txt keyed by GSAS-II parameter names. Which parameters
 were *actually* varied vs held-by-user vs held-by-symmetry vs frozen-by-limit is
@@ -154,8 +152,7 @@ output enabling round-trip / sequential refinement. Deferred to dedicated work.
 **Revisit.** When designing sequential-refinement support, or when a downstream
 data-management consumer needs machine-readable provenance.
 
-**Disposition (0.2.0, proposed: open, partly addressed; maintainer to
-confirm).** Results now report `engine_details.parameters_requested` (from the
+**Disposition (0.2.0, confirmed 2026-10-16: open, partly addressed).** Results now report `engine_details.parameters_requested` (from the
 recipe) against `parameters_varied` (what the engine varied) and a structured
 `warnings` list (parameters not varied, limits hit, convergence) (A45, A128).
 A recipe-shaped output for round-trip / sequential refinement still does not
@@ -163,7 +160,7 @@ exist.
 
 ---
 
-## KI-05 — GSAS-II refinement failures & constraint warnings don't raise `planned-fix · major`
+## KI-05 — GSAS-II refinement failures & constraint warnings don't raise `planned-fix · major` → resolved for refinement failures (0.2.0, re/12); console text still open
 
 **What.** `proj.refine()` does not raise on refinement failure (singular matrix,
 etc.); constraint cascades/conflicts and frozen-variable notices go to stdout /
@@ -180,8 +177,7 @@ early; fuller provenance later.
 
 **Revisit.** Bundle with the provenance work.
 
-**Disposition (0.2.0, proposed: resolved for refinement failures; maintainer
-to confirm).** The native gsasii path reads GSAS-II's stored refinement
+**Disposition (0.2.0, confirmed 2026-10-16: resolved for refinement failures).** The native gsasii path reads GSAS-II's stored refinement
 messages into `gsasii_refinement_message` warnings (EB-32), reads its
 convergence flag into the result's top-level `converged` with
 `gsasii_fit_not_converged` (A172), treats a non-finite calculated pattern as a
@@ -195,7 +191,7 @@ console text is still not collected; keep the id open for that.
 
 ---
 
-## KI-06 — GSAS-II parameter-limit (min/max) semantics are clamp-and-freeze `watch · minor` → proposed: not exposed (0.2.0)
+## KI-06 — GSAS-II parameter-limit (min/max) semantics are clamp-and-freeze `watch · minor` → not exposed (0.2.0)
 
 **What.** GSAS-II enforces `parmMin/parmMaxDict` not as in-loop box constraints
 but by resetting out-of-range variables to the limit *after* a refine and
@@ -212,8 +208,7 @@ not imply hard bounds.
 
 **Revisit.** With the general constraints & limits work.
 
-**Disposition (0.2.0, proposed: not exposed, by A84; maintainer to
-confirm).** The re/04 spike confirmed the clamp-and-freeze semantics in detail
+**Disposition (0.2.0, confirmed 2026-10-16: not exposed, by A84).** The re/04 spike confirmed the clamp-and-freeze semantics in detail
 (EB-30: the reported values, ESDs and Rwp belong to the unclamped fit; EB-31:
 direct-cell boxes map onto A-term limits exactly for four of seven crystal
 systems). gsasii 1.0.0 therefore exposes **no bounds**: a 4-element parameter
@@ -224,7 +219,7 @@ documented semantics (A138, A157 B4).
 
 ---
 
-## KI-07 — Space-group setting (hexagonal vs rhombohedral, origin choice) is unvalidated `watch · critical` → proposed: resolved (0.2.0)
+## KI-07 — Space-group setting (hexagonal vs rhombohedral, origin choice) is unvalidated `watch · critical` → resolved (0.2.0)
 
 **What.** `R -3 c` (hexagonal axes) and `R -3 c R` (rhombohedral axes) are both
 accepted but imply different cell parameterizations and A-term equivalence sets.
@@ -242,8 +237,7 @@ without symmetry operators and better handled in the recipe builder.
 
 **Revisit.** Convention-validation branch, or recipe-builder work.
 
-**Disposition (0.2.0, proposed: resolved by A62/A105, EB-03; maintainer to
-confirm).** Core requires gemmi's canonical extended Hermann–Mauguin name,
+**Disposition (0.2.0, confirmed 2026-10-16: resolved by A62/A105, EB-03).** Core requires gemmi's canonical extended Hermann–Mauguin name,
 which states the setting (`:1`/`:2`, `:H`/`:R`, the monoclinic axis); any
 other spelling is an error naming the canonical form, and a bare two-origin
 or rhombohedral symbol lists both choices. The gsasii gateway **refuses origin
@@ -495,8 +489,7 @@ install-health guidance above; the re-install step is documented for users in
 the [migration guide](migration-0.26-to-1.0.md) and for contributors on the
 [policies page](policies.md) and in `CLAUDE.md`.
 
-**Disposition (0.2.0, proposed: stays `watch`, A58; maintainer to
-confirm).**
+**Disposition (0.2.0, confirmed 2026-10-16: stays `watch`, A58).**
 
 **Revisit.** When a check command (`powderline doctor`-style) is added, or if
 a second discovery path is ever considered.

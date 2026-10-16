@@ -12,7 +12,7 @@ one schema per engine) and have their own changelog,
 (row N) and decision-log entry (A…); "(P-NN)" is a provisional decision taken
 while the maintainer was away, to be confirmed.
 
-## 0.2.0 — unreleased
+## 0.2.0 — 2026-10-16
 
 <!-- The version in src/powderline/__init__.py, CITATION.cff and pixi.toml is
      set to 0.2.0 at the release step (G4), together with the date below. -->
