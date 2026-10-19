@@ -214,7 +214,7 @@ def run(
         return validate_only_summary(
             recipe, warnings, phases=len(phases) if phases else 0,
             simulation_mode=controls.refinement_cycles == 1,  # A88
-            engine={'refinement_cycles': controls.refinement_cycles})
+            engine={'refinement_cycles': controls.refinement_cycles}, validator=schema.validate_recipe)
 
     # 4. Ensure output directory exists
     output_dir = Path(output_dir)

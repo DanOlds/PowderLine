@@ -62,7 +62,8 @@ VALIDATE_ONLY_KEYS = ("status", "rwp", "elapsed_time", "method", "schema_name", 
                       "engine", "output_recipe", "output_recipe_valid")
 
 
-def validate_only_summary(model, warnings: list, *, phases: int, simulation_mode: bool, engine: dict) -> dict:
+def validate_only_summary(model, warnings: list, *, phases: int, simulation_mode: bool, engine: dict,
+                          validator=None) -> dict:
     """The ``validate_only`` result every gateway returns (P-28): no refinement, nothing written, no ``run_id``.
 
     Common keys: ``status`` (``"validated"``), ``rwp`` (None),
@@ -73,12 +74,13 @@ def validate_only_summary(model, warnings: list, *, phases: int, simulation_mode
     validating the user's recipe, A115). Engine-specific items go under ``engine`` (gsasii
     ``refinement_cycles``; topas ``iters``, ``engine_version``; easydiffraction ``calculator``).
     ``output_recipe`` (re/20a, KI-04) is the *resolved* recipe -- what the engine would see: derived values
-    exact, gateway defaults stated -- and ``output_recipe_valid`` whether it re-validates; nothing is written.
+    exact, gateway defaults stated -- and ``output_recipe_valid`` whether it re-validates through ``validator``
+    (the gateway's own ``validate_recipe``; default: :func:`powderline.api.validate`); nothing is written.
     """
     from powderline import roundtrip  # core; no engine import
     from powderline.schema_core import parameters_requested  # core; no engine import
 
-    resolved = roundtrip.build_output(model, {}, parent_run_id=None)
+    resolved = roundtrip.build_output(model, {}, parent_run_id=None, validator=validator)
     return {
         "status": "validated", "rwp": None, "elapsed_time": 0.0, "method": "validate_only",
         "schema_name": model.schema_name, "core_schema_version": model.core_schema_version,

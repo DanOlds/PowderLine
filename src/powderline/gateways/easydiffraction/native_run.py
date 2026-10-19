@@ -382,7 +382,7 @@ def validate_only_result(model, validated_warnings: list) -> dict:
     p = model.payload
     return validate_only_summary(
         model, validated_warnings, phases=len(p.phases), simulation_mode=p.simulation_mode(),
-        engine={"calculator": p.refinement_controls.calculator})
+        engine={"calculator": p.refinement_controls.calculator}, validator=validate_recipe)
 
 
 def run_native_validate(model, warnings_from=None) -> dict:

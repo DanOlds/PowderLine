@@ -155,3 +155,74 @@ def test_engine_value_for_a_held_parameter_is_a_problem():
     model = validate(_load("example_LaB6/input.json")).recipe  # the cell is held (flags false)
     out = roundtrip.build_output(model, {"payload.phases.LaB6.unit_cell.a": (4.2, None)})
     assert not out.valid and any("held" in p and "unit_cell.a" in p for p in out.problems)
+
+
+# --- re/20a review: exact tie arithmetic, member-only reports, readable problems ---------------------------
+
+def _recipe_with_phase(space_group, atoms, cell):
+    r = _load("example_LaB6/input.json")
+    p = lambda v, f=False: [v, f]  # noqa: E731
+    r["payload"]["phases"] = {"Ph": {"space_group": space_group, "scale": p(0.01, True),
+                                     "unit_cell": {k: p(v, k in ("a", "b", "c")) for k, v in cell.items()}, "atoms": atoms}}
+    return r
+
+
+def test_uij_tie_with_k_not_one_is_exact():
+    """P 63/m m c 2c site (1/3, 2/3, 1/4): U22 = U11, U12 = U11/2, U13 = U23 = 0 — refined U11 drives the rest exactly."""
+    p = lambda v, f=False: [v, f]  # noqa: E731
+    atoms = {"C": {"element": "C", "x": p(1 / 3), "y": p(2 / 3), "z": p(0.25), "occupancy": p(1.0), "ADP": "Uaniso",
+                   "Uaniso": {"U11": p(0.01, True), "U22": p(0.01, True), "U33": p(0.02, True),
+                              "U12": p(0.005, True), "U13": p(0.0), "U23": p(0.0)}}}
+    cell = {"a": 2.46, "b": 2.46, "c": 6.71, "alpha": 90.0, "beta": 90.0, "gamma": 120.0}
+    model = validate(_recipe_with_phase("P 63/m m c", atoms, cell)).recipe
+    out = roundtrip.build_output(model, {"payload.phases.Ph.atoms.C.Uaniso.U11": (0.0123, 1e-4),
+                                         "payload.phases.Ph.atoms.C.Uaniso.U33": (0.0211, 1e-4)})
+    u = out.recipe["payload"]["phases"]["Ph"]["atoms"]["C"]["Uaniso"]
+    assert out.valid, out.problems
+    assert u["U22"][0] == 0.0123 and u["U12"][0] == 0.0123 / 2 and u["U13"][0] == 0.0 and u["U33"][0] == 0.0211
+    rows = {r["path"]: r for r in out.dispositions}
+    assert rows["payload.phases.Ph.atoms.C.Uaniso.U12"]["disposition"] == "held_by_symmetry"
+
+
+def test_affine_offset_tie_is_propagated_exactly():
+    """P -4 21 m: a (x, x+1/2, z) site — refining x moves y by the same amount, offset kept exact."""
+    p = lambda v, f=False: [v, f]  # noqa: E731
+    atoms = {"S": {"element": "S", "x": p(0.1, True), "y": p(0.6, True), "z": p(0.3, True), "occupancy": p(1.0),
+                   "ADP": "Uiso", "Uiso": p(0.01)}}
+    cell = {"a": 5.0, "b": 5.0, "c": 7.0, "alpha": 90.0, "beta": 90.0, "gamma": 90.0}
+    model = validate(_recipe_with_phase("P -4 21 m", atoms, cell)).recipe
+    out = roundtrip.build_output(model, {"payload.phases.Ph.atoms.S.x": (0.1234, 1e-3), "payload.phases.Ph.atoms.S.z": (0.31, 1e-3)})
+    atom = out.recipe["payload"]["phases"]["Ph"]["atoms"]["S"]
+    assert out.valid, out.problems
+    assert atom["x"][0] == 0.1234 and atom["y"][0] == 0.6234 and atom["z"][0] == 0.31
+
+
+def test_member_only_report_derives_the_representative_and_keeps_its_esd():
+    """An engine may free a non-representative member (easydiffraction does): the representative is derived and
+    carries the ESD scaled by the relation; the member row is held_by_symmetry."""
+    model = validate(_hex_recipe()).recipe
+    out = roundtrip.build_output(model, {"payload.phases.Gr.atoms.C.y": (0.34, 2e-3)}, at_limit={"payload.phases.Gr.atoms.C.y"})
+    atom = out.recipe["payload"]["phases"]["Gr"]["atoms"]["C"]
+    assert out.valid, out.problems
+    assert atom["x"][0] == pytest.approx(0.17) and atom["y"][0] == pytest.approx(0.34)
+    rows = {r["path"]: r for r in out.dispositions}
+    rep, member = rows["payload.phases.Gr.atoms.C.x"], rows["payload.phases.Gr.atoms.C.y"]
+    assert rep["disposition"] == "varied" and rep["esd"] == pytest.approx(1e-3) and rep["at_limit"] is True
+    assert member["disposition"] == "held_by_symmetry"
+
+
+def test_problems_list_each_validation_error_with_its_message():
+    model = validate(_load("example_LaB6/input.json")).recipe
+    out = roundtrip.build_output(model, {"payload.phases.LaB6.atoms.B.occupancy": (1.3, None),
+                                         "payload.phases.LaB6.atoms.La.occupancy": (-0.2, None)})
+    assert not out.valid
+    located = [p for p in out.problems if ": " in p and ("occupancy" in p)]
+    assert len(located) >= 2, out.problems
+    assert all(len(p.split(": ", 1)[1]) > 10 for p in located), out.problems  # the message, not just the location
+
+
+def test_held_parameter_check_tolerates_formatting_noise():
+    model = validate(_load("example_LaB6/input.json")).recipe
+    a = model.payload.phases["LaB6"].unit_cell.a.value
+    out = roundtrip.build_output(model, {"payload.phases.LaB6.unit_cell.a": (a * (1 + 1e-12), None)})
+    assert out.valid, out.problems

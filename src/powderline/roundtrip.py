@@ -208,8 +208,9 @@ def build_output(model, refined: Mapping[str, tuple], *, not_varied: Iterable[st
 
     dump = model.model_dump(mode="json")
     values = {pp.path: (float(refined[pp.path][0]) if pp.path in refined else pp.value) for pp in paths}
-    for pp in paths:  # an engine may only move what the user let it vary
-        if pp.path in refined and not pp.refine_flag and values[pp.path] != pp.value:
+    for pp in paths:  # an engine may only move what the user let it vary (formatting noise is not a move)
+        if pp.path in refined and not pp.refine_flag and \
+                abs(values[pp.path] - pp.value) > max(_tolerance(pp.path), 1e-9 * abs(pp.value)):
             problems.append(f"{pp.path} is held (refine flag false) but the engine reports it changed "
                             f"{pp.value!r} -> {values[pp.path]!r}")
 
@@ -219,15 +220,24 @@ def build_output(model, refined: Mapping[str, tuple], *, not_varied: Iterable[st
     for pp in paths:
         if pp.tie == "member":
             members_of.setdefault(pp.relation[2], []).append(pp)
+    refined = dict(refined)
+    not_varied, at_limit = set(not_varied), set(at_limit)
     for rep_path, members in members_of.items():
         if rep_path not in refined:
             reported = [m for m in members if m.path in refined]
-            if reported:
-                k, c, _ = reported[0].relation
-                values[rep_path] = (values[reported[0].path] - float(c)) / float(k)
+            if reported:  # the engine freed a member instead (easydiffraction does): derive the representative,
+                m0 = reported[0]  # which inherits the ESD (scaled by the relation) and the member's markers
+                k, c, _ = m0.relation
+                values[rep_path] = float((Fraction(values[m0.path]) - c) / k)
+                esd = refined[m0.path][1]
+                refined[rep_path] = (values[rep_path], None if esd is None else abs(esd / float(k)))
+                if m0.path in not_varied:
+                    not_varied.add(rep_path)
+                if m0.path in at_limit:
+                    at_limit.add(rep_path)
         for m in members:
             k, c, _ = m.relation
-            expected = float(k) * values[rep_path] + float(c)
+            expected = float(k * Fraction(values[rep_path]) + c)  # exact, as the schema derives it
             if m.path in refined and abs(values[m.path] - expected) > _tolerance(m.path):
                 problems.append(f"{m.path} = {values[m.path]!r} disagrees with its symmetry tie "
                                 f"({m.path.rsplit('.', 1)[1]} = {m.relation[0]} * {rep_path.rsplit('.', 1)[1]} + {m.relation[1]} "
@@ -250,10 +260,13 @@ def build_output(model, refined: Mapping[str, tuple], *, not_varied: Iterable[st
     try:
         again = _validate(validator, copy.deepcopy(dump))
     except Exception as exc:  # pydantic.ValidationError or a gateway's own error: reported, never raised
-        problems.append(str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__)
-        for line in str(exc).splitlines()[1:]:
-            if line and not line.startswith(" "):
-                problems.append(line.strip())
+        errors = getattr(exc, "errors", None)
+        if callable(errors):  # pydantic: every error with its location and message
+            for err in errors():
+                problems.append(f"{'.'.join(str(x) for x in err.get('loc', ()))}: {err.get('msg', '')}".strip(": "))
+        else:
+            text = str(exc).strip()
+            problems.append(text.splitlines()[0] if text else type(exc).__name__)
     else:
         for w in collect_warnings(again):
             if w["code"] == "symmetry_value_derived" or w["code"].endswith("_default_applied"):
@@ -264,7 +277,6 @@ def build_output(model, refined: Mapping[str, tuple], *, not_varied: Iterable[st
                 problems.append(f"atom {key[1]!r} of phase {key[0]!r} would change multiplicity "
                                 f"{mult} -> {after.get(key)}: a symmetry tie was not kept")
 
-    not_varied, at_limit = set(not_varied), set(at_limit)
     rows = []
     for pp in paths:
         if pp.default_applied:

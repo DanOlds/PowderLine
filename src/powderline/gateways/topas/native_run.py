@@ -375,7 +375,8 @@ def validate_only_result(model, validated_warnings: list) -> dict:
     return validate_only_summary(
         model, validated_warnings, phases=len(p.phases) if isinstance(model, TopasRietveldRecipe) else 0,
         simulation_mode=p.refinement_controls.iters == 0,
-        engine={"iters": p.refinement_controls.iters, "engine_version": model.engine_version})
+        engine={"iters": p.refinement_controls.iters, "engine_version": model.engine_version},
+        validator=validate_recipe)
 
 
 # --- result pieces ------------------------------------------------------------------------

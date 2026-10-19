@@ -1313,7 +1313,9 @@ def test_generated_result_carries_the_resolved_input(tmp_path, monkeypatch):
     assert result["output_recipe"]["payload"]["xrd_data"] == model.model_dump(mode="json")["payload"]["xrd_data"]
     rows = result["parameter_dispositions"]
     assert set(rows[rows["disposition"] == "varied"]["path"]) == set()
-    assert (rows["disposition"] == "requested_not_varied").sum() == sum(1 for _ in __import__("powderline.schema_core", fromlist=["refined_flags"]).refined_flags(model)) or True
+    from powderline.roundtrip import parameter_paths
+    flagged = {pp.path for pp in parameter_paths(model) if pp.refine_flag and pp.tie not in ("member", "fixed")}
+    assert set(rows[rows["disposition"] == "requested_not_varied"]["path"]) == flagged
     assert (out_dir / "output_recipe.json").exists() and str(out_dir / "output_recipe.json") in result["output_files"]
     # the INP written from the output recipe is byte-identical to the one written from the input
     again = schema.validate_recipe(result["output_recipe"])

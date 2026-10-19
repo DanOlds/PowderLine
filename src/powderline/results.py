@@ -24,6 +24,11 @@ from powderline.exceptions import EngineExecutionError, ExecutionBackendError
 # meanings change. A returned result's status is "ok" or "generated"; "failed" is raised. The two
 # reason sets are failure.kind == "engine" (the engine ran and failed) and "backend" (it did not run).
 ENVELOPE_VERSION = "1"
+# The envelope has two parts (P-43 D3). The *base* every tool returns: status, envelope_version, run_id,
+# warnings, elapsed_time, method, output_files, engine_details, output_recipe, output_recipe_valid. The
+# *refinement section* a refinement workflow fills: converged, rwp, r_exp, gof, chi2_red, simulation_mode,
+# fit_profile, unit_cell_data, peak_list_data, refined_parameters, parameter_dispositions, spf_peaks,
+# spf_convergence_diagnostics. Keys stay flat; a transform tool (none yet) fills the base only.
 STATUSES = ("ok", "generated", "failed")
 ENGINE_REASONS = frozenset({"diverged", "unusable_site", "peak_fit_failed", "engine_crashed",
                             "output_missing", "output_malformed"})
