@@ -328,7 +328,6 @@ def build_result(model, native: NativeInput, out: Path, validated_warnings: list
             writer.writerows(spf_rows)
 
     return envelopes.with_status_fields({
-        "success": True,
         "run_id": str(uuid.uuid4()),
         "rwp": undefined(fs.rwp),
         "r_exp": undefined(fs.rexp),

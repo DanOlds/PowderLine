@@ -250,7 +250,7 @@ def test_stop_server_force_kill_never_dies_returns_false(isolated_pid_files, mon
 
 def test_response_model_keeps_native_result_keys():
     """A native gsasii.* result crosses the server with its standard statistics and warnings (re/04, A125)."""
-    native = {"status": "ok", "success": True, "converged": False, "envelope_version": "1",
+    native = {"status": "ok", "converged": False, "envelope_version": "1",
               "rwp": 6.53, "r_exp": 12.4, "gof": 0.52, "chi2_red": 0.27,
               "engine_details": {"engine": "GSAS-II", "parameters_varied": 13},
               "warnings": [{"code": "c", "message": "m", "field_path": None}]}
@@ -263,7 +263,7 @@ def test_response_model_carries_a_failed_envelope():
     from powderline import results
     env = results.failure_envelope("engine", "diverged", "m", run_id="r", method="server")
     dumped = gsas_server.SimulationResponse(**env).model_dump()
-    assert dumped["status"] == "failed" and dumped["failure"]["reason"] == "diverged" and dumped["success"] is None
+    assert dumped["status"] == "failed" and dumped["failure"]["reason"] == "diverged" and "success" not in dumped
 
 
 # --- POWDERLINE_NO_SERVER ---

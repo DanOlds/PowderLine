@@ -64,7 +64,7 @@ def failure_envelope(kind: str, reason: str, message: str, *, run_id: Optional[s
 def generated_envelope(*, run_id: Optional[str] = None, elapsed: float, method: str, warnings: list,
                        output_files: list, simulation_mode: bool, engine_details: dict) -> dict:
     """A ``generated`` envelope: the engine's input was written but the engine did not run (TOPAS without tc.exe)."""
-    return {"envelope_version": ENVELOPE_VERSION, "status": "generated", "success": True,
+    return {"envelope_version": ENVELOPE_VERSION, "status": "generated",
             "run_id": run_id or str(uuid.uuid4()), "rwp": None, "r_exp": None, "gof": None, "chi2_red": None,
             "converged": None, "simulation_mode": simulation_mode, "engine_details": dict(engine_details),
             "warnings": list(warnings), "elapsed_time": elapsed, "method": method,
@@ -72,16 +72,17 @@ def generated_envelope(*, run_id: Optional[str] = None, elapsed: float, method: 
 
 
 def with_status_fields(result: dict, *, status: str, converged: Optional[bool]) -> dict:
-    """Stamp an engine's ``ok``/``generated`` result with the envelope fields; drop the pre-0.2.0 error keys.
+    """Stamp an engine's ``ok``/``generated`` result with the envelope fields; drop the pre-0.2.0 keys.
 
-    ``success`` is set to ``True`` as the deprecated alias (0.2.0 only; removed in 0.3.0).
+    The pre-envelope ``success`` flag is dropped with ``error`` and ``traceback`` (re/19, P-42 D2): ``status``
+    is the outcome.
     """
     if status not in ("ok", "generated"):
         raise ValueError(f"with_status_fields takes 'ok' or 'generated', not {status!r}")
     result["status"] = status
     result["converged"] = converged
     result["envelope_version"] = ENVELOPE_VERSION
-    result["success"] = True
+    result.pop("success", None)
     result.pop("error", None)
     result.pop("traceback", None)
     return result

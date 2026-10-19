@@ -140,7 +140,7 @@ tables are dicts keyed by phase name.
 | `backend_error` | backend | anything else on the execution path before the engine ran (e.g. a recipe the server could not validate) |
 
 With `validate_only=True` the result is a slim summary with the same keys on
-every gateway: `status` (`"validated"`), `success` (the deprecated alias), `rwp` (`None`), `elapsed_time` (`0.0`), `method`
+every gateway: `status` (`"validated"`), `rwp` (`None`), `elapsed_time` (`0.0`), `method`
 (`"validate_only"`), `schema_name`, `core_schema_version`,
 `engine_schema_version`, `phases`, `simulation_mode`, `parameters_requested`,
 `warnings`, and `engine` — a dict of the engine's own controls

@@ -181,7 +181,6 @@ result = powderline.run(recipe, Path("output/"))
 # result['spf_peaks']                DataFrame  (single peak fitting; empty for Rietveld)
 # result['spf_convergence_diagnostics'] DataFrame
 # result['output_files']             list[str]
-# result['success']                  True  (deprecated alias of status == "ok"/"generated"; removed in 0.3.0)
 ```
 
 A failed run **raises** (re/12). Catch the two classes separately when the

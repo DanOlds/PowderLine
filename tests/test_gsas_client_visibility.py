@@ -45,10 +45,10 @@ def client(monkeypatch):
 
 def test_server_success_without_visible_files_falls_back(client, monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(client, "_submit_to_server",
-                        lambda rd, od: {"success": True})
+                        lambda rd, od: {"status": "ok"})
     calls = []
     monkeypatch.setattr(client, "_submit_via_subprocess",
-                        lambda rd, od, verbose: calls.append(1) or {"success": True})
+                        lambda rd, od, verbose: calls.append(1) or {"status": "ok"})
 
     result = client.submit_simulation(RECIPE, tmp_path)
 
@@ -62,14 +62,14 @@ def test_server_success_without_visible_files_falls_back(client, monkeypatch, tm
 def test_server_success_with_visible_files_is_returned(client, monkeypatch, tmp_path):
     def fake_server_run(rd, od):
         (tmp_path / "fit_profile.txt").write_text("two_theta\ty_calc\n")
-        return {"success": True}
+        return {"status": "ok"}
 
     monkeypatch.setattr(client, "_submit_to_server", fake_server_run)
     monkeypatch.setattr(client, "_submit_via_subprocess",
                         lambda rd, od, verbose: pytest.fail("must not fall back"))
 
     result = client.submit_simulation(RECIPE, tmp_path)
-    assert result["success"] is True
+    assert result["status"] == "ok"
     assert result["method"] == "server"
 
 
@@ -80,10 +80,10 @@ def test_stale_fit_profile_does_not_mask_divergent_server(client, monkeypatch, t
     (tmp_path / "fit_profile.txt").write_text("two_theta\ty_calc\n1.0\t10.0\n")
 
     monkeypatch.setattr(client, "_submit_to_server",
-                        lambda rd, od: {"success": True})  # touches nothing
+                        lambda rd, od: {"status": "ok"})  # touches nothing
     calls = []
     monkeypatch.setattr(client, "_submit_via_subprocess",
-                        lambda rd, od, verbose: calls.append(1) or {"success": True})
+                        lambda rd, od, verbose: calls.append(1) or {"status": "ok"})
 
     result = client.submit_simulation(RECIPE, tmp_path)
 
@@ -102,14 +102,14 @@ def test_rewritten_fit_profile_counts_as_fresh(client, monkeypatch, tmp_path):
         # on filesystems with coarse mtime granularity
         (tmp_path / "fit_profile.txt").write_text(
             "two_theta\ty_calc\n1.0\t10.0\n2.0\t20.0\n")
-        return {"success": True}
+        return {"status": "ok"}
 
     monkeypatch.setattr(client, "_submit_to_server", fake_server_run)
     monkeypatch.setattr(client, "_submit_via_subprocess",
                         lambda rd, od, verbose: pytest.fail("must not fall back"))
 
     result = client.submit_simulation(RECIPE, tmp_path)
-    assert result["success"] is True
+    assert result["status"] == "ok"
     assert result["method"] == "server"
 
 
@@ -132,10 +132,10 @@ def test_use_server_false_skips_server_entirely(monkeypatch, tmp_path):
     monkeypatch.setattr(c, "is_server_available",
                         lambda: pytest.fail("server must not be consulted"))
     monkeypatch.setattr(c, "_submit_via_subprocess",
-                        lambda rd, od, verbose: {"success": True})
+                        lambda rd, od, verbose: {"status": "ok"})
 
     result = c.submit_simulation(RECIPE, tmp_path, use_server=False)
-    assert result["success"] is True
+    assert result["status"] == "ok"
     assert result["method"] == "subprocess"
 
 
@@ -163,7 +163,7 @@ def test_invisible_output_with_fallback_disabled_returns_error(monkeypatch, tmp_
     promise of a fallback that won't happen."""
     c = GSASClient(fallback_to_subprocess=False)
     monkeypatch.setattr(c, "is_server_available", lambda: True)
-    monkeypatch.setattr(c, "_submit_to_server", lambda rd, od: {"success": True})
+    monkeypatch.setattr(c, "_submit_to_server", lambda rd, od: {"status": "ok"})
     monkeypatch.setattr(c, "_submit_via_subprocess",
                         lambda rd, od, verbose: pytest.fail("must not fall back"))
 
@@ -184,10 +184,10 @@ def test_invisible_output_guard_in_auto_start_branch(monkeypatch, tmp_path, caps
     availability = iter([False, True])  # unavailable, then up after auto-start
     monkeypatch.setattr(c, "is_server_available", lambda: next(availability))
     monkeypatch.setattr(c, "_start_server_background", lambda verbose: True)
-    monkeypatch.setattr(c, "_submit_to_server", lambda rd, od: {"success": True})
+    monkeypatch.setattr(c, "_submit_to_server", lambda rd, od: {"status": "ok"})
     calls = []
     monkeypatch.setattr(c, "_submit_via_subprocess",
-                        lambda rd, od, verbose: calls.append(1) or {"success": True})
+                        lambda rd, od, verbose: calls.append(1) or {"status": "ok"})
 
     result = c.submit_simulation(RECIPE, tmp_path, auto_start_server=True)
 
@@ -344,8 +344,8 @@ def _fake_post(monkeypatch, respond):
 
 
 def test_submit_is_signed_and_response_verified(monkeypatch, own_endpoint, tmp_path):
-    seen = _fake_post(monkeypatch, lambda h: _signed_response("my-token", h, {"success": True}))
-    assert GSASClient()._submit_to_server(RECIPE, tmp_path / "out") == {"success": True}
+    seen = _fake_post(monkeypatch, lambda h: _signed_response("my-token", h, {"status": "ok"}))
+    assert GSASClient()._submit_to_server(RECIPE, tmp_path / "out") == {"status": "ok"}
     assert seen["url"] == "http://127.0.0.1:50123/simulate"
     assert seen["trust_env"] is False
     _assert_token_not_sent(seen)
@@ -358,7 +358,7 @@ def test_submit_is_signed_and_response_verified(monkeypatch, own_endpoint, tmp_p
 def test_forged_server_result_is_never_trusted(monkeypatch, own_endpoint, tmp_path):
     """A listener that took over the port answers 'success' without the token:
     the run must not report success from it."""
-    _fake_post(monkeypatch, lambda h: _FakeResponse(200, {"success": True, "rwp": 1.0}))
+    _fake_post(monkeypatch, lambda h: _FakeResponse(200, {"status": "ok", "rwp": 1.0}))
     monkeypatch.setattr(GSASClient, "is_server_available", lambda self: True)
     c = GSASClient(fallback_to_subprocess=False)
     with pytest.raises(gsas_client.ServerIdentityError):
@@ -386,9 +386,9 @@ def test_no_server_env_auto_runs_in_process(no_server, monkeypatch, tmp_path, ca
     c = GSASClient()
     _forbid_server(monkeypatch, c)
     monkeypatch.setattr(c, "_submit_via_subprocess",
-                        lambda rd, od, verbose: {"success": True})
+                        lambda rd, od, verbose: {"status": "ok"})
     result = c.submit_simulation(RECIPE, tmp_path, auto_start_server=True)
-    assert result == {"success": True, "method": "subprocess"}
+    assert result == {"status": "ok", "method": "subprocess"}
     assert "POWDERLINE_NO_SERVER" in capsys.readouterr().out
 
 
@@ -581,7 +581,7 @@ def test_stale_server_falls_back_in_process_in_auto_mode(client, monkeypatch, tm
     monkeypatch.setattr(client, "_submit_to_server", lambda rd, od: pytest.fail("a stale server must not run the job"))
     calls = []
     monkeypatch.setattr(client, "_submit_via_subprocess",
-                        lambda rd, od, verbose: calls.append(1) or {"success": True})
+                        lambda rd, od, verbose: calls.append(1) or {"status": "ok"})
     result = client.submit_simulation(RECIPE, tmp_path)
     assert calls and result["method"] == "subprocess"
     out = capsys.readouterr().out
@@ -601,7 +601,7 @@ def test_stale_server_with_fallback_disabled_is_server_unavailable(monkeypatch, 
 
 def test_current_server_is_used(client, monkeypatch, tmp_path):
     monkeypatch.setattr(client, "server_is_stale", lambda: False)
-    monkeypatch.setattr(client, "_submit_to_server", lambda rd, od: {"success": True})
+    monkeypatch.setattr(client, "_submit_to_server", lambda rd, od: {"status": "ok"})
     monkeypatch.setattr(client, "_server_output_visible", lambda result, od, before: True)
     monkeypatch.setattr(client, "_submit_via_subprocess", lambda rd, od, verbose: pytest.fail("server was current"))
     assert client.submit_simulation(RECIPE, tmp_path)["method"] == "server"

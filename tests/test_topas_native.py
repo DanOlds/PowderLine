@@ -736,7 +736,7 @@ def test_runner_no_tc_exe_generate_only(tmp_path, monkeypatch):
     result = native_run.run_native(model, out_dir)
 
     # re/12 D6: generate-only is a normal outcome, not a failure
-    assert result["status"] == "generated" and result["success"] is True
+    assert result["status"] == "generated" and "success" not in result
     assert result["rwp"] is None and result["converged"] is None
     assert [w["code"] for w in result["warnings"] if w["code"] == "topas_generate_only"] == ["topas_generate_only"]
     note = next(w for w in result["warnings"] if w["code"] == "topas_generate_only")
@@ -1037,7 +1037,6 @@ def test_topas_import_does_not_load_gsasii():
 
 #: run() dict keys and types locked by tests/test_api.py for GSAS-II; every engine returns them.
 _GSASII_CONTRACT = {
-    "success": bool,
     "run_id": str,
     "rwp": (float, type(None)),
     "elapsed_time": float,

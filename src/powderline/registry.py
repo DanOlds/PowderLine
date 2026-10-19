@@ -57,7 +57,7 @@ class Gateway:
 
 
 #: The keys of every gateway's ``validate_only`` summary (P-28).
-VALIDATE_ONLY_KEYS = ("status", "success", "rwp", "elapsed_time", "method", "schema_name", "core_schema_version",
+VALIDATE_ONLY_KEYS = ("status", "rwp", "elapsed_time", "method", "schema_name", "core_schema_version",
                       "engine_schema_version", "phases", "simulation_mode", "parameters_requested", "warnings",
                       "engine")
 
@@ -65,7 +65,7 @@ VALIDATE_ONLY_KEYS = ("status", "success", "rwp", "elapsed_time", "method", "sch
 def validate_only_summary(model, warnings: list, *, phases: int, simulation_mode: bool, engine: dict) -> dict:
     """The ``validate_only`` result every gateway returns (P-28): no refinement, nothing written, no ``run_id``.
 
-    Common keys: ``status`` (``"validated"``), ``success`` (True; the deprecated alias, re/12 D3), ``rwp`` (None),
+    Common keys: ``status`` (``"validated"``), ``rwp`` (None),
     ``elapsed_time`` (0.0), ``method`` (``"validate_only"``),
     ``schema_name``, ``core_schema_version``, ``engine_schema_version``, ``phases`` (0 for a peak-fit workflow),
     ``simulation_mode`` (the engine schema's rule), ``parameters_requested``
@@ -76,7 +76,7 @@ def validate_only_summary(model, warnings: list, *, phases: int, simulation_mode
     from powderline.schema_core import parameters_requested  # core; no engine import
 
     return {
-        "status": "validated", "success": True, "rwp": None, "elapsed_time": 0.0, "method": "validate_only",
+        "status": "validated", "rwp": None, "elapsed_time": 0.0, "method": "validate_only",
         "schema_name": model.schema_name, "core_schema_version": model.core_schema_version,
         "engine_schema_version": model.engine_schema_version,
         "phases": phases, "simulation_mode": simulation_mode, "parameters_requested": parameters_requested(model),

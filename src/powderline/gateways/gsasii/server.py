@@ -656,12 +656,11 @@ class SimulationRequest(BaseModel):
 class SimulationResponse(BaseModel):
     """The wire envelope (re/12, ``powderline.results``, ``envelope_version`` 1): every application outcome
     is HTTP 200 with one of these; ``status`` is ``ok`` or ``failed`` (with ``failure``); 4xx/5xx are
-    auth/transport only. ``success`` is the deprecated alias, absent on a failed envelope."""
+    auth/transport only."""
     envelope_version: Optional[str] = None
     status: Optional[str] = None
     converged: Optional[bool] = None
     failure: Optional[dict] = None
-    success: Optional[bool] = None
     run_id: Optional[str] = None
     rwp: Optional[float] = None
     elapsed_time: Optional[float] = None

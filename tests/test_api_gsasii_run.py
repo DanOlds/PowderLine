@@ -239,7 +239,7 @@ def test_ok_result_has_status_and_alias_but_no_error_key(lab6_subprocess_run):
     """re/12 (review focus 5): an ok result carries status/converged/envelope_version and the deprecated
     success alias; the pre-0.2.0 error/traceback keys are gone (a failure raises instead)."""
     result, _ = lab6_subprocess_run
-    assert result["status"] == "ok" and result["success"] is True and result["envelope_version"] == "1"
+    assert result["status"] == "ok" and "success" not in result and result["envelope_version"] == "1"
     assert result["converged"] in (True, False)
     assert "error" not in result and "traceback" not in result
 

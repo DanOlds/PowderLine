@@ -771,7 +771,7 @@ def test_run_validate_only(tmp_path):
     result = gateway.run(recipe, str(tmp_path), validate_only=True)
 
     assert result["method"] == "validate_only"
-    assert result["status"] == "validated" and result["success"] is True  # re/12 D3 (P-28 shape + status)
+    assert result["status"] == "validated" and "success" not in result  # re/12 D3 (P-28 shape + status)
     assert result["rwp"] is None
     assert "schema_name" in result
     assert "engine_schema_version" in result

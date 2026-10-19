@@ -168,7 +168,7 @@ def test_run_validate_only_returns_summary(recipe_LaB6_dict, tmp_path):
     """run(validate_only=True) returns a summary dict without executing a refinement."""
     result = powderline.run(recipe_LaB6_dict, tmp_path / "out", validate_only=True)
 
-    assert result["success"] is True
+    assert result["status"] == "validated" and "success" not in result
     assert result["method"] == "validate_only"
     assert result["schema_name"] == "gsasii.rietveld"
     assert isinstance(result["phases"], int)
@@ -282,7 +282,7 @@ def test_run_validate_only_summary_is_uniform_across_gateways(tmp_path):
                                       validate_only=True) for name, path in recipes.items()}
     for name, s in summaries.items():
         assert tuple(s) == VALIDATE_ONLY_KEYS, name
-        assert s["success"] is True and s["rwp"] is None and s["elapsed_time"] == 0.0, name
+        assert s["status"] == "validated" and s["rwp"] is None and s["elapsed_time"] == 0.0, name
         assert s["status"] == "validated", name  # re/12 D3: every run() dict carries a status
         assert s["method"] == "validate_only" and s["schema_name"].startswith(name + "."), name
         assert s["core_schema_version"] == "1.0.0" and s["engine_schema_version"] == "1.0.0", name
@@ -293,3 +293,12 @@ def test_run_validate_only_summary_is_uniform_across_gateways(tmp_path):
     assert set(summaries["gsasii"]["engine"]) == {"refinement_cycles"}
     assert set(summaries["topas"]["engine"]) == {"iters", "engine_version"}
     assert set(summaries["easydiffraction"]["engine"]) == {"calculator"}
+
+
+def test_validate_only_summary_has_no_success_alias(tmp_path):
+    """re/19 (P-42 D2): the validate-only summary is an envelope without the deprecated key."""
+    import json
+    recipe = json.loads((Path(__file__).resolve().parents[1] / "examples" / "example_LaB6" / "input.json")
+                        .read_text(encoding="utf-8-sig"))
+    summary = powderline.run(recipe, tmp_path, validate_only=True)
+    assert summary["status"] == "validated" and "success" not in summary
