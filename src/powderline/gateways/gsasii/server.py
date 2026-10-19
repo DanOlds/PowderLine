@@ -23,11 +23,10 @@ Security notes:
       server: ``auto`` mode runs in-process, ``server`` mode returns an error,
       and ``gsas-server start``/``restart`` refuse.
     - No rate limiting is applied.
-    - The server resolves ``output_dir`` in ITS OWN filesystem view. A client
-      on another node — or a server started inside a sandbox/container with a
-      private /tmp — will never see the output files even though the run
-      succeeds. ``GSASClient._server_output_visible`` guards clients against
-      this and falls back to in-process execution.
+    - The server needs no filesystem in common with its clients (re/19, KI-12):
+      each job runs in a private scratch directory under the state dir and its
+      output files travel back base64-encoded inside the signed response
+      (``files``); the client writes them into its own ``output_dir``.
 
 Performance:
 - First simulation: ~12s (server startup + GSAS-II import)
@@ -51,6 +50,7 @@ Usage:
     pixi run gsas-server restart
 """
 
+import base64
 import json
 import sys
 import os
@@ -66,12 +66,13 @@ import secrets
 import threading
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+import shutil
 import tempfile
 import atexit
 import contextlib
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from powderline import results as envelopes
 from powderline.exceptions import EngineExecutionError
@@ -645,11 +646,45 @@ def _release_state_files() -> None:
     _lock_fd = None
 
 
+# --- job scratch directories and in-band files (re/19, KI-12) ---
+
+JOB_PREFIX = 'job-'                    # scratch dirs under the state dir, one per job, removed after the response
+BACKUP_GLOB = '*.bak*.gpx'             # GSAS-II's own backup copies: not part of PowderLine's output
+
+
+def collect_output_files(directory: Path) -> Dict[str, str]:
+    """``{name: base64}`` of every regular file in ``directory`` except GSAS-II's backup copies."""
+    directory = Path(directory)
+    backups = {p.name for p in directory.glob(BACKUP_GLOB)}
+    return {p.name: base64.b64encode(p.read_bytes()).decode('ascii')
+            for p in sorted(directory.iterdir()) if p.is_file() and p.name not in backups}
+
+
+def sweep_job_dirs() -> int:
+    """Remove scratch directories a previous server left behind (a crash mid-job); the count removed."""
+    removed = 0
+    for path in state_dir().glob(JOB_PREFIX + '*'):
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+            removed += 1
+    return removed
+
+
+def _attach_files(envelope: Dict[str, Any], job: Path) -> Dict[str, Any]:
+    """Put the job's files on the wire envelope; ``output_files`` becomes their bare names."""
+    envelope['files'] = collect_output_files(job)
+    envelope['output_files'] = sorted(envelope['files'])
+    return envelope
+
+
 # --- Pydantic request/response models ---
 
 class SimulationRequest(BaseModel):
+    """A job: the recipe inline. No ``output_dir`` (re/19, KI-12): the server's filesystem is not the
+    client's; the job runs in a private scratch directory and its files travel back in the response."""
+    model_config = ConfigDict(extra="forbid")
+
     recipe_data: dict
-    output_dir: str
     verbose: bool = False
 
 
@@ -666,6 +701,7 @@ class SimulationResponse(BaseModel):
     elapsed_time: Optional[float] = None
     method: Optional[str] = None
     output_files: Optional[List[str]] = None
+    files: Optional[Dict[str, str]] = None  # name -> base64 content of every output file (re/19, KI-12)
     fit_profile: Optional[dict] = None
     unit_cell_data: Optional[dict] = None
     peak_list_data: Optional[dict] = None
@@ -839,6 +875,13 @@ class GSASServer:
         import uvicorn
 
         self.start_time = datetime.now()
+        try:
+            swept = sweep_job_dirs()
+        except (OSError, ServerStateError) as e:
+            self.logger.warning(f"could not sweep leftover job directories: {e}")
+        else:
+            if swept:
+                self.logger.info(f"Removed {swept} leftover job director{'y' if swept == 1 else 'ies'}")
         self.logger.info("=" * 60)
         self.logger.info("GSAS-II Server Starting")
         self.logger.info("=" * 60)
@@ -872,8 +915,7 @@ class GSASServer:
         """Run a GSAS-II simulation with the loaded GSAS-II runtime.
 
         Args:
-            request: Dictionary with 'recipe_data' (inline recipe dict), 'output_dir',
-                     and optional 'verbose'
+            request: Dictionary with 'recipe_data' (inline recipe dict) and optional 'verbose'
 
         Returns:
             An envelope (``powderline.results``): ``ok`` with the result keys ('run_id', 'rwp',
@@ -885,14 +927,11 @@ class GSASServer:
         from pydantic import ValidationError
 
         recipe_dict = request.get('recipe_data')
-        output_dir = Path(request['output_dir'])
         verbose = request.get('verbose', False)
 
         if recipe_dict is None:
             return envelopes.failure_envelope("backend", "backend_error", "Missing recipe_data in request",
                                               method="server")
-
-        output_dir.mkdir(parents=True, exist_ok=True)
 
         # Validate recipe
         try:
@@ -907,17 +946,22 @@ class GSASServer:
             return envelopes.failure_envelope("backend", "backend_error", f"Failed to parse recipe: {str(e)}",
                                               method="server")
 
-        # Run refinement directly using loaded GSAS-II libraries; every outcome is an envelope (re/12)
-        files = lambda: sorted(str(f) for f in output_dir.glob('*') if f.is_file())  # noqa: E731
+        # The job runs in a private scratch dir (KI-12): whatever it writes travels back in the envelope,
+        # on every branch, and the dir is removed afterwards. The client writes the files where it wants them.
+        job = Path(tempfile.mkdtemp(prefix=JOB_PREFIX, dir=state_dir()))
         try:
-            result = run_refinement(recipe, output_dir, verbose=verbose, method='server')
-        except EngineExecutionError as e:  # R30: PowderLine's own failure (divergence, site, peak fit)
-            import traceback
-            return e.result or envelopes.failure_envelope("engine", e.reason, str(e), method="server",
-                                                          output_files=files(), traceback=traceback.format_exc())
-        if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
-            return envelopes.legacy_failure(result)
-        return envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
+            try:
+                result = run_refinement(recipe, job, verbose=verbose, method='server')
+            except EngineExecutionError as e:  # R30: PowderLine's own failure (divergence, site, peak fit)
+                import traceback
+                return _attach_files(e.result or envelopes.failure_envelope(
+                    "engine", e.reason, str(e), method="server", traceback=traceback.format_exc()), job)
+            if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
+                return _attach_files(envelopes.legacy_failure(result), job)
+            return _attach_files(envelopes.with_status_fields(result, status="ok",
+                                                              converged=envelopes.converged_of(result)), job)
+        finally:
+            shutil.rmtree(job, ignore_errors=True)
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals."""

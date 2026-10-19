@@ -583,7 +583,7 @@ def app_client():
 
 
 def _job_body(out):
-    return json.dumps({"recipe_data": {}, "output_dir": str(out)}).encode()
+    return json.dumps({"recipe_data": {}}).encode()  # no output_dir since re/19 (KI-12); `out` unused
 
 
 @pytest.mark.parametrize("case", [
@@ -606,7 +606,7 @@ def test_unauthenticated_requests_rejected(app_client, case, tmp_path):
         _, headers = _signed_headers("POST", "/simulate", body, ts=str(int(time.time()) + 3600))
     elif case == "tampered_body":
         _, headers = _signed_headers("POST", "/simulate", body)
-        body = _job_body(tmp_path / "elsewhere")
+        body = json.dumps({"recipe_data": {"tampered": True}}).encode()  # signed one body, sent another
     elif case == "wrong_path":
         _, headers = _signed_headers("POST", "/health", body)
     elif case == "non_hex_nonce":
@@ -954,3 +954,97 @@ def test_health_reports_version_and_code_hash(app_client):
     body = resp.json()
     assert body["powderline_version"] == powderline.__version__
     assert body["code_hash"] == gsas_server.source_tree_hash()
+
+
+# --- re/19 (KI-12, P-42): the server runs each job in a private scratch dir and ships its files ------------
+
+import base64  # noqa: E402
+
+OK_RESULT = {"run_id": "r1", "rwp": 1.0, "r_exp": 1.0, "gof": 1.0, "chi2_red": 1.0, "elapsed_time": 0.1,
+             "method": "server", "warnings": [], "simulation_mode": False, "engine_details": {"converged": True},
+             "fit_profile": {}, "unit_cell_data": {}, "peak_list_data": {}, "refined_parameters": [],
+             "spf_peaks": {}, "spf_convergence_diagnostics": {}}
+JOB_FILES = ["dummy.gpx", "dummy.bak0.gpx", "dummy.lst", "fit_profile.txt", "LaB6_unit_cell_report.csv"]
+SHIPPED = {"dummy.gpx", "dummy.lst", "fit_profile.txt", "LaB6_unit_cell_report.csv"}
+
+
+def _real_app(monkeypatch, tmp_path, run_stub):
+    """A TestClient on the real ``_run_simulation`` with ``routing.run_refinement`` replaced by ``run_stub``."""
+    pytest.importorskip("fastapi")
+    import logging
+    from fastapi.testclient import TestClient
+    from powderline.gateways.gsasii import routing
+
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setattr(gsas_server, "state_dir", lambda: state)
+    monkeypatch.setattr(routing, "run_refinement", run_stub)
+    server = gsas_server.GSASServer.__new__(gsas_server.GSASServer)
+    server.request_count = 0
+    server.start_time = None
+    server.token = TOKEN
+    server.code_hash = gsas_server.source_tree_hash()
+    server.logger = logging.getLogger("powderline.server.test")
+    return TestClient(server.create_app()), state
+
+
+def _simulate(client, recipe, **extra):
+    body = json.dumps({"recipe_data": recipe, **extra}).encode()
+    _, headers = _signed_headers("POST", "/simulate", body)
+    return client.post("/simulate", content=body, headers=headers)
+
+
+def _writes(names, result=None, raise_=None):
+    """A run_refinement stand-in that writes ``names`` into the directory it is given, then returns or raises."""
+    def stub(recipe, output_dir, verbose=False, method="server"):
+        for n in names:
+            (Path(output_dir) / n).write_bytes(f"content of {n}".encode())
+        if raise_ is not None:
+            raise raise_
+        return dict(result or {}, output_files=[str(Path(output_dir) / n) for n in names])
+    return stub
+
+
+def test_simulate_returns_files_in_band(monkeypatch, tmp_path, recipe_LaB6_dict):
+    client, state = _real_app(monkeypatch, tmp_path, _writes(JOB_FILES, OK_RESULT))
+    body = _simulate(client, recipe_LaB6_dict).json()
+    assert body["status"] == "ok"
+    assert set(body["files"]) == SHIPPED  # GSAS-II's backup copies are not shipped
+    assert base64.b64decode(body["files"]["dummy.lst"]) == b"content of dummy.lst"
+    assert body["output_files"] == sorted(SHIPPED)  # bare names on the wire
+    assert not list(state.glob("job-*")), "the scratch dir must be gone"
+
+
+def test_simulate_failure_ships_files_too(monkeypatch, tmp_path, recipe_LaB6_dict):
+    from powderline.exceptions import EngineExecutionError
+    err = EngineExecutionError("the pattern diverged", reason="diverged")
+    client, state = _real_app(monkeypatch, tmp_path, _writes(["dummy.lst", "dummy.bak0.gpx"], raise_=err))
+    body = _simulate(client, recipe_LaB6_dict).json()
+    assert body["status"] == "failed" and body["failure"]["reason"] == "diverged"
+    assert set(body["files"]) == {"dummy.lst"} and body["output_files"] == ["dummy.lst"]
+    assert not list(state.glob("job-*"))
+
+
+def test_simulate_legacy_failure_ships_files(monkeypatch, tmp_path, recipe_LaB6_dict):
+    client, state = _real_app(monkeypatch, tmp_path, _writes(["dummy.lst"], {"success": False, "error": "x",
+                                                                                 "method": "server"}))
+    body = _simulate(client, recipe_LaB6_dict).json()
+    assert body["status"] == "failed" and body["failure"]["reason"] == "engine_crashed"
+    assert set(body["files"]) == {"dummy.lst"}
+    assert not list(state.glob("job-*"))
+
+
+def test_simulate_with_output_dir_is_refused(monkeypatch, tmp_path, recipe_LaB6_dict):
+    """The request no longer names a directory: the server's filesystem is not the client's (KI-12)."""
+    client, _ = _real_app(monkeypatch, tmp_path, _writes([], OK_RESULT))
+    assert _simulate(client, recipe_LaB6_dict, output_dir=str(tmp_path)).status_code == 422
+
+
+def test_leftover_job_dirs_are_swept(monkeypatch, tmp_path):
+    state = tmp_path / "state"
+    (state / "job-old").mkdir(parents=True)
+    (state / "job-old" / "dummy.gpx").write_text("x")
+    (state / "keep").mkdir()
+    monkeypatch.setattr(gsas_server, "state_dir", lambda: state)
+    assert gsas_server.sweep_job_dirs() == 1
+    assert not (state / "job-old").exists() and (state / "keep").exists()
