@@ -216,6 +216,11 @@ distribution (out of tree) that provides:
      (`registry.check_engine_version`; raise `EngineNotAvailableError` with
      `env` and `install_command` when the engine is missing — only on a real
      run, never for `validate_only`), imports the engine **lazily**, runs, and
+     hands `powderline.roundtrip` its refined values by recipe path (`{path: (value, esd)}`
+     in recipe units, plus the flagged paths it did not vary and those that ended at a
+     limit; `roundtrip.build_output` / `attach` do the rest: tie propagation, the
+     multiplicity invariant, `output_recipe`, `output_recipe_valid`, `parameter_dispositions`,
+     the two files) and
      returns the standardized result dict with the same keys and types as the
      other gateways (`status`, `converged`, `envelope_version`, `run_id`, `rwp`, `r_exp`, `gof`, `chi2_red`,
      `simulation_mode`, `engine_details` with `parameters_requested` /

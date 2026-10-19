@@ -136,7 +136,7 @@ EB-40, EB-05). Nothing is swallowed; the recipe does not state site symmetry
 
 ---
 
-## KI-04 — Recipe→output provenance is implicit; no round-trip `planned-fix · major` → open, partly addressed (0.2.0)
+## KI-04 — Recipe→output provenance is implicit; no round-trip `planned-fix · major` → resolved for topas and easydiffraction (0.2.0, re/20a); gsasii in re/20b
 
 **What.** Outputs are CSV/txt keyed by GSAS-II parameter names. Which parameters
 were *actually* varied vs held-by-user vs held-by-symmetry vs frozen-by-limit is
@@ -155,8 +155,13 @@ data-management consumer needs machine-readable provenance.
 **Disposition (0.2.0, confirmed 2026-10-16: open, partly addressed).** Results now report `engine_details.parameters_requested` (from the
 recipe) against `parameters_varied` (what the engine varied) and a structured
 `warnings` list (parameters not varied, limits hit, convergence) (A45, A128).
-A recipe-shaped output for round-trip / sequential refinement still does not
-exist.
+**Update (re/20a, P-43):** every result carries `output_recipe` (the resolved
+recipe with the refined values written back; validates unchanged) and
+`parameter_dispositions` (`varied` / `held_by_user` / `held_by_symmetry` /
+`requested_not_varied` / `default_applied`, with ESDs and `at_limit`); topas and
+easydiffraction fill them from their own path bookkeeping; the GSAS-II
+name-to-path map is re/20b, until which its results say `output_recipe: null`
+with the warning `output_recipe_not_valid`. The id closes with re/20b.
 
 ---
 

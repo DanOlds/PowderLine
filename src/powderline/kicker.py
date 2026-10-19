@@ -314,6 +314,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{INFO} Generated the engine input only ({result.get('method')}, {result.get('elapsed_time', 0):.1f}s):")
         for f in result.get('output_files', []):
             print(f"   {f}")
+        _print_output_recipe(result)
         _print_warnings(result.get('warnings'), verbose=True)  # the topas_generate_only note says how to run it
         return 0
 
@@ -331,8 +332,21 @@ def main(argv: list[str] | None = None) -> int:
     if result.get('converged') is False:
         print(f"{WARN} The refinement did not converge within the cycle limit; the values are reported as they "
               "stand (see the *_fit_not_converged warning).")
+    _print_output_recipe(result, verbose=args.verbose)
     print()
     return 0
+
+
+def _print_output_recipe(result: dict, verbose: bool = False) -> None:
+    """Where the output recipe went (re/20a, KI-04) and, with ``verbose``, how its values came about."""
+    path = next((f for f in result.get('output_files') or [] if f.endswith('output_recipe.json')), None)
+    if result.get('output_recipe') is None:
+        return  # the gateway said why in its warnings
+    state = "" if result.get('output_recipe_valid') else " (not valid as written: see the output_recipe_not_valid warning)"
+    print(f"{INFO} Output recipe: {path or 'in the result'}{state}")
+    if verbose and result.get('parameter_dispositions') is not None and len(result['parameter_dispositions']):
+        counts = result['parameter_dispositions']['disposition'].value_counts().to_dict()
+        print("   Dispositions: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
 
 
 if __name__ == "__main__":

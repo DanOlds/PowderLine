@@ -212,6 +212,31 @@ A `gsasii.*` or `easydiffraction.*` run in an environment without the engine
 raises `EngineNotAvailableError`, whose message names the environment and the
 install command.
 
+### Sequential refinement: feed the output recipe back
+
+Every result carries `output_recipe`: the recipe the engine actually saw, with
+its refined values written back, that validates unchanged (re/20, KI-04). A
+sequential series is therefore a loop over data, not over parameter names:
+
+```python
+import powderline
+from powderline.recipes import with_block
+
+recipe = powderline.load_recipe_asset("step_000/input.json")
+for i, xrd_data in enumerate(series):            # each a core xrd_data block: tth, Itth, Itth_weights
+    result = powderline.run(recipe, f"step_{i:03d}")
+    if not result["output_recipe_valid"]:        # an engine value the schema refuses: look, then decide
+        print(result["warnings"][-1]["message"]); break
+    recipe = with_block(result["output_recipe"], "payload.xrd_data", xrd_data)
+```
+
+`parameter_dispositions` (also `parameter_dispositions.csv`) tells you, per
+recipe path, whether the value was `varied`, `held_by_user`, `held_by_symmetry`,
+`requested_not_varied` or `default_applied`, with its ESD and whether it ended
+at a limit. `powderline.recipes.block` / `with_block` move only core blocks
+(`payload.xrd_data`, `payload.fit_range`, `payload.phases.<name>`) between
+recipes; an engine's own blocks stay in that engine's terms.
+
 ### Server-based refinement (`GSASClient`)
 
 ```python

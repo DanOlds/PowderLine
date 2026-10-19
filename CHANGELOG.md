@@ -25,6 +25,22 @@ recipes do not validate; see the
 
 ### Added
 
+- **The output recipe** (KI-04, re/20a, P-43): every result and the validate-only
+  summary carry `output_recipe`, a complete recipe of the same schema, *resolved*
+  (refined values written back at their recipe paths, symmetry-derived values in
+  their exact form, gateway defaults stated, the user's flags/bounds/controls/data
+  unchanged, one reserved `metadata.powderline_provenance` key), that validates
+  unchanged and reproduces the step when fed back; `output_recipe_valid` and the
+  warning `output_recipe_not_valid` say when an engine returned something the
+  schema refuses; `parameter_dispositions` labels every refinable leaf
+  (`varied`, `held_by_user`, `held_by_symmetry`, `requested_not_varied`,
+  `default_applied`; ESD; `at_limit`). Core propagates every symmetry tie group
+  and asserts every site keeps its multiplicity. Files `output_recipe.json` and
+  `parameter_dispositions.csv`. TOPAS and easydiffraction fill it; GSAS-II
+  reports it unavailable until re/20b. `powderline.recipes.block` /
+  `with_block` move core blocks (`xrd_data`, `fit_range`, a phase) between
+  recipes, the only parts shared across engines.
+
 **Schemas and versioning**
 - **Core schema 1.0.0** (`src/powderline/schema_core.py`): the shared top level
   (`schema_name`, `core_schema_version`, `engine_schema_version`, `metadata`,

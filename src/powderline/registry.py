@@ -59,7 +59,7 @@ class Gateway:
 #: The keys of every gateway's ``validate_only`` summary (P-28).
 VALIDATE_ONLY_KEYS = ("status", "rwp", "elapsed_time", "method", "schema_name", "core_schema_version",
                       "engine_schema_version", "phases", "simulation_mode", "parameters_requested", "warnings",
-                      "engine")
+                      "engine", "output_recipe", "output_recipe_valid")
 
 
 def validate_only_summary(model, warnings: list, *, phases: int, simulation_mode: bool, engine: dict) -> dict:
@@ -72,15 +72,20 @@ def validate_only_summary(model, warnings: list, *, phases: int, simulation_mode
     (:func:`powderline.schema_core.parameters_requested`) and ``warnings`` (the structured warnings of
     validating the user's recipe, A115). Engine-specific items go under ``engine`` (gsasii
     ``refinement_cycles``; topas ``iters``, ``engine_version``; easydiffraction ``calculator``).
+    ``output_recipe`` (re/20a, KI-04) is the *resolved* recipe -- what the engine would see: derived values
+    exact, gateway defaults stated -- and ``output_recipe_valid`` whether it re-validates; nothing is written.
     """
+    from powderline import roundtrip  # core; no engine import
     from powderline.schema_core import parameters_requested  # core; no engine import
 
+    resolved = roundtrip.build_output(model, {}, parent_run_id=None)
     return {
         "status": "validated", "rwp": None, "elapsed_time": 0.0, "method": "validate_only",
         "schema_name": model.schema_name, "core_schema_version": model.core_schema_version,
         "engine_schema_version": model.engine_schema_version,
         "phases": phases, "simulation_mode": simulation_mode, "parameters_requested": parameters_requested(model),
         "warnings": warnings, "engine": dict(engine),
+        "output_recipe": resolved.recipe, "output_recipe_valid": resolved.valid,
     }
 
 

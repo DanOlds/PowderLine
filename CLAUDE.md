@@ -184,7 +184,9 @@ compares the server's source-tree hash with its own and refuses a stale one).
 - Results: uniform `rwp`/`r_exp`/`gof`/`chi2_red` from core `fitstats` over the
   window's weighted points; the engine's own values and
   `parameters_requested`/`parameters_varied` under `engine_details`; every
-  result carries `status` (`ok` / `generated`), `converged` and
+  result carries `status` (`ok` / `generated`), `converged`, `output_recipe` +
+  `output_recipe_valid` + `parameter_dispositions` (re/20, KI-04: the resolved
+  recipe with refined values written back, built by `powderline.roundtrip`) and
   `envelope_version` (no `success` key: `status` is the outcome); **every failure
   raises**: `EngineExecutionError` (the engine ran and failed) or
   `ExecutionBackendError` (it did not run), with `.reason` from

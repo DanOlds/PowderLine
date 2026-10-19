@@ -70,3 +70,42 @@ def test_client_normalize_recipe_uses_the_loader(tmp_path):
     bad.write_text("{", encoding="utf-8")
     with pytest.raises(ValueError, match="not valid JSON"):
         GSASClient._normalize_recipe(bad)
+
+
+# --- re/20a (KI-04, P-43 D4): core blocks are the chaining currency ------------------------------------------
+
+def _two_recipes():
+    import json
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "examples"
+    a = json.loads((root / "example_LaB6" / "input.json").read_text(encoding="utf-8-sig"))
+    b = json.loads((root / "example_LaB6" / "topas" / "input.json").read_text(encoding="utf-8-sig"))
+    return a, b
+
+
+def test_block_and_with_block_move_core_blocks_between_engines():
+    from powderline import validate
+    from powderline.recipes import block, with_block
+    gsasii, topas = _two_recipes()
+    data = block(gsasii, "payload.xrd_data")
+    assert data is not gsasii["payload"]["xrd_data"] and data == gsasii["payload"]["xrd_data"]
+    grafted = with_block(topas, "payload.xrd_data", data)
+    assert grafted["payload"]["xrd_data"] == data and topas["payload"]["xrd_data"] is not data  # a copy, not an alias
+    validate(grafted)  # the target recipe's own validation is the gate
+
+
+def test_with_block_refuses_engine_blocks():
+    from powderline.recipes import with_block
+    gsasii, topas = _two_recipes()
+    with pytest.raises(ValueError, match="not a core block"):
+        with_block(topas, "payload.instrument", gsasii["payload"]["instrument"])
+    with pytest.raises(ValueError, match="not a core block"):
+        with_block(topas, "payload.refinement_controls", {})
+
+
+def test_phase_block_is_a_core_block():
+    from powderline.recipes import block, with_block
+    gsasii, topas = _two_recipes()
+    phase = block(gsasii, "payload.phases.LaB6")
+    out = with_block(topas, "payload.phases.LaB6_copy", phase)
+    assert out["payload"]["phases"]["LaB6_copy"]["space_group"] == phase["space_group"]

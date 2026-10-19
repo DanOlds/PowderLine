@@ -1,4 +1,4 @@
-"""Recipe files: load a recipe asset from disk (engine-free).
+"""Recipe files and core blocks (engine-free): load a recipe asset from disk; move a core block between recipes.
 
 ``load_recipe_asset`` moved here from ``powderline.kicker`` (re/07, P-06) so
 the public API can read a recipe without importing any engine. Interpreting
@@ -49,3 +49,56 @@ def load_recipe_asset(recipe_path: Path) -> dict:
             f"{recipe_path}: a recipe must be a mapping with schema_name and payload, "
             f"got {type(data).__name__}")
     return data
+
+
+#: The blocks every engine schema shares by construction (the core schema): the only parts of a recipe that may
+#: move from one recipe to another, whatever their engines (P-43 D4). ``payload.phases.<name>`` is one of them.
+CORE_BLOCKS = ("payload.xrd_data", "payload.fit_range")
+
+
+def _is_core_block(path: str) -> bool:
+    return path in CORE_BLOCKS or (path.startswith("payload.phases.") and path.count(".") == 2)
+
+
+def _walk(recipe: dict, keys: list, create: bool = False) -> dict:
+    node = recipe
+    for key in keys:
+        if create:
+            node = node.setdefault(key, {})
+        else:
+            node = node[key]
+    return node
+
+
+def block(recipe: dict, path: str) -> dict:
+    """A deep copy of the core block at ``path`` (``payload.xrd_data``, ``payload.fit_range``,
+    ``payload.phases.<name>``) of a recipe dict -- the chaining currency between tools (re/20a, KI-04).
+
+    Raises:
+        ValueError: ``path`` is not a core block (engine blocks are never shared between engines).
+        KeyError: the recipe has no such block.
+    """
+    import copy
+
+    if not _is_core_block(path):
+        raise ValueError(f"{path!r} is not a core block; only {', '.join(CORE_BLOCKS)} and payload.phases.<name> "
+                         "move between recipes (an engine's own blocks are written in that engine's terms)")
+    keys = path.split(".")
+    return copy.deepcopy(_walk(recipe, keys[:-1])[keys[-1]])
+
+
+def with_block(recipe: dict, path: str, value: dict) -> dict:
+    """A deep copy of ``recipe`` with the core block at ``path`` replaced by a copy of ``value``.
+
+    The result is not validated here: the target recipe's own schema is the gate
+    (:func:`powderline.validate`). Raises ``ValueError`` for a path that is not a core block.
+    """
+    import copy
+
+    if not _is_core_block(path):
+        raise ValueError(f"{path!r} is not a core block; only {', '.join(CORE_BLOCKS)} and payload.phases.<name> "
+                         "move between recipes (an engine's own blocks are written in that engine's terms)")
+    out = copy.deepcopy(recipe)
+    keys = path.split(".")
+    _walk(out, keys[:-1], create=True)[keys[-1]] = copy.deepcopy(value)
+    return out

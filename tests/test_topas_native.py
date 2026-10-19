@@ -1052,6 +1052,10 @@ _GSASII_CONTRACT = {
     "status": str,
     "converged": (bool, type(None)),
     "envelope_version": str,
+    # re/20a (KI-04): the output recipe (None only where a gateway cannot build it yet) and the dispositions
+    "output_recipe": (dict, type(None)),
+    "output_recipe_valid": bool,
+    "parameter_dispositions": pd.DataFrame,
 }
 
 

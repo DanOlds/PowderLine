@@ -115,6 +115,8 @@ tables are dicts keyed by phase name.
 | `warnings` | structured warnings `{code, message, field_path[, level]}` from validation and from the run; `level` is `"warning"` (absent means this) or `"info"` (a record of something PowderLine did that changes no outcome, e.g. `symmetry_value_derived`) |
 | `elapsed_time`, `method` | wall-clock seconds; which execution path ran (`server` / `subprocess` for gsasii; `topas`, `easydiffraction`, or their `_simulation` variants) |
 | `output_files` | paths written to the output directory |
+| `output_recipe`, `output_recipe_valid` | **the next step's input** (re/20, KI-04): a complete recipe of the same `schema_name`, *resolved* — refined values written back at their recipe paths, symmetry-derived values in their exact (held) form, gateway defaults stated, the user's flags, bounds, controls and data unchanged, plus the one metadata key PowderLine writes, `metadata.powderline_provenance` (`parent_run_id`, `schema_name`, `powderline_version`, `created`). Core propagates every symmetry tie group and checks that every atom keeps its multiplicity. `output_recipe_valid` says whether it re-validates as written; when it does not (an engine returned a value the schema refuses, a tie came back inconsistent) the recipe is still returned and written and the warning `output_recipe_not_valid` lists why. `null` only where a gateway cannot build it yet (GSAS-II until re/20b). The validate-only summary carries the resolved recipe too |
+| `parameter_dispositions` | one row per refinable leaf: `path, value, esd, disposition, at_limit`; `disposition` is `default_applied`, `held_by_symmetry`, `held_by_user`, `requested_not_varied` or `varied` (first that applies); `at_limit` marks a value that ended on a stated bound or an engine default limit |
 | `fit_profile` | `two_theta, y_obs, y_weights, y_calc, y_diff, y_bkg, q_values, d_spacings` |
 | `unit_cell_data` | per phase: `parameter, value, esd` |
 | `peak_list_data` | per phase: reflection list (`h, k, l, …, d_spacing, 2theta, …`; columns are the engine's) |
@@ -151,7 +153,9 @@ every gateway: `status` (`"validated"`), `rwp` (`None`), `elapsed_time` (`0.0`),
 Written by every engine into the output directory, with fixed names:
 `refined_parameters.csv`, `<phase>_unit_cell_report.csv`,
 `<phase>_peak_list_report.csv` (not with the CrysFML calculator, which reports
-no reflection list), `fit_profile.txt`. Single peak fitting adds a peak report
+no reflection list), `fit_profile.txt`, and since re/20 `output_recipe.json` and
+`parameter_dispositions.csv` (the output recipe and how each value came about;
+the recipe repeats the data arrays, so it is about the size of the input). Single peak fitting adds a peak report
 (`single_peaks_report.txt` for gsasii, `single_peaks_report.csv` for topas;
 gsasii also writes `peak_convergence_diagnostics.txt` when a peak did not
 converge).

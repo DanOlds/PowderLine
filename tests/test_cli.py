@@ -93,6 +93,7 @@ def test_cli_topas_generate_only_exits_0(tmp_path, monkeypatch, capsys):
     assert "example_case.inp" in out and "Refinement failed" not in out
     assert (case_dir / "output" / "example_case.inp").exists()
     assert (case_dir / "output" / "example_case.xye").exists()
+    assert "Output recipe:" in out and (case_dir / "output" / "output_recipe.json").exists()  # re/20a
 
 
 def test_cli_topas_output_dir_flag(tmp_path, monkeypatch):

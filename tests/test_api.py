@@ -282,6 +282,7 @@ def test_run_validate_only_summary_is_uniform_across_gateways(tmp_path):
                                       validate_only=True) for name, path in recipes.items()}
     for name, s in summaries.items():
         assert tuple(s) == VALIDATE_ONLY_KEYS, name
+        assert isinstance(s["output_recipe"], dict) and s["output_recipe_valid"] is True, name
         assert s["status"] == "validated" and s["rwp"] is None and s["elapsed_time"] == 0.0, name
         assert s["status"] == "validated", name  # re/12 D3: every run() dict carries a status
         assert s["method"] == "validate_only" and s["schema_name"].startswith(name + "."), name
@@ -302,3 +303,16 @@ def test_validate_only_summary_has_no_success_alias(tmp_path):
                         .read_text(encoding="utf-8-sig"))
     summary = powderline.run(recipe, tmp_path, validate_only=True)
     assert summary["status"] == "validated" and "success" not in summary
+
+
+def test_validate_only_summary_carries_the_resolved_recipe(tmp_path):
+    """re/20a (KI-04): validate-only returns the recipe the engine would see (resolved), valid, and writes nothing."""
+    import json
+    recipe = json.loads((Path(__file__).resolve().parents[1] / "examples" / "example_LaB6" / "input.json")
+                        .read_text(encoding="utf-8-sig"))
+    summary = powderline.run(recipe, tmp_path / "out", validate_only=True)
+    assert summary["output_recipe_valid"] is True
+    out = summary["output_recipe"]
+    assert out["schema_name"] == "gsasii.rietveld" and out["metadata"]["powderline_provenance"]["parent_run_id"] is None
+    assert powderline.validate(out).recipe.model_dump(mode="json") == out
+    assert not (tmp_path / "out").exists()
