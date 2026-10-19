@@ -358,8 +358,7 @@ silent drops (A45); when varied < requested the result warns
   `unusable_site` (gsasii, A117, before refining), `peak_fit_failed` (gsasii,
   EB-38), `engine_crashed` (any engine), `output_missing` / `output_malformed`
   (TOPAS files, easydiffraction's pattern) — and `ExecutionBackendError` when
-  the engine did not run (the GSAS-II server unavailable, disabled, timed out,
-  or its output not visible). The exception's `.reason` names the case and
+  the engine did not run (the GSAS-II server unavailable, disabled, timed out). The exception's `.reason` names the case and
   `.result` is the failed envelope; the files written before the failure stay
   on disk and are listed in it. Every returned result carries `status`
   (`ok` / `generated`) and `converged` (`true` / `false` / `null`); see

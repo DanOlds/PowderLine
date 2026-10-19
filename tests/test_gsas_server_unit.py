@@ -1048,3 +1048,14 @@ def test_leftover_job_dirs_are_swept(monkeypatch, tmp_path):
     monkeypatch.setattr(gsas_server, "state_dir", lambda: state)
     assert gsas_server.sweep_job_dirs() == 1
     assert not (state / "job-old").exists() and (state / "keep").exists()
+
+
+def test_simulate_unexpected_exception_is_an_engine_crashed_envelope_with_files(monkeypatch, tmp_path, recipe_LaB6_dict):
+    """A crash inside run_refinement that is not an EngineExecutionError still answers an envelope (not a 500)
+    and still ships what the job wrote, so the diagnostics survive the scratch dir's removal (re/19 review)."""
+    client, state = _real_app(monkeypatch, tmp_path, _writes(["dummy.lst"], raise_=RuntimeError("boom")))
+    resp = _simulate(client, recipe_LaB6_dict)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "failed" and body["failure"]["reason"] == "engine_crashed" and "boom" in body["failure"]["message"]
+    assert set(body["files"]) == {"dummy.lst"} and not list(state.glob("job-*"))

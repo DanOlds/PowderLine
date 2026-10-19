@@ -143,7 +143,7 @@ def run(
 
         - ``status`` (``"ok"``), ``converged`` (bool, or ``None`` for a
           simulation and for single peak fitting), ``envelope_version``
-          (``"1"``); ``success`` is a deprecated always-``True`` alias
+          (``"1"``); there is no ``success`` key
         - ``run_id`` (str) — UUID4 string uniquely identifying this run
         - ``rwp`` (float | None) — final weighted-profile R factor
         - ``elapsed_time`` (float) — wall-clock seconds
@@ -282,7 +282,7 @@ def _frames(result: dict) -> dict:
         pd.DataFrame(spf_diag_raw) if spf_diag_raw else pd.DataFrame()
     )
 
-    # re/12: the ok envelope fields (status, converged, envelope_version, the deprecated success alias);
+    # re/12: the ok envelope fields (status, converged, envelope_version);
     # the pre-0.2.0 top-level error/traceback keys are dropped (a failure never reaches here: it is raised).
     return envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
 

@@ -329,8 +329,8 @@ engine ran and failed; "Could not run the engine" means it never ran
 5. **The engine did not run** (`Could not run the engine (…)`): `server_unavailable` /
    `server_disabled` / `communication_failed` / `timeout` are the
    GSAS-II server's cases (see "Server Not Starting" below); `timeout` deliberately does
-   **not** fall back in-process, because the server may still be writing into the output
-   directory.
+   **not** fall back in-process, because the job is still running on the server and a
+   second run would double the work
 
 Then, as always: validate first, run with `--verbose`, and read the engine's
 log (`dummy.lst` for gsasii; the TOPAS console; the printed lmfit report for

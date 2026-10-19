@@ -135,8 +135,8 @@ recipes do not validate; see the
   and every gateway raise `EngineExecutionError` (the engine ran and failed:
   `diverged`, `unusable_site`, `peak_fit_failed`, `engine_crashed`, `output_missing`,
   `output_malformed`) or the new `ExecutionBackendError` (the engine did not run:
-  `server_unavailable`, `server_disabled`, `output_not_visible`,
-  `communication_failed`, `timeout`, `backend_error`), each with `.reason` and
+  `server_unavailable`, `server_disabled`, `communication_failed`, `timeout`,
+  `backend_error`), each with `.reason` and
   `.result` (the failed envelope, listing the files written before the failure,
   which are kept). gsasii no longer returns `success: False` dicts (ledger R30).
   Every returned result has `status` (`"ok"`, or `"generated"` for a TOPAS run

@@ -2,14 +2,15 @@
 
 Provides a simple API for submitting simulations to the GSAS-II server.
 Automatically falls back to in-process execution when the server is not
-running, or when a "successful" server run produced output files that are
-not visible to this process (server with a divergent filesystem view, e.g.
-on another node or inside a sandbox with a private /tmp).
+running or is stale. The server never sees this process's filesystem: its
+output files come back inside the signed response and are written into
+``output_dir`` here (re/19, KI-12), so a server on another node or in a
+container works like a local one.
 
 Every outcome is an *envelope* (:mod:`powderline.results`): ``ok`` from the
 server or the in-process run, ``failed`` for a backend problem (server
-unavailable, disabled, timed out, output not visible) or an engine failure
-relayed from the server. The client never raises for an application outcome;
+unavailable, disabled, timed out, a malformed transfer, a local write
+failure) or an engine failure relayed from the server. The client never raises for an application outcome;
 the gsasii gateway raises from the envelope (re/12).
 
 Only the calling user's own server is ever used: its port and secret token
@@ -62,17 +63,31 @@ class ServerRejectedRequest(RuntimeError):
 MAX_TRANSFER_BYTES = 512 * 1024 * 1024
 
 
+_WINDOWS_RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
+
+
 def _safe_file_name(name) -> bool:
-    """A bare file name the server may send: no separators, not empty, not ``.``/``..``."""
-    return (isinstance(name, str) and name not in ("", ".", "..") and "/" not in name and "\\" not in name
-            and os.path.basename(name) == name)
+    """A bare file name the server may send on every platform: no separators or NUL, not empty, not
+    ``.``/``..``, no trailing dot or space, not a Windows device name (``CON``, ``LPT1`` ...)."""
+    if not isinstance(name, str) or name in ("", ".", ".."):
+        return False
+    if "/" in name or "\\" in name or "\x00" in name or os.path.basename(name) != name:
+        return False
+    if name[-1] in ". " or name.split(".")[0].lower() in _WINDOWS_RESERVED:
+        return False
+    return True
 
 
 def _write_file(path: Path, data: bytes) -> None:
-    """Write ``data`` to ``path`` atomically: a temp file beside it, then replace (retried on Windows)."""
+    """Write ``data`` to ``path`` atomically: a temp file beside it, then replace (retried on Windows).
+    A failure leaves no ``.part`` file behind."""
     tmp = path.with_name(path.name + ".part")
-    tmp.write_bytes(data)
-    gsas_server._retry_file_op(lambda: os.replace(tmp, path), f"replace {path.name}")
+    try:
+        tmp.write_bytes(data)
+        gsas_server._retry_file_op(lambda: os.replace(tmp, path), f"replace {path.name}")
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 class GSASClient:
@@ -229,8 +244,9 @@ class GSASClient:
 
         Returns the envelope to hand back (``ok``, the server's own ``failed`` one, a ``timeout`` or
         ``communication_failed`` backend failure), or ``None`` when the caller may fall back in-process
-        (invisible output, or a transport error with fallback enabled). A timeout never falls back: the
-        server may still be writing into ``output_dir``.
+        (a transport or transfer problem with fallback enabled). A timeout never falls back: the job is
+        still running on the server, its late answer would be discarded and a second run would double
+        the work.
         """
         import httpx
 
@@ -240,7 +256,8 @@ class GSASClient:
             return envelopes.failure_envelope(
                 "backend", "timeout",
                 f"the GSAS-II server did not answer within the request timeout ({e}); not falling back "
-                f"in-process because the server may still be writing into {output_dir}", method="server")
+                f"in-process because the job is still running on the server (a second run would double the work)",
+                method="server")
         except Exception as e:
             if not self.fallback_to_subprocess:
                 return envelopes.failure_envelope("backend", "communication_failed",

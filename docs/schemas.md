@@ -135,7 +135,7 @@ tables are dicts keyed by phase name.
 | `server_unavailable` | backend | server mode: no GSAS-II server and none could be started |
 | `server_disabled` | backend | `POWDERLINE_NO_SERVER` with `execution_mode='server'` |
 | `communication_failed` | backend | an HTTP/transport error after a server was found |
-| `timeout` | backend | the request timed out; **no in-process fallback** (the server may still be writing) |
+| `timeout` | backend | the request timed out; **no in-process fallback** (the job is still running on the server; a second run would double the work) |
 | `backend_error` | backend | anything else on the execution path before the engine ran (e.g. a recipe the server could not validate) |
 
 With `validate_only=True` the result is a slim summary with the same keys on

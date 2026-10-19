@@ -1,14 +1,11 @@
 """Unit tests for GSASClient.submit_simulation.
 
-Primarily the server output-visibility guard: a GSAS-II server can be
-reachable over localhost yet have a different filesystem view than the client
-— e.g. running on another cluster node, or inside a sandbox/container with a
-private /tmp. Such a server reports success while its output files never
-appear for the client. submit_simulation must detect this (fit_profile.txt
-not freshly written after a "successful" server run — a stale file from a
-previous run into the same output_dir does not count), warn, and fall back
-to in-process execution — or return a structured error when fallback is
-disabled. Also covers the use_server bypass, the keyword-signature
+Since re/19 (KI-12) the server never sees the client's filesystem: its output
+files travel inside the signed response and submit_simulation writes them into
+output_dir (names validated, size-capped, atomic). These tests cover that
+transfer and its failure modes, the fallback rules (transport or transfer
+problem → in-process when allowed; a local write failure or a timeout never
+falls back), the use_server bypass, the keyword-signature
 regression guard, server identity (a server must prove it holds this user's
 token) and the POWDERLINE_NO_SERVER switch.
 """
@@ -572,3 +569,29 @@ def test_unwritable_output_dir_is_backend_error(client, monkeypatch, tmp_path):
 
 def test_output_not_visible_reason_is_gone():
     assert "output_not_visible" not in results.BACKEND_REASONS
+
+
+# --- re/19 review fixes ---------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", ["a\x00b", "CON", "con.txt", "x.", "x "])
+def test_null_bytes_and_windows_reserved_names_are_refused(monkeypatch, tmp_path, name):
+    c = GSASClient(fallback_to_subprocess=False)
+    monkeypatch.setattr(c, "is_server_available", lambda: True)
+    monkeypatch.setattr(c, "server_is_stale", lambda: False)
+    monkeypatch.setattr(c, "_submit_to_server", lambda rd: _server_envelope(files={name: _b64("x")}))
+    result = c.submit_simulation(RECIPE, tmp_path / "out")
+    assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
+    assert not (tmp_path / "out").exists()
+
+
+def test_failed_write_leaves_no_part_file(client, monkeypatch, tmp_path):
+    from powderline.gateways.gsasii import client as client_module
+    monkeypatch.setattr(client, "_submit_to_server", lambda rd: _server_envelope(files={"dummy.lst": _b64("x")}))
+    monkeypatch.setattr(client, "_submit_via_subprocess", lambda rd, od, verbose: pytest.fail("a local disk problem is not the server's"))
+
+    def broken_replace(src, dst):
+        raise OSError("disk full")
+    monkeypatch.setattr(client_module.os, "replace", broken_replace)
+    result = client.submit_simulation(RECIPE, tmp_path / "out")
+    assert result["status"] == "failed" and result["failure"]["reason"] == "backend_error"
+    assert not list((tmp_path / "out").glob("*.part")), "a half-written file must not be left behind"

@@ -171,8 +171,7 @@ def run(recipe, output_dir, *, verbose: bool = False, validate_only: bool = Fals
         ``run_id``, ``rwp``, ``r_exp``, ``gof``, ``chi2_red``, ``simulation_mode``,
         ``engine_details``, ``warnings``, ``elapsed_time``, ``method``,
         ``output_files``, ``fit_profile``, ``unit_cell_data``, ``peak_list_data``,
-        ``refined_parameters``, ``spf_peaks``, ``spf_convergence_diagnostics``,
-        and ``success`` (a deprecated always-``True`` alias, removed in 0.3.0).
+        ``refined_parameters``, ``spf_peaks``, ``spf_convergence_diagnostics``.
         A failed run never returns: it raises (below). See docs/schemas.md.
 
     Raises:

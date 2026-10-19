@@ -656,8 +656,14 @@ def collect_output_files(directory: Path) -> Dict[str, str]:
     """``{name: base64}`` of every regular file in ``directory`` except GSAS-II's backup copies."""
     directory = Path(directory)
     backups = {p.name for p in directory.glob(BACKUP_GLOB)}
-    return {p.name: base64.b64encode(p.read_bytes()).decode('ascii')
-            for p in sorted(directory.iterdir()) if p.is_file() and p.name not in backups}
+    files = {}
+    for p in sorted(directory.iterdir()):
+        if p.is_file():
+            if p.name not in backups:
+                files[p.name] = base64.b64encode(p.read_bytes()).decode('ascii')
+        else:
+            logging.getLogger('powderline.server').warning(f"job wrote a non-file {p.name!r}; not transferred")
+    return files
 
 
 def sweep_job_dirs() -> int:
@@ -956,6 +962,10 @@ class GSASServer:
                 import traceback
                 return _attach_files(e.result or envelopes.failure_envelope(
                     "engine", e.reason, str(e), method="server", traceback=traceback.format_exc()), job)
+            except Exception as e:  # a crash in the engine or the frozen code: an envelope, with the job's files
+                import traceback
+                return _attach_files(envelopes.failure_envelope(
+                    "engine", "engine_crashed", str(e), method="server", traceback=traceback.format_exc()), job)
             if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
                 return _attach_files(envelopes.legacy_failure(result), job)
             return _attach_files(envelopes.with_status_fields(result, status="ok",
