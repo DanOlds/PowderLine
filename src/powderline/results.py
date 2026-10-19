@@ -27,7 +27,7 @@ ENVELOPE_VERSION = "1"
 STATUSES = ("ok", "generated", "failed")
 ENGINE_REASONS = frozenset({"diverged", "unusable_site", "peak_fit_failed", "engine_crashed",
                             "output_missing", "output_malformed"})
-BACKEND_REASONS = frozenset({"server_unavailable", "server_disabled", "output_not_visible",
+BACKEND_REASONS = frozenset({"server_unavailable", "server_disabled",
                              "communication_failed", "timeout", "backend_error"})
 REASONS = ENGINE_REASONS | BACKEND_REASONS
 _KINDS = {"engine": (ENGINE_REASONS, EngineExecutionError), "backend": (BACKEND_REASONS, ExecutionBackendError)}

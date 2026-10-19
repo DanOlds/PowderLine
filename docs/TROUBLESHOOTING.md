@@ -327,7 +327,7 @@ engine ran and failed; "Could not run the engine" means it never ran
    so a missing output file is the error; its messages are in its console
    window and `tc.log`. A file it did write but PowderLine cannot read strictly is `output_malformed`.
 5. **The engine did not run** (`Could not run the engine (…)`): `server_unavailable` /
-   `server_disabled` / `output_not_visible` / `communication_failed` / `timeout` are the
+   `server_disabled` / `communication_failed` / `timeout` are the
    GSAS-II server's cases (see "Server Not Starting" below); `timeout` deliberately does
    **not** fall back in-process, because the server may still be writing into the output
    directory.

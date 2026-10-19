@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pytest
 
+from powderline import results
+
 from powderline.gateways.gsasii import client as gsas_client, server as gsas_server
 from powderline.gateways.gsasii.client import GSASClient
 
@@ -41,90 +43,6 @@ def client(monkeypatch):
     c = GSASClient()
     monkeypatch.setattr(c, "is_server_available", lambda: True)
     return c
-
-
-def test_server_success_without_visible_files_falls_back(client, monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(client, "_submit_to_server",
-                        lambda rd, od: {"status": "ok"})
-    calls = []
-    monkeypatch.setattr(client, "_submit_via_subprocess",
-                        lambda rd, od, verbose: calls.append(1) or {"status": "ok"})
-
-    result = client.submit_simulation(RECIPE, tmp_path)
-
-    assert calls, "expected fallback to in-process execution"
-    assert result["method"] == "subprocess"
-    out = capsys.readouterr().out
-    assert "did not write output files visible to this process" in out
-    assert "gsas-server restart" in out
-
-
-def test_server_success_with_visible_files_is_returned(client, monkeypatch, tmp_path):
-    def fake_server_run(rd, od):
-        (tmp_path / "fit_profile.txt").write_text("two_theta\ty_calc\n")
-        return {"status": "ok"}
-
-    monkeypatch.setattr(client, "_submit_to_server", fake_server_run)
-    monkeypatch.setattr(client, "_submit_via_subprocess",
-                        lambda rd, od, verbose: pytest.fail("must not fall back"))
-
-    result = client.submit_simulation(RECIPE, tmp_path)
-    assert result["status"] == "ok"
-    assert result["method"] == "server"
-
-
-def test_stale_fit_profile_does_not_mask_divergent_server(client, monkeypatch, tmp_path, capsys):
-    """A fit_profile.txt left by a PREVIOUS run into the same output_dir must
-    not satisfy the guard: if the server 'succeeds' without (re)writing the
-    file, the run falls back in-process."""
-    (tmp_path / "fit_profile.txt").write_text("two_theta\ty_calc\n1.0\t10.0\n")
-
-    monkeypatch.setattr(client, "_submit_to_server",
-                        lambda rd, od: {"status": "ok"})  # touches nothing
-    calls = []
-    monkeypatch.setattr(client, "_submit_via_subprocess",
-                        lambda rd, od, verbose: calls.append(1) or {"status": "ok"})
-
-    result = client.submit_simulation(RECIPE, tmp_path)
-
-    assert calls, "stale fit_profile.txt must not pass the freshness check"
-    assert result["method"] == "subprocess"
-    assert "did not write output files visible" in capsys.readouterr().out
-
-
-def test_rewritten_fit_profile_counts_as_fresh(client, monkeypatch, tmp_path):
-    """Re-running into a used output_dir with a healthy server: the rewritten
-    fit_profile.txt (changed stat) must pass the guard."""
-    (tmp_path / "fit_profile.txt").write_text("two_theta\ty_calc\n1.0\t10.0\n")
-
-    def fake_server_run(rd, od):
-        # New content with a different size — deterministic stat change even
-        # on filesystems with coarse mtime granularity
-        (tmp_path / "fit_profile.txt").write_text(
-            "two_theta\ty_calc\n1.0\t10.0\n2.0\t20.0\n")
-        return {"status": "ok"}
-
-    monkeypatch.setattr(client, "_submit_to_server", fake_server_run)
-    monkeypatch.setattr(client, "_submit_via_subprocess",
-                        lambda rd, od, verbose: pytest.fail("must not fall back"))
-
-    result = client.submit_simulation(RECIPE, tmp_path)
-    assert result["status"] == "ok"
-    assert result["method"] == "server"
-
-
-def test_server_error_result_not_subject_to_file_check(client, monkeypatch, tmp_path):
-    """A server-reported failure is returned as-is (no file check, no fallback
-    beyond the existing error path)."""
-    from powderline import results
-    monkeypatch.setattr(client, "_submit_to_server",
-                        lambda rd, od: results.failure_envelope("engine", "diverged", "boom"))
-    monkeypatch.setattr(client, "_submit_via_subprocess",
-                        lambda rd, od, verbose: pytest.fail("must not fall back"))
-
-    result = client.submit_simulation(RECIPE, tmp_path)
-    assert result["status"] == "failed" and result["failure"]["reason"] == "diverged"
-    assert result["method"] == "server"
 
 
 def test_use_server_false_skips_server_entirely(monkeypatch, tmp_path):
@@ -154,47 +72,6 @@ def test_use_server_false_with_fallback_disabled_errors_honestly(monkeypatch, tm
     assert "use_server=False" in result["failure"]["message"]
     assert "fallback_to_subprocess=False" in result["failure"]["message"]
     assert "Server not available" not in result["failure"]["message"]
-
-
-def test_invisible_output_with_fallback_disabled_returns_error(monkeypatch, tmp_path, capsys):
-    """With fallback_to_subprocess=False (execution_mode='server'), invisible
-    server output must yield a structured error naming the filesystem-view
-    mismatch — not the misleading 'server not available' message, and no
-    promise of a fallback that won't happen."""
-    c = GSASClient(fallback_to_subprocess=False)
-    monkeypatch.setattr(c, "is_server_available", lambda: True)
-    monkeypatch.setattr(c, "_submit_to_server", lambda rd, od: {"status": "ok"})
-    monkeypatch.setattr(c, "_submit_via_subprocess",
-                        lambda rd, od, verbose: pytest.fail("must not fall back"))
-
-    result = c.submit_simulation(RECIPE, tmp_path)
-
-    assert result["status"] == "failed" and result["failure"]["reason"] == "output_not_visible"
-    assert result["method"] == "server"
-    assert "did not write output files visible" in result["failure"]["message"]
-    out = capsys.readouterr().out
-    assert "fallback is disabled" in out
-    assert "Falling back" not in out
-
-
-def test_invisible_output_guard_in_auto_start_branch(monkeypatch, tmp_path, capsys):
-    """The guard must also cover the auto-start branch (server initially
-    unavailable, then started and answering with invisible output)."""
-    c = GSASClient()
-    availability = iter([False, True])  # unavailable, then up after auto-start
-    monkeypatch.setattr(c, "is_server_available", lambda: next(availability))
-    monkeypatch.setattr(c, "_start_server_background", lambda verbose: True)
-    monkeypatch.setattr(c, "_submit_to_server", lambda rd, od: {"status": "ok"})
-    calls = []
-    monkeypatch.setattr(c, "_submit_via_subprocess",
-                        lambda rd, od, verbose: calls.append(1) or {"status": "ok"})
-
-    result = c.submit_simulation(RECIPE, tmp_path, auto_start_server=True)
-
-    assert calls, "expected fallback to in-process execution"
-    assert result["method"] == "subprocess"
-    assert ("did not write output files visible to this process"
-            in capsys.readouterr().out)
 
 
 def test_submit_simulation_wrong_keyword_raises():
@@ -345,7 +222,7 @@ def _fake_post(monkeypatch, respond):
 
 def test_submit_is_signed_and_response_verified(monkeypatch, own_endpoint, tmp_path):
     seen = _fake_post(monkeypatch, lambda h: _signed_response("my-token", h, {"status": "ok"}))
-    assert GSASClient()._submit_to_server(RECIPE, tmp_path / "out") == {"status": "ok"}
+    assert GSASClient()._submit_to_server(RECIPE) == {"status": "ok"}
     assert seen["url"] == "http://127.0.0.1:50123/simulate"
     assert seen["trust_env"] is False
     _assert_token_not_sent(seen)
@@ -362,7 +239,7 @@ def test_forged_server_result_is_never_trusted(monkeypatch, own_endpoint, tmp_pa
     monkeypatch.setattr(GSASClient, "is_server_available", lambda self: True)
     c = GSASClient(fallback_to_subprocess=False)
     with pytest.raises(gsas_client.ServerIdentityError):
-        c._submit_to_server(RECIPE, tmp_path / "out")
+        c._submit_to_server(RECIPE)
     result = c.submit_simulation(RECIPE, tmp_path / "out", auto_start_server=False)
     assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
     assert "did not prove" in result["failure"]["message"]
@@ -578,7 +455,7 @@ def test_unreachable_health_is_unknown_not_stale(monkeypatch, tmp_path):
 
 def test_stale_server_falls_back_in_process_in_auto_mode(client, monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(client, "server_is_stale", lambda: True)
-    monkeypatch.setattr(client, "_submit_to_server", lambda rd, od: pytest.fail("a stale server must not run the job"))
+    monkeypatch.setattr(client, "_submit_to_server", lambda rd: pytest.fail("a stale server must not run the job"))
     calls = []
     monkeypatch.setattr(client, "_submit_via_subprocess",
                         lambda rd, od, verbose: calls.append(1) or {"status": "ok"})
@@ -592,7 +469,7 @@ def test_stale_server_with_fallback_disabled_is_server_unavailable(monkeypatch, 
     c = GSASClient(fallback_to_subprocess=False)
     monkeypatch.setattr(c, "is_server_available", lambda: True)
     monkeypatch.setattr(c, "server_is_stale", lambda: True)
-    monkeypatch.setattr(c, "_submit_to_server", lambda rd, od: pytest.fail("a stale server must not run the job"))
+    monkeypatch.setattr(c, "_submit_to_server", lambda rd: pytest.fail("a stale server must not run the job"))
     monkeypatch.setattr(c, "_submit_via_subprocess", lambda rd, od, verbose: pytest.fail("must not fall back"))
     result = c.submit_simulation(RECIPE, tmp_path)
     assert result["status"] == "failed" and result["failure"]["reason"] == "server_unavailable"
@@ -601,7 +478,97 @@ def test_stale_server_with_fallback_disabled_is_server_unavailable(monkeypatch, 
 
 def test_current_server_is_used(client, monkeypatch, tmp_path):
     monkeypatch.setattr(client, "server_is_stale", lambda: False)
-    monkeypatch.setattr(client, "_submit_to_server", lambda rd, od: {"status": "ok"})
-    monkeypatch.setattr(client, "_server_output_visible", lambda result, od, before: True)
+    monkeypatch.setattr(client, "_submit_to_server", lambda rd: {"status": "ok"})
     monkeypatch.setattr(client, "_submit_via_subprocess", lambda rd, od, verbose: pytest.fail("server was current"))
     assert client.submit_simulation(RECIPE, tmp_path)["method"] == "server"
+
+
+# --- re/19 (KI-12, P-42): the server's files travel in the response; the client writes them locally ----------
+
+def _b64(text):
+    import base64
+    return base64.b64encode(text.encode()).decode("ascii")
+
+
+def _server_envelope(status="ok", files=None, **over):
+    env = {"status": status, "method": "server", "envelope_version": "1"}
+    if status == "failed":
+        env = results.failure_envelope("engine", "diverged", "the pattern diverged", method="server")
+    env["files"] = files if files is not None else {"dummy.lst": _b64("lst text"), "fit_profile.txt": _b64("profile")}
+    env["output_files"] = sorted(env["files"])
+    env.update(over)
+    return env
+
+
+def test_server_files_are_written_into_the_clients_output_dir(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(client, "_submit_to_server", lambda rd: _server_envelope())
+    monkeypatch.setattr(client, "_submit_via_subprocess", lambda rd, od, verbose: pytest.fail("must not fall back"))
+    out = tmp_path / "never" / "seen" / "by" / "the" / "server"
+    result = client.submit_simulation(RECIPE, out)
+    assert (out / "dummy.lst").read_text() == "lst text" and (out / "fit_profile.txt").read_text() == "profile"
+    assert result["output_files"] == [str((out / n).resolve()) for n in ("dummy.lst", "fit_profile.txt")]
+    assert "files" not in result and result["method"] == "server" and result["status"] == "ok"
+
+
+def test_failed_server_envelope_still_materialises(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(client, "_submit_to_server", lambda rd: _server_envelope(status="failed",
+                                                                                 files={"dummy.lst": _b64("why")}))
+    monkeypatch.setattr(client, "_submit_via_subprocess", lambda rd, od, verbose: pytest.fail("a failed run is final"))
+    result = client.submit_simulation(RECIPE, tmp_path / "out")
+    assert result["status"] == "failed" and result["failure"]["reason"] == "diverged"
+    assert (tmp_path / "out" / "dummy.lst").read_text() == "why"
+    assert result["output_files"] == [str((tmp_path / "out" / "dummy.lst").resolve())] and "files" not in result
+
+
+@pytest.mark.parametrize("name", ["../x", "a/b", "a\\b", "", ".", "/abs"])
+def test_bad_file_names_are_refused(monkeypatch, tmp_path, name):
+    c = GSASClient(fallback_to_subprocess=False)
+    monkeypatch.setattr(c, "is_server_available", lambda: True)
+    monkeypatch.setattr(c, "server_is_stale", lambda: False)
+    monkeypatch.setattr(c, "_submit_to_server", lambda rd: _server_envelope(files={name: _b64("x"), "ok.txt": _b64("y")}))
+    result = c.submit_simulation(RECIPE, tmp_path / "out")
+    assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
+    assert not (tmp_path / "out").exists(), "nothing may be written when any name is bad"
+
+
+def test_bad_base64_is_communication_failed(monkeypatch, tmp_path):
+    c = GSASClient(fallback_to_subprocess=False)
+    monkeypatch.setattr(c, "is_server_available", lambda: True)
+    monkeypatch.setattr(c, "server_is_stale", lambda: False)
+    monkeypatch.setattr(c, "_submit_to_server", lambda rd: _server_envelope(files={"dummy.lst": "@@not base64@@"}))
+    result = c.submit_simulation(RECIPE, tmp_path / "out")
+    assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
+
+
+def test_oversized_transfer_is_communication_failed(monkeypatch, tmp_path):
+    from powderline.gateways.gsasii import client as client_module
+    monkeypatch.setattr(client_module, "MAX_TRANSFER_BYTES", 4)
+    c = GSASClient(fallback_to_subprocess=False)
+    monkeypatch.setattr(c, "is_server_available", lambda: True)
+    monkeypatch.setattr(c, "server_is_stale", lambda: False)
+    monkeypatch.setattr(c, "_submit_to_server", lambda rd: _server_envelope())
+    result = c.submit_simulation(RECIPE, tmp_path / "out")
+    assert result["status"] == "failed" and result["failure"]["reason"] == "communication_failed"
+    assert "MAX_TRANSFER_BYTES" in result["failure"]["message"] or "too large" in result["failure"]["message"]
+
+
+def test_protocol_failure_falls_back_in_process_when_allowed(client, monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(client, "_submit_to_server", lambda rd: _server_envelope(files={"../x": _b64("x")}))
+    calls = []
+    monkeypatch.setattr(client, "_submit_via_subprocess", lambda rd, od, verbose: calls.append(1) or {"status": "ok"})
+    result = client.submit_simulation(RECIPE, tmp_path / "out")
+    assert calls and result["method"] == "subprocess"
+
+
+def test_unwritable_output_dir_is_backend_error(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(client, "_submit_to_server", lambda rd: _server_envelope())
+    monkeypatch.setattr(client, "_submit_via_subprocess", lambda rd, od, verbose: pytest.fail("a local disk problem is not the server's"))
+    blocker = tmp_path / "out"
+    blocker.write_text("I am a file, not a directory")
+    result = client.submit_simulation(RECIPE, blocker)
+    assert result["status"] == "failed" and result["failure"]["reason"] == "backend_error"
+    assert str(blocker) in result["failure"]["message"]
+
+
+def test_output_not_visible_reason_is_gone():
+    assert "output_not_visible" not in results.BACKEND_REASONS

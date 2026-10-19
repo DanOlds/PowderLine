@@ -225,7 +225,7 @@ def test_submit_to_server_retries_on_connect_error(recipe_LaB6_dict, tmp_path):
     with patch.object(GSASClient, "_endpoint", return_value=_FAKE_ENDPOINT), \
          patch("httpx.post", side_effect=connect_error) as mock_post:
         with pytest.raises(httpx.ConnectError):
-            client._submit_to_server(recipe_LaB6_dict, tmp_path / "out")
+            client._submit_to_server(recipe_LaB6_dict)
 
     assert mock_post.call_count == 3, (
         f"Expected 3 retry attempts on ConnectError, got {mock_post.call_count}"
@@ -248,7 +248,7 @@ def test_submit_to_server_does_not_retry_on_http_status_error(
     with patch.object(GSASClient, "_endpoint", return_value=_FAKE_ENDPOINT), \
          patch("httpx.post", side_effect=http_error) as mock_post:
         with pytest.raises(httpx.HTTPStatusError):
-            client._submit_to_server(recipe_LaB6_dict, tmp_path / "out")
+            client._submit_to_server(recipe_LaB6_dict)
 
     assert mock_post.call_count == 1, (
         f"Expected exactly 1 attempt on HTTPStatusError (no retry), got {mock_post.call_count}"

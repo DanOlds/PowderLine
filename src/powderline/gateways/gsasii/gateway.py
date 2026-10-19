@@ -182,7 +182,7 @@ def run(
             ``unusable_site``, ``peak_fit_failed``, ``engine_crashed``; ``.result`` is the
             failed envelope listing the files written before the failure, which are kept).
         ExecutionBackendError: the engine did not run (``.reason``: ``server_unavailable``,
-            ``server_disabled``, ``output_not_visible``, ``communication_failed``,
+            ``server_disabled``, ``communication_failed``,
             ``timeout``, ``backend_error``).
         OSError: ``output_dir`` cannot be created.
     """

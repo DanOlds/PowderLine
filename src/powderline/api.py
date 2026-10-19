@@ -186,7 +186,7 @@ def run(recipe, output_dir, *, verbose: bool = False, validate_only: bool = Fals
             ``output_missing``, ``output_malformed``; ``.result`` is the failed
             envelope, listing the files written before the failure (kept).
         ExecutionBackendError: the engine did not run. ``.reason`` is one of
-            ``server_unavailable``, ``server_disabled``, ``output_not_visible``,
+            ``server_unavailable``, ``server_disabled``,
             ``communication_failed``, ``timeout``, ``backend_error``.
         TypeError: an option the gateway does not take, or
             ``allow_unsupported_engine_version``.

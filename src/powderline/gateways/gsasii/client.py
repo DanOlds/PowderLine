@@ -57,6 +57,24 @@ class ServerRejectedRequest(RuntimeError):
     """The server refused the request before handling it (its 401/413 replies are deliberately unsigned)."""
 
 
+#: The most a server may hand back in one response, decoded (re/19, KI-12); beyond it the run is a
+#: ``communication_failed`` and nothing is written.
+MAX_TRANSFER_BYTES = 512 * 1024 * 1024
+
+
+def _safe_file_name(name) -> bool:
+    """A bare file name the server may send: no separators, not empty, not ``.``/``..``."""
+    return (isinstance(name, str) and name not in ("", ".", "..") and "/" not in name and "\\" not in name
+            and os.path.basename(name) == name)
+
+
+def _write_file(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` atomically: a temp file beside it, then replace (retried on Windows)."""
+    tmp = path.with_name(path.name + ".part")
+    tmp.write_bytes(data)
+    gsas_server._retry_file_op(lambda: os.replace(tmp, path), f"replace {path.name}")
+
+
 class GSASClient:
     """Client for communicating with GSAS-II server."""
 
@@ -206,62 +224,6 @@ class GSASClient:
         print("   In-process fallback is disabled. To fix the server: pixi run gsas-server restart")
         return envelopes.failure_envelope("backend", "server_unavailable", self.STALE_SERVER_MESSAGE, method="none")
 
-    @staticmethod
-    def _stat_fit_profile(output_dir: Path) -> tuple | None:
-        """(mtime_ns, size) of output_dir/fit_profile.txt, or None if absent."""
-        try:
-            st = (Path(output_dir) / 'fit_profile.txt').stat()
-        except OSError:
-            return None
-        return (st.st_mtime_ns, st.st_size)
-
-    def _server_output_visible(self, result: Dict[str, Any], output_dir: Path,
-                               stat_before: tuple | None) -> bool:
-        """Check that a 'successful' server run materialized its output files
-        where THIS process can see them.
-
-        A GSAS-II server can be reachable over localhost yet have a different
-        filesystem view — e.g. started on another node of a cluster, or inside
-        a sandbox/container with a private /tmp. Such a server reports success
-        while its output files are unreachable. run_refinement always
-        (re)writes fit_profile.txt on success, so the file must exist AND its
-        (mtime, size) must differ from before the run — a stale file left by a
-        previous run into the same output_dir does not count. Costs two stat
-        calls per server run; nothing is read, written, or deleted.
-        """
-        if result.get('status') == 'failed':
-            return True  # a failed envelope needs no file check and is returned as-is
-        stat_after = self._stat_fit_profile(output_dir)
-        return stat_after is not None and stat_after != stat_before
-
-    _INVISIBLE_OUTPUT_ERROR = (
-        "GSAS-II server reported success but did not write output files "
-        "visible to this process — the server has a different filesystem view "
-        "(started on another node, or inside a sandbox/container with a "
-        "private /tmp). Restart it with: pixi run gsas-server restart"
-    )
-
-    def _handle_invisible_server_output(self) -> Dict[str, Any] | None:
-        """Warn about a server with a divergent filesystem view.
-
-        Returns None when in-process fallback is enabled (caller falls
-        through to it), or a structured error result when fallback is
-        disabled (execution_mode='server').
-        """
-        print("   WARNING: GSAS-II server reported success but did not write "
-              "output files visible to this process.")
-        print("   The server appears to have a different filesystem view "
-              "(started on another node, or inside a sandbox/container with a "
-              "private /tmp).")
-        if self.fallback_to_subprocess:
-            print("   Falling back to in-process execution. To fix the server: "
-                  "pixi run gsas-server restart")
-            return None
-        print("   In-process fallback is disabled. To fix the server: "
-              "pixi run gsas-server restart")
-        return envelopes.failure_envelope("backend", "output_not_visible", self._INVISIBLE_OUTPUT_ERROR,
-                                          method="server")
-
     def _server_attempt(self, recipe_dict: dict, output_dir: Path, verbose: bool) -> Dict[str, Any] | None:
         """One submission to a server that answered ``/health``; the same rules on every branch (re/12).
 
@@ -273,7 +235,7 @@ class GSASClient:
         import httpx
 
         try:
-            return self._submit_to_server_guarded(recipe_dict, output_dir)
+            result = self._submit_to_server(recipe_dict)
         except httpx.TimeoutException as e:
             return envelopes.failure_envelope(
                 "backend", "timeout",
@@ -287,22 +249,62 @@ class GSASClient:
                 print(f"Server communication failed: {e}")
                 print("   Falling back to subprocess mode...")
             return None
-
-    def _submit_to_server_guarded(self, recipe_dict: dict,
-                                  output_dir: Path) -> Dict[str, Any] | None:
-        """Submit to the server with the output-visibility guard applied.
-
-        Returns the result to hand to the caller, or None when the caller
-        should fall through to the in-process fallback (invisible output
-        with fallback enabled). Exceptions from the server round-trip
-        propagate unchanged.
-        """
-        stat_before = self._stat_fit_profile(output_dir)
-        result = self._submit_to_server(recipe_dict, output_dir)
         result['method'] = 'server'
-        if self._server_output_visible(result, output_dir, stat_before):
-            return result
-        return self._handle_invisible_server_output()
+        result = self._materialize(result, output_dir)
+        if (result.get('status') == 'failed' and result['failure']['reason'] == 'communication_failed'
+                and self.fallback_to_subprocess):
+            print(f"   WARNING: {result['failure']['message']}")
+            print("   Falling back to in-process execution.")
+            return None  # a protocol problem with the server; the job itself can still run here
+        return result
+
+    def _materialize(self, result: Dict[str, Any], output_dir: Path) -> Dict[str, Any]:
+        """Write the files a server envelope carries into ``output_dir`` (re/19, KI-12).
+
+        The server never sees the client's filesystem: its envelope lists every output file under
+        ``files`` (name -> base64). Names are checked (bare file names only), the contents decoded
+        and size-capped before anything is written, then each file is written atomically (temp +
+        replace, retried on Windows sharing violations). ``output_files`` becomes the local paths and
+        ``files`` leaves the envelope. A bad name, bad base64 or an oversized transfer is
+        ``communication_failed``; a local write failure is ``backend_error`` naming the directory.
+        """
+        import base64
+        import binascii
+
+        files = result.pop('files', None) or {}
+        output_dir = Path(output_dir)
+        decoded: Dict[str, bytes] = {}
+        total = 0
+        for name, blob in files.items():
+            if not _safe_file_name(name):
+                return envelopes.failure_envelope(
+                    "backend", "communication_failed",
+                    f"the GSAS-II server sent a file with an unacceptable name {name!r}; nothing was written",
+                    method="server")
+            try:
+                data = base64.b64decode(blob, validate=True)
+            except (binascii.Error, TypeError, ValueError) as e:
+                return envelopes.failure_envelope(
+                    "backend", "communication_failed",
+                    f"the GSAS-II server's copy of {name!r} could not be decoded ({e}); nothing was written",
+                    method="server")
+            total += len(data)
+            if total > MAX_TRANSFER_BYTES:
+                return envelopes.failure_envelope(
+                    "backend", "communication_failed",
+                    f"the GSAS-II server's output is too large to transfer ({total} bytes so far, "
+                    f"limit MAX_TRANSFER_BYTES = {MAX_TRANSFER_BYTES}); nothing was written", method="server")
+            decoded[name] = data
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            for name, data in decoded.items():
+                _write_file(output_dir / name, data)
+        except (OSError, ServerStateError) as e:
+            return envelopes.failure_envelope(
+                "backend", "backend_error",
+                f"the GSAS-II server's result could not be written into {output_dir}: {e}", method="server")
+        result['output_files'] = [str((output_dir / name).resolve()) for name in sorted(decoded)]
+        return result
 
     def submit_simulation(self, recipe, output_dir: Path,
                          verbose: bool = False, auto_start_server: bool = True,
@@ -325,13 +327,9 @@ class GSASClient:
             application outcome; the gateway does (``results.raise_if_failed``).
 
         Note:
-            A server response only counts if its output files were freshly
-            written where this process can see them (see
-            _server_output_visible — a stale fit_profile.txt from a previous
-            run does not count); otherwise the run falls back to in-process
-            execution with a warning — or, when fallback_to_subprocess is
-            False, returns a structured error explaining the filesystem-view
-            mismatch.
+            The server never sees ``output_dir``: its output files travel back
+            inside the signed response and are written here (re/19, KI-12), so
+            a server on another node or in a container works like a local one.
 
             With ``POWDERLINE_NO_SERVER`` set, the server is never probed or
             started: the run goes in-process, or — when fallback is disabled
@@ -512,7 +510,7 @@ class GSASClient:
                 print(f"   Could not auto-start server: {e}")
             return False
 
-    def _submit_to_server(self, recipe_dict: dict, output_dir: Path) -> Dict[str, Any]:
+    def _submit_to_server(self, recipe_dict: dict) -> Dict[str, Any]:
         """Submit simulation to server via HTTP with retry logic.
 
         Retries up to 3 times on connection errors to handle transient network issues.
@@ -520,10 +518,7 @@ class GSASClient:
         import httpx
         import time
 
-        payload = {
-            'recipe_data': recipe_dict,
-            'output_dir': str(output_dir.absolute()),
-        }
+        payload = {'recipe_data': recipe_dict}  # no output_dir: the files come back in the response (KI-12)
 
         # Retry logic for connection errors
         max_retries = 3

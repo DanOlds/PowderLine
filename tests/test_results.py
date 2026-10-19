@@ -16,7 +16,7 @@ pytestmark = pytest.mark.core
 def test_reason_sets_are_disjoint_and_match_the_spec():
     assert results.ENGINE_REASONS == {"diverged", "unusable_site", "peak_fit_failed", "engine_crashed",
                                       "output_missing", "output_malformed"}
-    assert results.BACKEND_REASONS == {"server_unavailable", "server_disabled", "output_not_visible",
+    assert results.BACKEND_REASONS == {"server_unavailable", "server_disabled",
                                        "communication_failed", "timeout", "backend_error"}
     assert not (results.ENGINE_REASONS & results.BACKEND_REASONS)
     assert results.STATUSES == ("ok", "generated", "failed") and results.ENVELOPE_VERSION == "1"

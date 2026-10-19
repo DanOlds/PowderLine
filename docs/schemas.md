@@ -134,7 +134,6 @@ tables are dicts keyed by phase name.
 | `output_malformed` | engine | an engine file could not be read strictly (non-numeric token, ragged row, missing points, pattern on other 2θ) |
 | `server_unavailable` | backend | server mode: no GSAS-II server and none could be started |
 | `server_disabled` | backend | `POWDERLINE_NO_SERVER` with `execution_mode='server'` |
-| `output_not_visible` | backend | the server reported ok but its files are not visible to this process (fallback disabled) |
 | `communication_failed` | backend | an HTTP/transport error after a server was found |
 | `timeout` | backend | the request timed out; **no in-process fallback** (the server may still be writing) |
 | `backend_error` | backend | anything else on the execution path before the engine ran (e.g. a recipe the server could not validate) |
