@@ -142,7 +142,7 @@ recipes do not validate; see the
   Every returned result has `status` (`"ok"`, or `"generated"` for a TOPAS run
   without a declared `tc.exe`, on which the CLI now exits 0), `converged`
   (`true`/`false`/`null`) and `envelope_version` (`"1"`, the GSAS-II server's wire
-  contract); `success` is a deprecated always-`true` alias (removed in 0.3.0);
+  contract); `success` is a deprecated always-`true` alias (removed later in this release, see Removed);
   the top-level `error` and `traceback` keys are **removed** -- a consumer
   reading `result["error"]` now gets `KeyError`. A timed-out server request is
   a `timeout` failure and no longer falls back in-process into the same output
@@ -299,6 +299,16 @@ recipes do not validate; see the
   re/01 commit `daace24`. Nothing the modules do to the project dictionary
   changes.
 
+- **The GSAS-II server needs no shared filesystem** (KI-12, re/19, P-42):
+  each job runs in a private scratch directory under the server's state dir
+  and its output files come back base64-encoded inside the signed response;
+  the client writes them into its own `output_dir` (bare names only, size
+  cap, atomic replace) and lists them in `output_files`. The request no
+  longer carries `output_dir`; a client that cannot write its directory fails
+  with `backend_error`, a malformed or oversized transfer with
+  `communication_failed`. A server on another node or in a container now
+  works like a local one.
+
 ### Removed
 
 - **The Materials Project simulation tool** (`mp-simulate`, `mp_simulate.py`,
@@ -353,6 +363,12 @@ recipes do not validate; see the
   `site_dof`, `adp_dof`, `check_uij`); their tests with them.
 - **Three unused dependencies**: `h5py`, `pybaselines`, `xmltodict` leave
   `pyproject.toml` and the pixi manifest.
+
+- **The `success` key** of results and of the validate-only summary (it was
+  an always-`true` alias of `status`, announced for removal in 0.3.0; removed
+  now since 0.2.0 is the first release with `status`). **The reason code
+  `output_not_visible`** and the fit-profile freshness check it belonged to:
+  the server's files travel in-band (KI-12).
 
 ### Fixed
 

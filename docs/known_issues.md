@@ -415,7 +415,7 @@ either; it must be killed by hand (`pkill -u "$USER" -f "gsasii[/.]server"`).
 
 ---
 
-## KI-12 — Server mode assumes a shared filesystem; output files should travel in-band `planned-fix · major`
+## KI-12 — Server mode assumes a shared filesystem; output files should travel in-band `planned-fix · major` → resolved (0.2.0, re/19)
 
 **What.** The GSAS-II server writes output files into `output_dir` in **its
 own** filesystem view and returns only result *data* over HTTP. A server
@@ -447,6 +447,15 @@ the shared-filesystem assumption itself is unchanged.
 
 **Revisit.** Next branch touching the server protocol, or when the HPC
 deployment work starts.
+
+**Disposition (0.2.0, confirmed 2026-10-19: resolved by re/19, P-42).** The
+server runs each job in a private scratch directory under its per-user state
+dir and returns every PowderLine output file base64-encoded inside the signed
+response (`files`); the client writes them into its own `output_dir`
+(bare names only, size-capped, atomic replace) and lists them in
+`output_files`. The request no longer carries `output_dir`; the freshness
+check, its fallback and the reason code `output_not_visible` are gone. A
+server on another node or in a container now works like a local one.
 
 ---
 

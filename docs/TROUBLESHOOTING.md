@@ -557,40 +557,17 @@ is gone is ignored.
 
 ---
 
-## Server Reports Success but Output Files Are Missing
+## Server Reports Success but Output Files Are Missing (resolved in 0.2.0)
 
-**Problem:** A run completes ("Executed using server mode") but the
-expected output files never appear — e.g. `fit_profile.txt not found`, or a
-warning that "server output files are not visible to this process".
-
-**Cause:** The GSAS-II server is reachable over localhost but has a
-**different filesystem view** than your shell. Two known ways this happens:
-the server was started on another node of a cluster, or inside a
-sandbox/container with a private `/tmp` (e.g. an AI-agent session). The server
-writes its output where only *it* can see it and truthfully reports success.
-
-**Symptoms:**
-- The client prints the "different filesystem view" warning and re-runs
-  in-process (this automatic fallback is the built-in fix)
-- With `execution_mode='server'` (no fallback), a structured error naming the
-  filesystem-view mismatch
-
-The check is freshness-based: `fit_profile.txt` must have been (re)written by
-the run just submitted, so a stale file from a previous run into the same
-output directory does not hide the problem.
-
-**Solution:**
-
-1. **Restart the server from your own shell:**
-   ```bash
-   pixi run -e gsasii gsas-server restart
-   ```
-2. **Or skip the server for this run:**
-   ```bash
-   pixi run -e gsasii kicker input.json --no-server
-   ```
-
-(KI-12 tracks the fix that removes the shared-filesystem assumption.)
+**Historical.** Through the first 0.2.0 development builds the GSAS-II server
+wrote its output files into `output_dir` in *its own* filesystem view, so a
+server on another node or inside a container reported success while the
+files never appeared; a freshness check on `fit_profile.txt` caught it and
+fell back in-process. Since re/19 (KI-12) the files travel back inside the
+signed response and the client writes them into its own `output_dir`, so the
+server never needs to see the client's filesystem. If files are missing now,
+the run itself failed (see "Refinement Failed") or the client could not write
+`output_dir` (`backend_error` naming the directory in the message).
 
 ---
 

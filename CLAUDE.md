@@ -76,7 +76,8 @@ imported lazily from `run()`):
   `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`;
   `server.py` / `client.py` (persistent FastAPI server + `GSASClient`, the
   `auto`/`server` execution modes; per-user state dir, token-signed requests
-  and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2, KI-14); `simulation_builder.py`
+  and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2, KI-14; output files travel
+  back inside the response, no shared filesystem — re/19, KI-12); `simulation_builder.py`
   (a crystal-structure dict → a `gsasii.rietveld` simulation recipe; the Materials Project
   fetch/export tool that used it left PowderLine in 0.2.0, P-36 — RandomXRD carries its own).
 - `topas/` (TOPAS 6; recipes state `engine_version: "6"`, runs need the

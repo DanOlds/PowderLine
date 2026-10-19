@@ -434,6 +434,16 @@ compares both with its own and treats a mismatch as a **stale** server —
 `server_unavailable` naming `gsas-server restart`, and `gsas-server status`
 prints `Code: STALE`.
 
+**No shared filesystem (re/19, KI-12):** the client sends the recipe inline and
+the server runs each job in a private scratch directory under its state dir;
+every output file comes back base64-encoded inside the signed response
+(`files`, GSAS-II's `*.bak*.gpx` backups excepted) and the client writes it
+into its own `output_dir` (atomic replace, retried on Windows). A server on
+another node or in a container therefore behaves like a local one; a client
+that cannot write its directory fails with `backend_error`, a malformed or
+oversized transfer with `communication_failed` (auto mode then runs
+in-process).
+
 **Server state and security (per user, v0.1.2):** the server binds `127.0.0.1`
 on a free ephemeral port and writes its lock, PID, log, and an endpoint file
 (port + random secret token) — all mode 0600 — to a private per-user state
