@@ -597,3 +597,13 @@ def test_validate_signature_is_uniform(gateway_module):
 @pytest.mark.parametrize("gateway_module,path,model_type", NATIVE_CASES)
 def test_validate_accepts_verbose_through_the_registry(gateway_module, path, model_type):
     assert isinstance(registry.get(gateway_module.NAME).validate(_load(path), verbose=True), model_type)
+
+
+def test_gsasii_result_marks_the_output_recipe_unavailable_until_re20b():
+    """re/20a: the GSAS-II gateway does not map its refined values to recipe paths yet; it must say so rather
+    than pass an unrefined recipe off as the result."""
+    from powderline.gateways.gsasii import gateway as g
+    res = g._frames({"status": "ok", "warnings": [], "fit_profile": None, "unit_cell_data": None,
+                     "peak_list_data": None, "refined_parameters": None})
+    assert res["output_recipe"] is None and res["output_recipe_valid"] is False
+    assert res["warnings"][-1]["code"] == "output_recipe_not_valid" and "re/20b" in res["warnings"][-1]["message"]

@@ -1126,3 +1126,26 @@ def test_converged_follows_lmfit_and_is_none_for_simulation(tmp_path):
     assert "error" not in fitted and "traceback" not in fitted and fitted["envelope_version"] == "1"
     sim = gateway.run(_load_fixture("lab6_slots_simulation.json"), str(tmp_path / "sim"))
     assert sim["converged"] is None and sim["simulation_mode"] is True and sim["status"] == "ok"
+
+
+# --- re/20a (KI-04): the output recipe and its idempotence -----------------------------------------------------
+
+@pytest.mark.parametrize("which", ["lab6_crysfml_tch_result", "lab6_cryspy_pv_result"])
+def test_output_recipe_is_valid_and_feeds_back(which, request, tmp_path_factory):
+    result = request.getfixturevalue(which)
+    assert result["output_recipe_valid"] is True, [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"]
+    out = result["output_recipe"]
+    phase = next(iter(out["payload"]["phases"]))
+    cell_a = out["payload"]["phases"][phase]["unit_cell"]["a"][0]
+    reported = dict(zip(result["unit_cell_data"][phase]["parameter"], result["unit_cell_data"][phase]["value"]))
+    assert cell_a == pytest.approx(reported["cell_a"], rel=1e-9)
+    again = schema.validate_recipe(out)
+    from powderline.schema_core import collect_warnings
+    assert not [w for w in collect_warnings(again) if w["code"] == "symmetry_value_derived" or w["code"].endswith("_default_applied")]
+    second = gateway.run(out, str(tmp_path_factory.mktemp(which + "_again")))
+    assert second["status"] == "ok" and abs(second["rwp"] - result["rwp"]) < 0.05
+    first_rows = result["parameter_dispositions"].set_index("path")
+    second_rows = second["parameter_dispositions"].set_index("path")
+    for path, row in first_rows.iterrows():
+        if row["disposition"] == "varied" and row["esd"] and row["esd"] > 0:
+            assert abs(second_rows.loc[path, "value"] - row["value"]) <= 3 * row["esd"], path

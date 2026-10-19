@@ -51,10 +51,11 @@ import pandas as pd
 
 from powderline import reports
 from powderline import results as envelopes
+from powderline import roundtrip
 from powderline.exceptions import EngineExecutionError, StructuredWarning
 from powderline.fitstats import compute_fit_statistics
 from powderline.gateways.easydiffraction.native_builder import Build, build_project, structure_name
-from powderline.gateways.easydiffraction.schema import profile_negative_widths, width_check_points
+from powderline.gateways.easydiffraction.schema import profile_negative_widths, validate_recipe, width_check_points
 from powderline.registry import validate_only_summary
 from powderline.schema_core import collect_warnings, parameters_requested
 from powderline.symmetry import cell_tie_groups
@@ -224,8 +225,11 @@ def build_result(model, build: Build, out: Path, warnings: list, *, elapsed: flo
         "parameters_varied": varied,
         **({f"fit_{k}": v for k, v in fit_info.items()}),
     }
-    return envelopes.with_status_fields({
-        "run_id": str(uuid.uuid4()),
+    run_id = str(uuid.uuid4())
+    refined, not_varied, at_limit = ({}, set(), set()) if simulation else \
+        _output_inputs(build, warnings, fewer_varied=varied < requested)
+    envelope = envelopes.with_status_fields({
+        "run_id": run_id,
         "rwp": undefined(fs.rwp),
         "r_exp": undefined(fs.rexp),
         "gof": undefined(fs.gof),
@@ -241,6 +245,27 @@ def build_result(model, build: Build, out: Path, warnings: list, *, elapsed: flo
         "peak_list_data": {k: pd.DataFrame(v, columns=list(PEAK_LIST_COLUMNS)) for k, v in peak_lists.items()},
         "refined_parameters": pd.DataFrame(refined_rows, columns=list(reports.REFINED_PARAMETERS_COLUMNS)),
     }, status="ok", converged=None if simulation else fit_info.get("success"))
+    return roundtrip.attach(envelope, roundtrip.build_output(model, refined, not_varied=not_varied, at_limit=at_limit,
+                                                             parent_run_id=run_id, validator=validate_recipe), out)
+
+
+def _output_inputs(build: Build, warnings: list, fewer_varied: bool) -> tuple:
+    """What the output recipe needs from easydiffraction (re/20a, KI-04): ``{recipe path: (value, esd)}`` in the
+    recipe's writing (``report_offset`` added back, A176) for every free parameter (a Chebyshev term's path gains
+    its coefficient index), the flagged paths lmfit did not vary (no uncertainty, only when it varied fewer than
+    requested), and the paths that ended at a limit (the ``easydiffraction_parameter_at_limit`` warnings)."""
+    refined, not_varied = {}, set()
+    for fp in build.free:
+        path = fp.path
+        if path == "payload.background.chebyshev" and fp.name.startswith("background_coefficient_"):
+            path = f"payload.background.chebyshev.coefficients.{fp.name.rsplit('_', 1)[1]}"
+        esd = _esd(fp.parameter)
+        refined[path] = (float(fp.parameter.value) + fp.report_offset, esd)
+        if fewer_varied and esd is None:
+            not_varied.add(path)
+    at_limit = {w["field_path"] for w in warnings
+                if w["code"] == "easydiffraction_parameter_at_limit" and w.get("field_path")}
+    return refined, not_varied, at_limit
 
 
 def _refln_arrays(refln) -> dict:

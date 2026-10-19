@@ -25,6 +25,7 @@ from typing import Literal
 import pandas as pd
 
 from powderline import results as envelopes
+from powderline import roundtrip
 from powderline.exceptions import EngineExecutionError, EngineNotAvailableError
 from powderline.gateways.gsasii import schema
 from powderline.gateways.gsasii.routing import run_refinement
@@ -284,7 +285,11 @@ def _frames(result: dict) -> dict:
 
     # re/12: the ok envelope fields (status, converged, envelope_version);
     # the pre-0.2.0 top-level error/traceback keys are dropped (a failure never reaches here: it is raised).
-    return envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
+    envelope = envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
+    # re/20a (KI-04): the GSAS-II gateway does not map its refined values to recipe paths yet (re/20b);
+    # say so rather than pass an unrefined recipe off as the result.
+    return roundtrip.unavailable(envelope, "the GSAS-II gateway does not map its refined values to recipe paths "
+                                           "yet (re/20b); topas and easydiffraction results carry one")
 
 
 def get_gateway() -> Gateway:
