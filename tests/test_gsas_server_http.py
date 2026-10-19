@@ -19,7 +19,6 @@ import time
 import subprocess
 import sys
 from pathlib import Path
-import tempfile
 import os
 
 from powderline.gateways.gsasii import server as gsas_server
@@ -146,14 +145,14 @@ def test_simulate_endpoint_missing_fields(test_server):
     port, token = test_server
 
     # Missing recipe_data
-    resp = _signed(port, token, 'POST', '/simulate', {"output_dir": "/tmp/test"}
+    resp = _signed(port, token, 'POST', '/simulate', {"verbose": True}
     )
     assert resp.status_code == 422, "Should return validation error for missing recipe_data"
 
-    # Missing output_dir
-    resp = _signed(port, token, 'POST', '/simulate', {"recipe_data": {}}
+    # output_dir is no longer part of the request (re/19, KI-12): the server's filesystem is not the client's
+    resp = _signed(port, token, 'POST', '/simulate', {"recipe_data": {}, "output_dir": "/tmp/test"}
     )
-    assert resp.status_code == 422, "Should return validation error for missing output_dir"
+    assert resp.status_code == 422, "Should refuse a request naming an output directory"
 
     # Empty request
     resp = _signed(port, token, 'POST', '/simulate', {}
@@ -167,21 +166,16 @@ def test_simulate_endpoint_invalid_recipe(test_server):
 
     port, token = test_server
 
-    # Invalid (empty) recipe_data — server should return 200 with success=False
-    with tempfile.TemporaryDirectory() as tmpdir:
-        resp = _signed(port, token, 'POST', '/simulate', {
-                "recipe_data": {},
-                "output_dir": tmpdir
-            }
-        )
+    # Invalid (empty) recipe_data — server should return 200 with a failed envelope
+    resp = _signed(port, token, 'POST', '/simulate', {"recipe_data": {}})
 
-        assert resp.status_code == 200, "Should return 200 even for errors (error in response body)"
-        data = resp.json()
+    assert resp.status_code == 200, "Should return 200 even for errors (error in response body)"
+    data = resp.json()
 
-        assert data["status"] == "failed" and data["envelope_version"] == "1"
-        assert data["failure"]["kind"] == "backend" and data["failure"]["reason"] == "backend_error"
-        msg = data["failure"]["message"].lower()
-        assert "recipe" in msg or "validation" in msg, "the message should mention recipe validation failure"
+    assert data["status"] == "failed" and data["envelope_version"] == "1"
+    assert data["failure"]["kind"] == "backend" and data["failure"]["reason"] == "backend_error"
+    msg = data["failure"]["message"].lower()
+    assert "recipe" in msg or "validation" in msg, "the message should mention recipe validation failure"
 
 
 def test_simulate_endpoint_optional_verbose(test_server):
@@ -190,26 +184,13 @@ def test_simulate_endpoint_optional_verbose(test_server):
 
     port, token = test_server
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Request with verbose=true — should accept and return 200 (even if recipe invalid)
-        resp = _signed(port, token, 'POST', '/simulate', {
-                "recipe_data": {},
-                "output_dir": tmpdir,
-                "verbose": True
-            }
-        )
+    # Request with verbose=true — should accept and return 200 (even if recipe invalid)
+    resp = _signed(port, token, 'POST', '/simulate', {"recipe_data": {}, "verbose": True})
+    assert resp.status_code == 200, "Should accept verbose parameter"
 
-        assert resp.status_code == 200, "Should accept verbose parameter"
-
-        # Request with verbose=false
-        resp = _signed(port, token, 'POST', '/simulate', {
-                "recipe_data": {},
-                "output_dir": tmpdir,
-                "verbose": False
-            }
-        )
-
-        assert resp.status_code == 200, "Should accept verbose parameter"
+    # Request with verbose=false
+    resp = _signed(port, token, 'POST', '/simulate', {"recipe_data": {}, "verbose": False})
+    assert resp.status_code == 200, "Should accept verbose parameter"
 
 
 def test_health_endpoint_performance(test_server):
@@ -251,12 +232,7 @@ def test_server_increments_request_count(test_server):
     initial_count = resp.json()["request_count"]
 
     # Make a simulation request (will fail validation but should still increment counter)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        _signed(port, token, 'POST', '/simulate', {
-                "recipe_data": {},
-                "output_dir": tmpdir
-            }
-        )
+    _signed(port, token, 'POST', '/simulate', {"recipe_data": {}})
 
     # Check count increased
     resp = _signed(port, token, 'GET', '/health')
@@ -276,14 +252,13 @@ def _forged_headers(token: str, method: str, path: str, body: bytes) -> dict:
             "Content-Type": "application/json"}
 
 
-def test_requests_without_token_rejected(test_server, tmp_path):
+def test_requests_without_token_rejected(test_server, server_state_root):
     """Unsigned, bearer-style, or wrongly signed requests -> 401 on every route,
-    and nothing is written."""
+    and no job directory is created."""
     import httpx
 
     port, token = test_server
-    out = tmp_path / "other_users_output"
-    body = json.dumps({"recipe_data": {}, "output_dir": str(out)}).encode()
+    body = json.dumps({"recipe_data": {}}).encode()
     for headers in ({},
                     {"Authorization": f"Bearer {token}"},  # the old scheme: refused
                     _forged_headers("not-the-token", "POST", "/simulate", body)):
@@ -295,7 +270,8 @@ def test_requests_without_token_rejected(test_server, tmp_path):
         assert resp.status_code == 401
         assert "pid" not in resp.text
         assert gsas_server.RESPONSE_SIGNATURE_HEADER not in resp.headers
-    assert not out.exists(), "an unauthenticated request must not create output_dir"
+    assert not list((server_state_root / "powderline").glob("job-*")), \
+        "an unauthenticated request must not start a job"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
@@ -331,8 +307,7 @@ def test_client_ignores_another_users_server(test_server, tmp_path, monkeypatch)
         json.dumps({"pid": os.getpid(), "port": port, "token": "guessed"}))
     assert client.is_server_available() is False
     with pytest.raises(Exception):
-        client._submit_to_server({}, tmp_path / "out")
-    assert not (tmp_path / "out").exists()
+        client._submit_to_server({})
 
 
 def test_refinement_through_authenticated_server(test_server, server_state_root,
@@ -345,7 +320,12 @@ def test_refinement_through_authenticated_server(test_server, server_state_root,
     assert result["status"] == "ok", result.get("failure")
     assert result["envelope_version"] == "1" and result["converged"] in (True, False, None)
     assert result["method"] == "server"
-    assert (tmp_path / "fit_profile.txt").exists()
+    # re/19 (KI-12): the files came back in the response and were written here; the server kept nothing
+    for name in ("fit_profile.txt", "refined_parameters.csv", "dummy.lst", "dummy.gpx"):
+        assert (tmp_path / name).exists(), name
+    assert "files" not in result
+    assert all(Path(f).parent == tmp_path.resolve() for f in result["output_files"]), result["output_files"]
+    assert not list((server_state_root / "powderline").glob("job-*")), "the server's scratch dir must be gone"
 
 
 def test_engine_failure_through_authenticated_server(test_server, server_state_root, monkeypatch,
