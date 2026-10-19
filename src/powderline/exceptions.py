@@ -175,6 +175,7 @@ WARNING_CODES: Mapping[str, WarningCode] = MappingProxyType({
     # core (schema_core)
     "uaniso_not_positive_definite": WarningCode("core", "warning"),
     "symmetry_value_derived": WarningCode("core", "info"),
+    "output_recipe_not_valid": WarningCode("core", "warning"),
     # gsasii
     "gsasii_broadening_default_applied": WarningCode("gsasii", "warning"),
     "gsasii_background_default_applied": WarningCode("gsasii", "warning"),

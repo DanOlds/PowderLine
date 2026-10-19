@@ -459,6 +459,7 @@ simulated peak heights changed at the 0.2.0 re-baseline.
 | `gsasii_parameters_not_varied` | gsasii | warning | GSAS-II varied fewer parameters than requested |
 | `uaniso_not_positive_definite` | core | warning | the stated `Uaniso` has a principal value ≤ 0; used as stated |
 | `symmetry_value_derived` | core | info | a coordinate, cell value or Uij stated within tolerance of its exact symmetry-derived value is held in that form (stated and held values in the message); evidence of a symmetry relation, not a statement of one — an exactly stated value gets no note (P-34) |
+| `output_recipe_not_valid` | core | warning | the run's output recipe (re/20, KI-04) does not validate as written — an engine returned a value the schema refuses, or a symmetry tie came back inconsistent; it is still returned and written (`output_recipe_valid: false`) |
 | `topas_adp_converted` | topas | warning | `Uiso` written as `beq = 8π²·Uiso` |
 | `topas_parameter_at_limit` | topas | warning | a refined value ended at a stated bound or a TOPAS default limit |
 | `topas_parameters_not_varied` | topas | warning | TOPAS varied fewer parameters than requested |

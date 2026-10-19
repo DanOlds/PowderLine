@@ -54,6 +54,9 @@ REFINED_PARAMETERS_COLUMNS = (
     "category",
 )
 
+#: Column order for parameter_dispositions.csv (re/20, KI-04): how each value of the output recipe came about.
+DISPOSITION_COLUMNS = ("path", "value", "esd", "disposition", "at_limit")
+
 #: Column order for <phase>_unit_cell_report.csv (3 columns).
 UNIT_CELL_COLUMNS = ("parameter", "value", "esd")
 
@@ -193,4 +196,23 @@ def write_peak_list_report(
     """
     path = Path(output_dir) / f"{phase_name}_peak_list_report.csv"
     _write_table(path, columns, rows, delimiter=",")
+    return path
+
+
+def write_output_recipe(output_dir: Path, recipe: Mapping[str, object]) -> Path:
+    """Write ``output_recipe.json`` (re/20, KI-04): the resolved recipe of the run, UTF-8, LF, 2-space indent."""
+    import json
+
+    path = Path(output_dir) / "output_recipe.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(recipe, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    return path
+
+
+def write_parameter_dispositions(output_dir: Path, rows: Iterable[Mapping[str, object]]) -> Path:
+    """Write ``parameter_dispositions.csv`` with :data:`DISPOSITION_COLUMNS`."""
+    path = Path(output_dir) / "parameter_dispositions.csv"
+    _write_table(path, DISPOSITION_COLUMNS, rows, delimiter=",")
     return path
