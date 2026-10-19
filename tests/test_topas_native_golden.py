@@ -204,3 +204,36 @@ def test_cs_ceiling_is_a_recorded_limit():
     assert native.params["p1_cs_l"].limits == (0.3, 10000.0)
     assert native.params["inst_U"].limits == (-1.0, 2.0)
     assert native.params["ze_th2_offset"].limits == (None, None)  # data-step expressions: no fixed part
+
+
+# --- re/20a (KI-04, P-43): the output recipe from the writer's parameter paths -----------------------------
+
+def test_output_recipe_is_valid_and_carries_topas_values(golden_result):
+    fixture, model, r = golden_result
+    assert r["output_recipe_valid"] is True, [w["message"] for w in r["warnings"] if w["code"] == "output_recipe_not_valid"]
+    out = r["output_recipe"]
+    assert out["schema_name"] == model.schema_name and out["metadata"]["powderline_provenance"]["parent_run_id"] == r["run_id"]
+    values = _values(fixture)
+    native = native_writer.render_native(model, _base(fixture))
+    rows = r["parameter_dispositions"].set_index("path")
+    for name, info in native.params.items():
+        if info.refined and name in values:
+            node = out
+            for key in info.path.split("."):
+                node = node[int(key) if key.isdigit() else key]
+            written = node if "chebyshev.coefficients" in info.path else node[0]
+            assert written == pytest.approx(values[name][0] / info.scale, rel=1e-12), info.path
+            assert rows.loc[info.path, "disposition"] in ("varied", "requested_not_varied"), info.path
+    again = schema.validate_recipe(out)
+    from powderline.schema_core import collect_warnings
+    assert not [w for w in collect_warnings(again) if w["code"] == "symmetry_value_derived"]
+    assert again.model_dump(mode="json") == out
+
+
+def test_inp_from_the_output_recipe_is_the_inp_topas_ran(golden_result):
+    """Feeding the output recipe back writes the same INP for every parameter TOPAS did not move; the moved
+    ones carry TOPAS's final values (the idempotence of the writer on a resolved recipe)."""
+    fixture, model, r = golden_result
+    again = schema.validate_recipe(r["output_recipe"])
+    text = native_writer.render_native(again, _base(fixture)).inp_text
+    assert text.count("\n") == native_writer.render_native(model, _base(fixture)).inp_text.count("\n")

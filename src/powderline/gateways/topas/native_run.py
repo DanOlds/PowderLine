@@ -40,6 +40,7 @@ import pandas as pd
 
 from powderline import reports
 from powderline import results as envelopes
+from powderline import roundtrip
 from powderline.exceptions import EngineExecutionError, StructuredWarning
 from powderline.fitstats import compute_fit_statistics
 from powderline.gateways.topas.native_writer import (
@@ -52,7 +53,7 @@ from powderline.gateways.topas.native_writer import (
 )
 from powderline.gateways.topas.peak_list import PEAK_LIST_COLUMNS, parse_peak_list
 from powderline.gateways.topas.runner import discover_tc_exe
-from powderline.gateways.topas.schema import TopasRietveldRecipe
+from powderline.gateways.topas.schema import TopasRietveldRecipe, validate_recipe
 from powderline.registry import validate_only_summary
 from powderline.schema_core import collect_warnings, parameters_requested
 
@@ -135,10 +136,14 @@ def run_native(model, output_dir, *, base_name: str | None = None, topas_dir=Non
                      "To run TOPAS, set --topas-dir (the folder containing tc.exe) or topas.dir in "
                      ".powderline_config.yaml and declare its version (--topas-version / topas.version), or run "
                      "the INP on the TOPAS machine; PowderLine never guesses where TOPAS is (P-35)"))
-        return envelopes.generated_envelope(
+        env = envelopes.generated_envelope(
             elapsed=time.time() - started, method="topas_generate_only", warnings=validated_warnings + [note],
             output_files=sorted(str(f) for f in out.glob("*") if f.is_file()), simulation_mode=native.simulation,
             engine_details={"engine": "TOPAS", "engine_version": model.engine_version, "tc_path": None})
+        # the output recipe is the resolved input: nothing ran, so every flagged parameter was not varied (re/20a)
+        flagged = {pp.path for pp in roundtrip.parameter_paths(model) if pp.refine_flag}
+        return roundtrip.attach(env, roundtrip.build_output(model, {}, not_varied=flagged, parent_run_id=env["run_id"],
+                                                            validator=validate_recipe), out)
     if engine_version_check is not None:
         engine_version_check(tc)
     expected = (native.results_file, native.profile_file, *native.phase_files.values())
@@ -327,8 +332,10 @@ def build_result(model, native: NativeInput, out: Path, validated_warnings: list
             writer.writeheader()
             writer.writerows(spf_rows)
 
-    return envelopes.with_status_fields({
-        "run_id": str(uuid.uuid4()),
+    run_id = str(uuid.uuid4())
+    refined, not_varied, at_limit = _output_inputs(native, values, warnings, varied < requested)
+    envelope = envelopes.with_status_fields({
+        "run_id": run_id,
         "rwp": undefined(fs.rwp),
         "r_exp": undefined(fs.rexp),
         "gof": undefined(fs.gof),
@@ -357,6 +364,8 @@ def build_result(model, native: NativeInput, out: Path, validated_warnings: list
         "spf_convergence_diagnostics": (pd.DataFrame(spf_diag, columns=list(SPF_DIAG_COLUMNS)) if spf_diag
                                         else pd.DataFrame()),
     }, status="ok", converged=None)  # TOPAS 6 exposes no convergence signal in its files (EB-85)
+    return roundtrip.attach(envelope, roundtrip.build_output(model, refined, not_varied=not_varied, at_limit=at_limit,
+                                                             parent_run_id=run_id, validator=validate_recipe), out)
 
 
 def validate_only_result(model, validated_warnings: list) -> dict:
@@ -401,6 +410,26 @@ def _limit_hits(native: NativeInput, values: dict) -> list:
                 found.append(StructuredWarning(code="topas_parameter_at_limit", message=message,
                                                field_path=info.path))
     return found
+
+
+def _output_inputs(native: NativeInput, values: dict, warnings: list, fewer_varied: bool) -> tuple:
+    """What the output recipe needs from TOPAS (re/20a, KI-04): ``{recipe path: (value, esd)}`` in recipe units
+    for every refined parameter the writer named (``ParamInfo.path`` / ``scale``), the flagged paths TOPAS did
+    not vary (reported with no ESD, only when TOPAS varied fewer than requested), and the paths that ended at
+    a limit (the ``topas_parameter_at_limit`` warnings)."""
+    refined, not_varied = {}, set()
+    for name, info in native.params.items():
+        if not info.refined:
+            continue
+        if name in values:
+            v, e = values[name]
+            refined[info.path] = (v / info.scale, None if e is None else e / info.scale)
+            if fewer_varied and e is None:
+                not_varied.add(info.path)
+        else:
+            not_varied.add(info.path)
+    at_limit = {w["field_path"] for w in warnings if w["code"] == "topas_parameter_at_limit" and w.get("field_path")}
+    return refined, not_varied, at_limit
 
 
 def _refined_rows(model, native: NativeInput, values: dict) -> list[dict]:

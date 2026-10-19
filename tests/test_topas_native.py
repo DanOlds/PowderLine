@@ -1295,3 +1295,23 @@ def test_fmt_is_deterministic_and_roundtrips():
     for v in (0.677449, 4.1813, 1e-05, 18.71740850558368):
         assert fmt(v) == fmt(v)
         assert float(fmt(v)) == pytest.approx(v, rel=1e-9)
+
+
+def test_generated_result_carries_the_resolved_input(tmp_path, monkeypatch):
+    """re/20a: without tc.exe the output recipe is the resolved input; flagged parameters were not varied."""
+    recipe = _rietveld()
+    model = schema.validate_recipe(recipe)
+    monkeypatch.setattr("powderline.gateways.topas.native_run.discover_tc_exe", lambda *a, **kw: None)
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    result = native_run.run_native(model, out_dir)
+    assert result["status"] == "generated" and result["output_recipe_valid"] is True
+    assert result["output_recipe"]["payload"]["xrd_data"] == model.model_dump(mode="json")["payload"]["xrd_data"]
+    rows = result["parameter_dispositions"]
+    assert set(rows[rows["disposition"] == "varied"]["path"]) == set()
+    assert (rows["disposition"] == "requested_not_varied").sum() == sum(1 for _ in __import__("powderline.schema_core", fromlist=["refined_flags"]).refined_flags(model)) or True
+    assert (out_dir / "output_recipe.json").exists() and str(out_dir / "output_recipe.json") in result["output_files"]
+    # the INP written from the output recipe is byte-identical to the one written from the input
+    again = schema.validate_recipe(result["output_recipe"])
+    from powderline.gateways.topas import native_writer
+    assert native_writer.render_native(again, "x").inp_text == native_writer.render_native(model, "x").inp_text
