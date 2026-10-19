@@ -1130,22 +1130,40 @@ def test_converged_follows_lmfit_and_is_none_for_simulation(tmp_path):
 
 # --- re/20a (KI-04): the output recipe and its idempotence -----------------------------------------------------
 
-@pytest.mark.parametrize("which", ["lab6_crysfml_tch_result", "lab6_cryspy_pv_result"])
-def test_output_recipe_is_valid_and_feeds_back(which, request, tmp_path_factory):
-    result = request.getfixturevalue(which)
+def test_output_recipe_is_valid_and_feeds_back(lab6_crysfml_tch_result, tmp_path_factory):
+    """re/20a: the output recipe carries the refined cell, re-validates silently, and a second run from it
+    reproduces the fit (refinement-level idempotence, within the ESDs)."""
+    result = lab6_crysfml_tch_result
     assert result["output_recipe_valid"] is True, [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"]
     out = result["output_recipe"]
     phase = next(iter(out["payload"]["phases"]))
-    cell_a = out["payload"]["phases"][phase]["unit_cell"]["a"][0]
     reported = dict(zip(result["unit_cell_data"][phase]["parameter"], result["unit_cell_data"][phase]["value"]))
-    assert cell_a == pytest.approx(reported["cell_a"], rel=1e-9)
+    assert out["payload"]["phases"][phase]["unit_cell"]["a"][0] == pytest.approx(reported["a"], rel=1e-9)
     again = schema.validate_recipe(out)
     from powderline.schema_core import collect_warnings
     assert not [w for w in collect_warnings(again) if w["code"] == "symmetry_value_derived" or w["code"].endswith("_default_applied")]
-    second = gateway.run(out, str(tmp_path_factory.mktemp(which + "_again")))
+    second = gateway.run(out, str(tmp_path_factory.mktemp("crysfml_tch_again")))
     assert second["status"] == "ok" and abs(second["rwp"] - result["rwp"]) < 0.05
+    # well-determined parameters (|value| > 10 ESD) stay within 3 ESD; a parameter consistent with zero (the
+    # Lorentzian X here, -5e-5 +/- 2e-4) may wander between two converged fits and says nothing about the loop
     first_rows = result["parameter_dispositions"].set_index("path")
     second_rows = second["parameter_dispositions"].set_index("path")
+    compared = 0
     for path, row in first_rows.iterrows():
-        if row["disposition"] == "varied" and row["esd"] and row["esd"] > 0:
+        if row["disposition"] == "varied" and row["esd"] and row["esd"] > 0 and abs(row["value"]) > 10 * row["esd"]:
             assert abs(second_rows.loc[path, "value"] - row["value"]) <= 3 * row["esd"], path
+            compared += 1
+    assert compared >= 3, "the cell, the scale and the background at least"
+
+
+def test_output_recipe_that_the_schema_refuses_is_still_written_and_flagged(lab6_cryspy_pv_result):
+    """re/20a (P-43 D5): the cryspy_pv fit ends with a profile the schema refuses (a negative width near the
+    window, EB-87): the output recipe is written and returned, output_recipe_valid is false, the warning names
+    the field, and nothing pretends it can be fed back."""
+    result = lab6_cryspy_pv_result
+    assert result["output_recipe_valid"] is False and result["output_recipe"] is not None
+    why = [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"]
+    assert why and "payload.instrument.broadening.parameters" in why[0]["message"]
+    assert any(f.endswith("output_recipe.json") for f in result["output_files"])
+    with pytest.raises(Exception):
+        schema.validate_recipe(result["output_recipe"])

@@ -40,6 +40,9 @@ recipes do not validate; see the
   reports it unavailable until re/20b. `powderline.recipes.block` /
   `with_block` move core blocks (`xrd_data`, `fit_range`, a phase) between
   recipes, the only parts shared across engines.
+  Regression reference: the easydiffraction `lab6_cryspy_pv` golden's warning
+  list gains `output_recipe_not_valid` — that fit ends with a profile the schema
+  refuses (a negative width near the window, EB-87), the case D5 is for.
 
 **Schemas and versioning**
 - **Core schema 1.0.0** (`src/powderline/schema_core.py`): the shared top level

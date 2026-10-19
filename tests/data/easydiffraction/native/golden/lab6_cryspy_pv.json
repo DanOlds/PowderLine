@@ -546,7 +546,8 @@
    ]
   },
   "warnings": [
-   "easydiffraction_negative_width"
+   "easydiffraction_negative_width",
+   "output_recipe_not_valid"
   ]
  }
 }
