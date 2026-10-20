@@ -435,12 +435,30 @@ simulated peak heights changed at the 0.2.0 re-baseline.
   cells stable to ~1e-5) (EB-90). *Policy:* every CrysFML refinement carries
   `easydiffraction_crysfml_start_dependent`; the calculator stays available
   because the user chooses it and PowderLine states the difference (A175).
-- **On GSAS-II-calculated LaB6 patterns, CrysFML TCH + FCJ puts the cell
-  14–31 ppm low and La's Uiso 10–22 % low** (B's Uiso and the thermal
-  expansion agree; GoF ≈ 1 in both engines) — the `example_LaB6_temperature_series`
-  easydiffraction leg (EB-93; cause not established: the La/B form factors or
-  dispersion terms, or the profile at high angle). *Policy:* documented
-  (`docs/cross-engine-comparison.md`), no code change.
+- **On GSAS-II-calculated LaB6 patterns, easydiffraction refines La's Uiso
+  10–22 % low** (CrysFML TCH + FCJ: cell 14–31 ppm low; CrysPy pseudo-Voigt:
+  Uiso 17 % low, cell +68 ppm, the EB-88 symmetric-profile shift) while B's
+  Uiso, the thermal expansion and GoF ≈ 1 agree — the
+  `example_LaB6_temperature_series` easydiffraction leg (EB-93). The probe
+  (re/24) points to **profile shape**, not the intensity model: with CrysPy
+  the engines' *integrated* intensities agree (the ln-ratio slope against
+  sin²θ/λ² goes to zero as the integration window widens) and its Uiso is
+  still 17 % low — the fitted offset is not an intensity difference; the
+  slope is identical with Uiso = 0 (not the Debye–Waller implementation),
+  dispersion is negligible (slope −0.003) and the polarization mapping
+  p = 1 − P is confirmed. With CrysFML the slope shrinks with the window
+  (−0.21 → −0.08 at ±0.4°) but was not shown to vanish, as its TCH tails
+  predict; a residual intensity difference of a few percent at high angle is
+  not excluded for CrysFML alone. The mismatch: GSAS-II's simulated peaks
+  have a Lorentzian width it clamps to zero above ≈ 10.7° (and SH/L
+  asymmetry at low angle), which neither a symmetric pseudo-Voigt nor TCH
+  with the FCJ terms held at 0.001 (the fit as posed; freed, they do not
+  move, EB-90) follows; the angle-dependent shape mismatch is absorbed by
+  the parameter that dominates the angle dependence of the intensities;
+  holding Uiso at the truth costs GoF 1.030 → 1.045 only. *Policy:*
+  documented (`docs/cross-engine-comparison.md`), no code change; across
+  engines compare cells (with the EB-88-size offsets in mind) and
+  expansion, not absolute Uiso.
 
 ## TOPAS platform facts
 

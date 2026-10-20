@@ -174,12 +174,23 @@ What the leg shows:
   and **La's Uiso 10–22 % low** (8–12 ESD; largest at the lowest
   temperatures) while B's Uiso is right (within 2 ESD wherever an ESD was
   reported). The data were calculated by GSAS-II: these are differences between
-  the two engines' models of the same pattern (profile shape at high angle,
-  where GSAS-II's clamped Lorentzian width makes the simulated peaks pure
-  Gaussian; the La/B intensity ratio versus angle, i.e. form factors or
-  dispersion), not refinement failures — GoF is 1.01–1.04 in both engines.
-  The cause of the Uiso difference is **not established** (register EB-93
-  records the observation).
+  the two engines' models of the same pattern, not refinement failures — GoF
+  is 1.01–1.04 in both engines. The probe (EB-93, re/24) points to
+  **profile shape**: with CrysPy's pseudo-Voigt the engines' integrated
+  intensities agree (no angle trend once the integration window is wide) and
+  its Uiso is still 17 % low (cell +68 ppm), so the offset is not an
+  intensity difference; the trend is the same with Uiso = 0, dispersion is
+  negligible and the polarization mapping is right. With CrysFML the trend
+  shrinks with the window but was not shown to vanish, as its TCH tails
+  predict — a few-percent high-angle intensity difference is not excluded
+  for CrysFML alone. GSAS-II's simulated peaks have a Lorentzian width
+  clamped to zero above ≈ 10.7° (and SH/L asymmetry at low angle); neither a
+  symmetric pseudo-Voigt nor TCH with its FCJ terms held at 0.001 (the fit as
+  posed; freed, they do not move, EB-90) follows that, and the shape mismatch
+  lands in the parameter that dominates the angle dependence of the
+  intensities. Holding Uiso at the truth costs GoF 1.030 → 1.045 only.
+  Compare cells (with the EB-88-size offsets in mind) and expansion across
+  engines, not absolute Uiso.
 - **One step reports no ESDs** (215 °C): CrysFML's single-precision pattern
   leaves lmfit unable to estimate error bars at that start (EB-90, the
   `easydiffraction_crysfml_start_dependent` warning on every CrysFML
