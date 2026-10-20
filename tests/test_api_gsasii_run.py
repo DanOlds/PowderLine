@@ -405,6 +405,6 @@ def test_atomrefine_output_recipe_reports_unphysical_values(tmp_path):
     result = powderline.run(recipe, tmp_path, execution_mode="subprocess")
     assert result["status"] == "ok" and result["output_recipe"] is not None
     assert (tmp_path / "output_recipe.json").exists()
-    if not result["output_recipe_valid"]:
-        why = [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"][0]["message"]
-        assert "occupancy" in why or "isotropic_size" in why or "Uiso" in why
+    assert result["output_recipe_valid"] is False  # the committed reference refines occupancies below zero
+    why = [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"][0]["message"]
+    assert "occupancy" in why or "isotropic_size" in why

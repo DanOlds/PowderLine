@@ -26,9 +26,13 @@ Facts the map rests on (GSAS-II 5.7.9, read-only):
   (``position_2theta``, ``intensity``, ``sigma_squared``, ``gamma``) maps by index onto
   ``payload.single_peaks``.
 
-A name this module does not know raises :class:`UnmappedParameter`: an unmapped
-refined value must never be dropped silently (the output recipe would quietly be
-wrong).
+A name this module does not know is reported as a *problem* (the mapped values are
+still applied; the output recipe is then marked not valid naming the parameter): an
+unmapped refined value must never be dropped silently. Single peak fitting with
+``use_instrument_profile`` is reported the same way: GSAS-II then overwrites the peak
+widths from the instrument profile and refines U..Z, but its peak fit fills no
+covariance and the frozen extractor reads no instrument parameters back, so the
+refined U..Z are not available to the output recipe.
 """
 from __future__ import annotations
 
@@ -59,10 +63,6 @@ _SPF_COLUMNS = {"position_2theta": "positions", "intensity": "intensities",
                 "sigma_squared": "pv_gaussian_sigma_sq", "gamma": "pv_lorentzian_gamma"}
 
 
-class UnmappedParameter(ValueError):
-    """A refined GSAS-II parameter this module cannot place in the recipe."""
-
-
 def _float(v) -> float | None:
     if v is None:
         return None
@@ -81,29 +81,37 @@ def _records(table) -> list:
     return list(table)
 
 
+def _text(v) -> str:
+    """A table cell as text; empty for None / NaN (a CSV-loaded table)."""
+    return v if isinstance(v, str) else ""
+
+
 def _phase_name(model, row: Mapping, phase_index: str) -> str:
-    name = row.get("phase_name")
+    name = _text(row.get("phase_name"))
     if name:
-        return str(name)
+        return name
     names = list(model.payload.phases)
     return names[int(phase_index)]
 
 
 def _atom_label(model, phase: str, row: Mapping, atom_index: str) -> str:
-    label = row.get("atom_name")
+    label = _text(row.get("atom_name"))
     if label:
-        return str(label)
+        return label
     return list(model.payload.phases[phase].atoms)[int(atom_index)]
 
 
 def refined_by_path(model, result: Mapping[str, Any]) -> tuple:
-    """``(refined, not_varied, at_limit)`` for :func:`powderline.roundtrip.build_output`.
+    """``(refined, not_varied, at_limit, problems)`` for :func:`powderline.roundtrip.build_output`.
 
     ``refined`` maps recipe paths to ``(value, esd)`` in recipe units for everything GSAS-II varied;
     ``not_varied`` lists the flagged paths GSAS-II reported nothing for (a flagged parameter that does
-    not affect the pattern, or one GSAS-II dropped); ``at_limit`` is empty: gsasii 1.0.0 has no bounds.
+    not affect the pattern, or one GSAS-II dropped); ``at_limit`` is empty: gsasii 1.0.0 has no bounds;
+    ``problems`` are the reasons the output recipe cannot be trusted as the run's result (an unmapped
+    name, the instrument-profile peak-fit mode) -- the caller marks it not valid with them.
     """
     refined: dict = {}
+    problems: list = []
     payload = model.payload
     phases = getattr(payload, "phases", None) or {}
 
@@ -114,7 +122,9 @@ def refined_by_path(model, result: Mapping[str, Any]) -> tuple:
             continue
         parts = name.split(":")
         if len(parts) < 3:
-            raise UnmappedParameter(f"GSAS-II parameter {name!r} is not of the form p:h:key[:atom]")
+            problems.append(f"GSAS-II parameter {name!r} is not of the form p:h:key[:atom]; its refined value "
+                            "is not in the output recipe")
+            continue
         phase_idx, hist_idx, key = parts[0], parts[1], parts[2]
         path = None
         if phase_idx == "":                                   # histogram parameter
@@ -145,8 +155,9 @@ def refined_by_path(model, result: Mapping[str, Any]) -> tuple:
             elif key in _BROADENING:
                 path = f"payload.phases.{phase}.peak_broadening.{_BROADENING[key]}"
         if path is None:
-            raise UnmappedParameter(f"GSAS-II parameter {name!r} has no recipe path; the output recipe would be "
-                                    "wrong without it (teach gateways/gsasii/paths.py the name)")
+            problems.append(f"GSAS-II parameter {name!r} has no recipe path (teach gateways/gsasii/paths.py the "
+                            "name); its refined value is not in the output recipe")
+            continue
         refined[path] = (value, esd)
 
     # the cell: every member from the unit-cell report, when the recipe refines the cell at all
@@ -156,21 +167,31 @@ def refined_by_path(model, result: Mapping[str, Any]) -> tuple:
         cell = phases[phase].unit_cell
         if not any(getattr(cell, k).refine_flag for k in _CELL):
             continue
+        from powderline.symmetry import cell_tie_groups
+
+        fixed = set(cell_tie_groups(phases[phase].space_group).fixed)  # symmetry-fixed angles: the model's, no ESD
         reported = {str(r["parameter"]): r for r in _records(cells)}
         for k in _CELL:
             r = reported.get(f"cell_{k}")
-            if r is not None and _float(r.get("value")) is not None:
+            if k not in fixed and r is not None and _float(r.get("value")) is not None:
                 refined[f"payload.phases.{phase}.unit_cell.{k}"] = (_float(r["value"]), _float(r.get("esd")))
 
-    # single peak fitting: the peak table, by index, no ESDs
+    # single peak fitting: the peak table, by index, no ESDs -- only the peak parameters the recipe refines
+    # (with use_instrument_profile GSAS-II overwrites the widths from U..Z, which the recipe holds)
     peaks = getattr(payload, "single_peaks", None)
     if peaks is not None:
         for i, r in enumerate(_records(result.get("spf_peaks"))):
             for column, field in _SPF_COLUMNS.items():
                 v = _float(r.get(column))
-                if v is not None and i < len(getattr(peaks, field)):
+                params = getattr(peaks, field)
+                if v is not None and i < len(params) and params[i].refine_flag:
                     refined[f"payload.single_peaks.{field}.{i}"] = (v, None)
+        mode = getattr(payload.refinement_controls, "single_peak_fitting_mode", None)
+        if mode is not None and mode.use_instrument_profile:
+            problems.append("single peak fitting with use_instrument_profile refines the instrument profile "
+                            "(U, V, W, X, Y, Z), but GSAS-II's peak fit reports no covariance and PowderLine reads "
+                            "no instrument parameters back, so the output recipe keeps their starting values")
 
     flagged = {".".join(str(x) for x in loc) for loc in refined_flags(model)}
     not_varied = {p for p in flagged if p not in refined and not p.endswith(".refine_flag")}
-    return refined, not_varied, set()
+    return refined, not_varied, set(), problems

@@ -292,15 +292,12 @@ def _frames(result: dict, model=None, output_dir=None) -> dict:
     # owns output_dir (the client's, in server mode). A name the map does not know is never dropped silently:
     # the output recipe is then built from nothing refined and marked not valid, naming the parameter.
     from powderline.gateways.gsasii import paths
-    try:
-        refined, not_varied, at_limit = paths.refined_by_path(model, envelope)
-        bundle = roundtrip.build_output(model, refined, not_varied=not_varied, at_limit=at_limit,
-                                        parent_run_id=envelope.get("run_id"), validator=schema.validate_recipe)
-    except paths.UnmappedParameter as exc:
-        bundle = roundtrip.build_output(model, {}, parent_run_id=envelope.get("run_id"),
-                                        validator=schema.validate_recipe)
+    refined, not_varied, at_limit, problems = paths.refined_by_path(model, envelope)
+    bundle = roundtrip.build_output(model, refined, not_varied=not_varied, at_limit=at_limit,
+                                    parent_run_id=envelope.get("run_id"), validator=schema.validate_recipe)
+    if problems:  # an unmapped name or a mode whose refined values GSAS-II does not report: said, not hidden
         bundle.valid = False
-        bundle.problems.insert(0, str(exc))
+        bundle.problems[:0] = problems
     return roundtrip.attach(envelope, bundle, Path(output_dir) if output_dir is not None else None)
 
 
