@@ -363,3 +363,48 @@ def test_run_server_mode_with_no_server_env_errors(recipe_LaB6_dict, tmp_path, m
     assert e.value.reason == "server_disabled" and "POWDERLINE_NO_SERVER" in str(e.value)
 
 
+
+
+# ─── re/20b (KI-04): the output recipe from a real GSAS-II run ────────────────────────────────────────────────
+
+def test_lab6_output_recipe_is_valid_and_feeds_back(lab6_subprocess_run, tmp_path_factory):
+    result, output_dir = lab6_subprocess_run
+    assert result["output_recipe_valid"] is True, [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"]
+    out = result["output_recipe"]
+    assert (output_dir / "output_recipe.json").exists() and (output_dir / "parameter_dispositions.csv").exists()
+    rows = result["parameter_dispositions"].set_index("path")
+    u = rows.loc["payload.instrument.broadening.U"]
+    assert u["disposition"] == "varied" and u["esd"] > 0 and out["payload"]["instrument"]["broadening"]["U"][0] == u["value"]
+    again = powderline.validate(out)
+    assert not [w for w in again.warnings if w["code"] == "symmetry_value_derived" or w["code"].endswith("_default_applied")]
+    second = powderline.run(out, tmp_path_factory.mktemp("lab6_again"), execution_mode="subprocess")
+    assert second["status"] == "ok" and abs(second["rwp"] - result["rwp"]) < 0.05
+    second_rows = second["parameter_dispositions"].set_index("path")
+    compared = 0
+    for path, row in rows.iterrows():
+        if row["disposition"] == "varied" and row["esd"] and row["esd"] > 0 and abs(row["value"]) > 10 * row["esd"]:
+            assert abs(second_rows.loc[path, "value"] - row["value"]) <= 3 * row["esd"], path
+            compared += 1
+    assert compared >= 3
+
+
+def test_singlepeakfit_output_recipe_feeds_back(tmp_path):
+    recipe = json.loads((REPO / "examples" / "example_LaB6_singlepeakfit" / "input.json").read_text(encoding="utf-8"))
+    result = powderline.run(recipe, tmp_path / "first", execution_mode="subprocess")
+    assert result["output_recipe_valid"] is True, [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"]
+    out = result["output_recipe"]
+    assert out["payload"]["single_peaks"]["positions"][0][0] == pytest.approx(float(result["spf_peaks"]["position_2theta"].iloc[0]))
+    second = powderline.run(out, tmp_path / "second", execution_mode="subprocess")
+    assert second["status"] == "ok"
+
+
+def test_atomrefine_output_recipe_reports_unphysical_values(tmp_path):
+    """DRX_33 atom refinement ends with occupancies outside [0, 1] and a negative size: the output recipe is
+    written and returned, not valid, and the warning names them (P-43 D5)."""
+    recipe = json.loads((REPO / "examples" / "example_DRX_33_atomrefine" / "input.json").read_text(encoding="utf-8"))
+    result = powderline.run(recipe, tmp_path, execution_mode="subprocess")
+    assert result["status"] == "ok" and result["output_recipe"] is not None
+    assert (tmp_path / "output_recipe.json").exists()
+    if not result["output_recipe_valid"]:
+        why = [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"][0]["message"]
+        assert "occupancy" in why or "isotropic_size" in why or "Uiso" in why

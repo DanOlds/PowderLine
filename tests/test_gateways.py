@@ -599,11 +599,25 @@ def test_validate_accepts_verbose_through_the_registry(gateway_module, path, mod
     assert isinstance(registry.get(gateway_module.NAME).validate(_load(path), verbose=True), model_type)
 
 
-def test_gsasii_result_marks_the_output_recipe_unavailable_until_re20b():
-    """re/20a: the GSAS-II gateway does not map its refined values to recipe paths yet; it must say so rather
-    than pass an unrefined recipe off as the result."""
-    from powderline.gateways.gsasii import gateway as g
-    res = g._frames({"status": "ok", "warnings": [], "fit_profile": None, "unit_cell_data": None,
-                     "peak_list_data": None, "refined_parameters": None})
-    assert res["output_recipe"] is None and res["output_recipe_valid"] is False
-    assert res["warnings"][-1]["code"] == "output_recipe_not_valid" and "re/20b" in res["warnings"][-1]["message"]
+
+def test_gsasii_frames_build_the_output_recipe_from_the_result_tables(tmp_path):
+    """re/20b (KI-04): the GSAS-II gateway maps the result tables onto recipe paths and writes the output recipe
+    beside the reports; a GSAS-II name the map does not know is never dropped silently."""
+    import json
+    import pandas as pd
+    from powderline.gateways.gsasii import gateway as g, paths
+    root = Path(__file__).resolve().parents[1] / "examples" / "example_LaB6"
+    model = gsasii_schema.validate_recipe(json.loads((root / "input.json").read_text(encoding="utf-8-sig")))
+    tables = {"refined_parameters": pd.read_csv(root / "output" / "refined_parameters.csv").to_dict("records"),
+              "unit_cell_data": {"LaB6": pd.read_csv(root / "output" / "LaB6_unit_cell_report.csv").to_dict("records")},
+              "peak_list_data": {}, "fit_profile": None, "spf_peaks": None, "spf_convergence_diagnostics": None,
+              "warnings": [], "output_files": [], "run_id": "r-1", "engine_details": {"converged": True},
+              "simulation_mode": False}
+    res = g._frames(dict(tables), model, tmp_path)
+    assert res["output_recipe_valid"] is True and res["output_recipe"]["metadata"]["powderline_provenance"]["parent_run_id"] == "r-1"
+    assert res["output_recipe"]["payload"]["instrument"]["broadening"]["U"][0] == pytest.approx(49.11908, rel=1e-6)
+    assert (tmp_path / "output_recipe.json").exists() and str(tmp_path / "parameter_dispositions.csv") in res["output_files"]
+    bad = dict(tables, refined_parameters=tables["refined_parameters"] + [
+        {"parameter_name": ":0:Mystery", "value": 1.0, "esd": None, "phase_name": "", "atom_name": ""}])
+    res = g._frames(bad, model, None)
+    assert res["output_recipe_valid"] is False and "Mystery" in res["warnings"][-1]["message"]

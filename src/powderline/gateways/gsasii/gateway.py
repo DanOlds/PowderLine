@@ -244,10 +244,10 @@ def run(
         )
 
     envelopes.raise_if_failed(result)
-    return _frames(result)
+    return _frames(result, recipe, output_dir)
 
 
-def _frames(result: dict) -> dict:
+def _frames(result: dict, model=None, output_dir=None) -> dict:
     """Normalise the structured fields to DataFrames and stamp the ``ok`` envelope fields.
 
     ``run_refinement()`` and the server return JSON-serializable primitives;
@@ -286,10 +286,22 @@ def _frames(result: dict) -> dict:
     # re/12: the ok envelope fields (status, converged, envelope_version);
     # the pre-0.2.0 top-level error/traceback keys are dropped (a failure never reaches here: it is raised).
     envelope = envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
-    # re/20a (KI-04): the GSAS-II gateway does not map its refined values to recipe paths yet (re/20b);
-    # say so rather than pass an unrefined recipe off as the result.
-    return roundtrip.unavailable(envelope, "the GSAS-II gateway does not map its refined values to recipe paths "
-                                           "yet (re/20b); topas and easydiffraction results carry one")
+    if model is None:
+        return envelope
+    # re/20b (KI-04): the output recipe from GSAS-II's own names (paths.py), built and written on the side that
+    # owns output_dir (the client's, in server mode). A name the map does not know is never dropped silently:
+    # the output recipe is then built from nothing refined and marked not valid, naming the parameter.
+    from powderline.gateways.gsasii import paths
+    try:
+        refined, not_varied, at_limit = paths.refined_by_path(model, envelope)
+        bundle = roundtrip.build_output(model, refined, not_varied=not_varied, at_limit=at_limit,
+                                        parent_run_id=envelope.get("run_id"), validator=schema.validate_recipe)
+    except paths.UnmappedParameter as exc:
+        bundle = roundtrip.build_output(model, {}, parent_run_id=envelope.get("run_id"),
+                                        validator=schema.validate_recipe)
+        bundle.valid = False
+        bundle.problems.insert(0, str(exc))
+    return roundtrip.attach(envelope, bundle, Path(output_dir) if output_dir is not None else None)
 
 
 def get_gateway() -> Gateway:

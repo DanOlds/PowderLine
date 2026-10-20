@@ -144,11 +144,6 @@ def test_attach_writes_files_and_flags_invalid(tmp_path):
     assert bad["output_recipe_valid"] is False and bad["warnings"][-1]["code"] == "output_recipe_not_valid"
 
 
-def test_unavailable_marker():
-    res = roundtrip.unavailable({"warnings": []}, "not mapped yet")
-    assert res["output_recipe"] is None and res["output_recipe_valid"] is False
-    assert res["warnings"][-1]["code"] == "output_recipe_not_valid" and "not mapped yet" in res["warnings"][-1]["message"]
-
 
 def test_engine_value_for_a_held_parameter_is_a_problem():
     """A gateway must only report what the user let the engine vary; a changed held value is not hidden."""

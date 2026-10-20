@@ -320,13 +320,3 @@ def attach(result: dict, bundle: OutputBundle, output_dir: Optional[Path] = None
                 files.append(str(path))
     return result
 
-
-def unavailable(result: dict, why: str) -> dict:
-    """Mark an envelope whose gateway cannot build the output recipe yet: never an unrefined recipe passed off
-    as the result (``output_recipe`` None, ``output_recipe_valid`` False, the warning says why)."""
-    result["output_recipe"] = None
-    result["output_recipe_valid"] = False
-    result["parameter_dispositions"] = pd.DataFrame(columns=list(DISPOSITION_COLUMNS))
-    result.setdefault("warnings", []).append(StructuredWarning(
-        code="output_recipe_not_valid", message=f"no output recipe: {why}", field_path=None))
-    return result
