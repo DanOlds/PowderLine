@@ -426,6 +426,19 @@ simulated peak heights changed at the 0.2.0 re-baseline.
   are the TCH pseudo-Voigt with Caglioti Gaussian and X tanθ + Y/cosθ
   Lorentzian widths; `cutoff_fwhm` acts in CrysPy only (CrysFML uses a fixed
   30-FWHM window) (EB-76). The peak type must be one the calculator computes.
+- **The CW X-ray corrections easydiffraction models, in both calculators**
+  (EB-75): the Kα doublet (`setup_wavelength_2` with
+  `setup_wavelength_2_to_1_ratio`; in easydiffraction one alone does
+  nothing, so the schema requires both or neither), the
+  Lorentz-polarization factor 1 − p + p cos²2θ_m cos²2θ
+  (`setup_polarization_coefficient`, `setup_monochromator_twotheta`; fixed
+  values, 2θ_m acts only with p > 0), the 2θ offset, sample displacement and
+  transparency (refinable, degrees) and Hewat cylinder absorption (`mu_r`).
+  **GSAS-II's polarization P is easydiffraction's 1 − p** (GSAS-II's factor
+  at azimuth 0 is (1 − P) cos²2θ + P): P = 0.99 is p = 0.01; copying P to p
+  is a 6.6 % intensity error at 15° 2θ. *Policy:* every correction is a
+  recipe slot, left out means not modelled (A160); the hand-derived
+  per-engine recipes state p = 1 − P.
 - **CrysFML reports no reflection list** (EB-79): no peak list reports are
   written with it, and the result warns
   `easydiffraction_reflections_not_available`.
@@ -449,16 +462,26 @@ simulated peak heights changed at the 0.2.0 re-baseline.
   p = 1 − P is confirmed. With CrysFML the slope shrinks with the window
   (−0.21 → −0.08 at ±0.4°) but was not shown to vanish, as its TCH tails
   predict; a residual intensity difference of a few percent at high angle is
-  not excluded for CrysFML alone. The mismatch: GSAS-II's simulated peaks
-  have a Lorentzian width it clamps to zero above ≈ 10.7° (and SH/L
-  asymmetry at low angle), which neither a symmetric pseudo-Voigt nor TCH
-  with the FCJ terms held at 0.001 (the fit as posed; freed, they do not
-  move, EB-90) follows; the angle-dependent shape mismatch is absorbed by
-  the parameter that dominates the angle dependence of the intensities;
-  holding Uiso at the truth costs GoF 1.030 → 1.045 only. *Policy:*
-  documented (`docs/cross-engine-comparison.md`), no code change; across
-  engines compare cells (with the EB-88-size offsets in mind) and
-  expansion, not absolute Uiso.
+  not excluded for CrysFML alone. **The cause is the series' profile, and
+  in it the clamped Lorentzian width** (re/25 test): the simulated peaks
+  have γ = X/cosθ + Y tanθ + Z with Y = −10.26 centideg, which GSAS-II
+  clamps to 0.001 centideg above ≈ 10.7°, so the high-angle peaks are pure
+  Gaussian — the one part of that profile neither a symmetric pseudo-Voigt
+  nor TCH (FCJ terms held at 0.001; freed, they do not move, EB-90) can
+  represent; the angle-dependent mismatch is absorbed by the parameter that
+  dominates the angle dependence of the intensities (holding Uiso at the
+  truth costs GoF 1.030 → 1.045 only). The same pattern simulated with a
+  GSAS-II profile easydiffraction can represent (the original `example_LaB6`
+  posing: U 18.7, V 0.60, W 1.15, X 0.28, Y 0.001, Z 0; no clamp) gives
+  CrysPy pV La Uiso 0.00863 vs 0.00858 programmed (0.3 ESD) and GSAS-II
+  0.00868 (0.6 ESD); CrysFML TCH lands at 0.00823 (−4 %; no ESD, 0.00817(18)
+  with X free), the size of the CrysFML-only intensity difference above.
+  What remains across engines: that CrysFML residual, and the axial
+  asymmetry, which on this pattern moves the *cell* (CrysPy's symmetric pV
+  +76 ppm, an EB-88-size shift), not Uiso. *Policy:* documented
+  (`docs/cross-engine-comparison.md`), no code change; across engines
+  compare cells (with the EB-88-size offsets in mind) and expansion;
+  absolute Uiso agrees only when the profile models do.
 
 ## TOPAS platform facts
 

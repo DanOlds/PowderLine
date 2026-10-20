@@ -25,6 +25,8 @@ import pytest
 
 pytestmark = [pytest.mark.gsasii, pytest.mark.slow]
 
+pytest.importorskip("GSASII.GSASIIscriptable")  # the unit tests import the frozen extractors, which import GSAS-II
+
 from subprocess_utils import extract_rwp_from_lst, kicker_command, run_subprocess_utf8
 
 REPO = Path(__file__).resolve().parent.parent  # the repo, whatever the cwd (review item 17)

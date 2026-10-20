@@ -183,14 +183,23 @@ What the leg shows:
   negligible and the polarization mapping is right. With CrysFML the trend
   shrinks with the window but was not shown to vanish, as its TCH tails
   predict — a few-percent high-angle intensity difference is not excluded
-  for CrysFML alone. GSAS-II's simulated peaks have a Lorentzian width
-  clamped to zero above ≈ 10.7° (and SH/L asymmetry at low angle); neither a
-  symmetric pseudo-Voigt nor TCH with its FCJ terms held at 0.001 (the fit as
-  posed; freed, they do not move, EB-90) follows that, and the shape mismatch
-  lands in the parameter that dominates the angle dependence of the
-  intensities. Holding Uiso at the truth costs GoF 1.030 → 1.045 only.
-  Compare cells (with the EB-88-size offsets in mind) and expansion across
-  engines, not absolute Uiso.
+  for CrysFML alone. **The cause is this series' profile, and in it the
+  clamped Lorentzian width**: Y = −10.26 centideg, which GSAS-II clamps to
+  0.001 centideg above ≈ 10.7°, so the simulated high-angle peaks are pure
+  Gaussian — the one part of the profile neither a symmetric pseudo-Voigt
+  nor TCH with its FCJ terms held at 0.001 (the fit as posed; freed, they do
+  not move, EB-90) can represent; the shape mismatch lands in the parameter
+  that dominates the angle dependence of the intensities (holding Uiso at
+  the truth costs GoF 1.030 → 1.045 only). Shown by the re/25 test: the
+  25 °C pattern simulated with a GSAS-II profile easydiffraction can
+  represent (the original `example_LaB6` posing, no clamp) gives CrysPy La
+  Uiso 0.00863 vs 0.00858 programmed and GSAS-II itself 0.00868, while
+  CrysFML lands at 0.00823 (−4 %; no ESD, 0.00817(18) with X free — the size
+  of its own intensity drift, EB-78). On this pattern the axial asymmetry
+  moves the cell for the symmetric profile (CrysPy +76 ppm, an EB-88-size
+  shift), not Uiso. Compare cells (with the EB-88-size offsets in mind) and
+  expansion across engines; absolute Uiso agrees only when the profile
+  models do.
 - **One step reports no ESDs** (215 °C): CrysFML's single-precision pattern
   leaves lmfit unable to estimate error bars at that start (EB-90, the
   `easydiffraction_crysfml_start_dependent` warning on every CrysFML

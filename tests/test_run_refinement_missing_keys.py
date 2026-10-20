@@ -19,6 +19,8 @@ from unittest.mock import MagicMock, patch
 
 pytestmark = pytest.mark.gsasii
 
+pytest.importorskip("GSASII.GSASIIscriptable")  # the mocked run imports the frozen executors, which import GSAS-II
+
 
 def _make_mock_hist(hist_name, residuals=None, has_reflection_lists=True,
                     has_reflist=True, has_cell=True):

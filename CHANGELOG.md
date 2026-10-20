@@ -68,8 +68,11 @@ recipes do not validate; see the
   `tests/data/easydiffraction/native/golden/lab6_temperature_series.json`):
   six valid steps, the expansion to 0.8 %, with the absolute cell 14–31 ppm
   and La's Uiso 10–22 % below the GSAS-II-calculated truth (an inter-engine
-  model difference, EB-93: the re/24 probe points to profile shape) and the free-Lorentzian-X
-  posing stopping honestly at step 1 on a negative width (EB-87).
+  profile difference, EB-93: the series' GSAS-II profile has its Lorentzian
+  width clamped to 0.001 centideg above ≈ 10.7°, which easydiffraction's
+  profiles cannot represent; shown by the re/24–25 probes) and the
+  free-Lorentzian-X posing stopping honestly at step 1 on a negative width
+  (EB-87).
   Regression reference: the easydiffraction `lab6_cryspy_pv` golden's warning
   list gains `output_recipe_not_valid` — that fit ends with a profile the schema
   refuses (a negative width near the window, EB-87), the case D5 is for.

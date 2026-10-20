@@ -79,13 +79,20 @@ puts the peak centroid, and therefore the lattice parameter:
   dispersion and the polarization mapping are ruled out. With CrysFML the
   trend shrinks with the window but was not shown to vanish (its TCH tails
   predict that), so a few-percent high-angle intensity difference is not
-  excluded for CrysFML alone. The mismatch is GSAS-II's Lorentzian width,
-  clamped to zero above ≈ 10.7° in the simulated peaks (plus SH/L asymmetry
-  at low angle), which neither a symmetric pseudo-Voigt nor TCH with its
-  FCJ terms held follows; it lands in the parameter that dominates the angle
-  dependence of the intensities. Holding Uiso at the truth costs GoF
-  1.030 → 1.045. Compare cells (with the EB-88-size offsets in mind) and
-  expansion across engines, not absolute Uiso.
+  excluded for CrysFML alone. The cause is the series' profile — GSAS-II's
+  Lorentzian width, clamped to 0.001 centideg above ≈ 10.7° in the simulated
+  peaks, the one part of it neither a symmetric pseudo-Voigt nor TCH with
+  its FCJ terms held can represent; the mismatch lands in the parameter that
+  dominates the angle dependence of the intensities (holding Uiso at the
+  truth costs GoF 1.030 → 1.045). Shown by the re/25 test: the same pattern
+  simulated with a GSAS-II profile easydiffraction can represent (the
+  original `example_LaB6` posing) gives CrysPy La Uiso 0.00863 vs 0.00858
+  programmed and GSAS-II 0.00868, while CrysFML lands at 0.00823 (−4 %, the
+  size of its own intensity drift, EB-78). On this pattern the asymmetry
+  moves the cell for the symmetric profile (CrysPy +76 ppm, an EB-88-size
+  shift), not Uiso. Compare cells (with the EB-88-size offsets in mind) and
+  expansion across engines; absolute Uiso agrees only when the profile
+  models do.
 - **TOPAS.** The committed TOPAS 6 LaB6 fixture keeps the cell **fixed** at
   the starting value (it exercises the instrument, background and scale), so
   the TOPAS row shows no refined LaB6 cell. A cell-refined TOPAS LaB6 fixture

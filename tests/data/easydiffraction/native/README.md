@@ -12,6 +12,7 @@ They are not converted recipes: PowderLine ships no 0.26.0 →
 | `lab6_cryspy_pv.json` | LaB6, CrysPy, pseudo-Voigt (no asymmetry); the same refinement |
 | `lab6_slots_simulation.json` | Calculation only (no flag set), CrysPy, every instrument slot: Kα2 doublet, polarization with a monochromator angle, displacement, transparency, cylinder absorption, Bérar–Baldinozzi asymmetry, a peak cutoff. Exercises the builder; not a physical model |
 | `drx33_two_phase_cryspy.json` | Two phases from the `example_DRX_33` data: cubic DRX_33 (`F m -3 m`, four cations sharing 4a) and monoclinic Li4MgWO6 (`C 1 2/m 1`); CrysPy, pseudo-Voigt; U, V, W, X, Y, 6-term Chebyshev, both scales and cells (cubic a; a, b, c, β) refined; window [1, 15] |
+| `golden/lab6_temperature_series.json` (golden only, no fixture) | The reference of the `examples/example_LaB6_temperature_series` easydiffraction leg: six sequential CrysFML TCH refinements of GSAS-II-simulated patterns through the output recipe (`run_series.py --recipe easydiffraction/input.json`), plus the free-Lorentzian-X run that stops at step 1 (EB-87). `tests/test_example_temperature_series.py` checks the golden's record (cell < 40 ppm of truth, La Uiso below truth, the stop reason) and re-runs the chain against it (cell 1e-4 relative, counts, validity, expansion coefficient 5 %) |
 
 ## Derivations (from the example's GSAS-II instrument parameters)
 
