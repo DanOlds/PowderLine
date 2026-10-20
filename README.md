@@ -43,6 +43,7 @@ pixi install                      # core only: validate recipes, no engine
 pixi install -e gsasii            # + GSAS-II (built as a conda package by pixi-build)
 pixi install -e easydiffraction   # + easydiffraction (Python >= 3.12)
 pixi install -e all               # every engine
+# fresh checkout: add --frozen (e.g. `pixi install --frozen -e gsasii`) so the committed lock is used as is
 ```
 
 Platforms: `linux-64`, `win-64`, `osx-arm64`. TOPAS has no Python package:

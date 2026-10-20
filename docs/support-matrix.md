@@ -77,6 +77,14 @@ generation time; it reads `0.2.0` once the release step bumps the version.
 The TOPAS `engine_version_spec` is the native declaration (`==6`, TOPAS 6
 only, A143): the `topas.*` 1.0.0 recipes state `engine_version: "6"`.
 
+**Verification status (0.2.0).** The `topas.*` gateway's INP and XYE writer is
+verified byte-for-byte against goldens produced on a TOPAS 6 machine; a run
+without `tc.exe` writes the files and returns `status: generated`. TOPAS
+**execution** on 0.2.0's code — the result parser on a fresh TOPAS 6 output,
+the background-only second run, the at-limit warning, the failure contract —
+has not been run since the refactor (KI-16). GSAS-II and easydiffraction
+execution are verified by their suites on linux-64 and win-64.
+
 ## Reading the matrix
 
 - A recipe with `core_schema_version: "1.0.0"` and

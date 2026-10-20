@@ -90,6 +90,15 @@ recipes do not validate; see the
   `output_recipe` / `parameter_dispositions`. topas and easydiffraction, which
   wrote `a … volume`, now write the vocabulary (their goldens' unit-cell keys
   renamed; no example reference moves — gsasii already wrote it).
+- **Known-issues second pass** (re/26, P-46): every `KI-NN` re-read against
+  the 0.2.0 tip; KI-11 (orphaned server after its runtime directory is
+  deleted) is `accepted`, KI-05's open half (GSAS-II's console-only messages)
+  has a concrete non-frozen plan, KI-13/KI-14 record what the refactor added,
+  and two entries are new — KI-15 (four example references are unphysical as
+  posed, their output recipes invalid by design, P-44) and KI-16 (TOPAS
+  execution unverified for 0.2.0: generate-only and the goldens are the
+  contract on the fork, a blocker for the upstream merge; the support matrix
+  now states the verification status per engine).
 
 **Schemas and versioning**
 - **Core schema 1.0.0** (`src/powderline/schema_core.py`): the shared top level

@@ -32,6 +32,10 @@ to follow so pixi tasks and code stay portable.
 > - **TOPAS**: writing `topas.*` input files works on every platform; running
 >   `tc.exe` is Windows-only by nature. The default environment is core-only;
 >   GSAS-II is in the `gsasii` environment (`pixi install -e gsasii`).
+>   On a fresh checkout install with `pixi install --frozen -e <env>`: a plain
+>   `pixi install` re-evaluates the pixi-build GSAS-II package's hash and
+>   re-locks every platform (seen on the 2026-10-16 Windows run); the frozen
+>   install uses the committed lock as is (KI-13).
 >
 > Sections 2–4 and 6 are the original analysis, kept as the reference for the
 > patterns; the module paths they quote (`gsas_server.py`, `mp_simulate.py`)

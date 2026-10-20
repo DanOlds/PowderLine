@@ -39,6 +39,16 @@ P-41) confirmed each one as written; no id is retired silently, and every
 id stays listed. The user-facing account of what the
 engines do is the [engine behaviour page](engine-behavior.md).
 
+**Second pass, 2026-10-20 (re/26, P-46).** Every entry re-read against the
+0.2.0 tip after re/19–re/25: KI-04 gains its round-trip demonstration;
+KI-05's open half gets a scoped plan; KI-11 moves from `watch` to
+`accepted` (its residual needs the user to delete their own runtime
+directory); KI-13 schedules the check command that would retire it; KI-10
+names the one thing its Windows branch still lacks (a live run); KI-14
+records what re/19 removed; KI-15 (example references that are unphysical
+as posed) and KI-16 (TOPAS execution unverified for 0.2.0, a **blocker for
+the upstream merge**) are registered. No id is closed by this pass.
+
 ---
 
 ## KI-01 — Malformed fixed cell computes a wrong pattern silently `accepted · critical` → resolved for native recipes (0.2.0)
@@ -169,11 +179,15 @@ exposed: the committed DRX_33 atom-refinement and anisotropic references hold
 occupancies below zero and negative crystallite sizes, and the LaB6 single-peak
 fitting reference's background peak refines its σ² far below GSAS-II's silent
 floor (EB-35); their output recipes are honestly `output_recipe_valid: false`
-(each example's DESCRIPTION says so).
+(each example's DESCRIPTION says so; KI-15). The round trip is demonstrated
+end to end by `examples/example_LaB6_temperature_series/` (re/22): six
+simulated LaB6 patterns refined in sequence by swapping only the `xrd_data`
+block into each step's output recipe, with GSAS-II and with easydiffraction,
+recovering the programmed thermal expansion.
 
 ---
 
-## KI-05 — GSAS-II refinement failures & constraint warnings don't raise `planned-fix · major` → resolved for refinement failures (0.2.0, re/12); console text still open
+## KI-05 — GSAS-II refinement failures & constraint warnings don't raise `planned-fix · major` → resolved for refinement failures (0.2.0, re/12); console text `planned-fix · minor`
 
 **What.** `proj.refine()` does not raise on refinement failure (singular matrix,
 etc.); constraint cascades/conflicts and frozen-variable notices go to stdout /
@@ -201,6 +215,31 @@ clear `EngineExecutionError` where GSAS-II's peak fit failed with a bare
 `EngineExecutionError` instead of returning `success: False`), with reasons
 `diverged`, `unusable_site`, `peak_fit_failed`, `engine_crashed`. Captured
 console text is still not collected; keep the id open for that.
+
+**Second pass (2026-10-20): the open half, `planned-fix · minor`, scoped
+down.** Most of what GSAS-II prints is already carried in a better form: a
+peak fit that ends on a singular matrix reports its ESDs as undetermined
+(EB-92, re/21), a parameter GSAS-II dropped as singular appears as
+`requested_not_varied` in `parameter_dispositions` by recipe path (KI-04),
+`Rvals['msg']` is a structured warning (EB-32) and divergence raises (A130).
+What is console-only after that is small — the constraint-generation notices
+and the explanatory text around failures that already raise — so no phrase
+list and no new warning code. The plan: the non-frozen gateway captures
+`sys.stdout` for the duration of the engine run (a stream that writes to
+both the real stdout and a bounded buffer, in-process and per job in the
+server) and carries the buffer's tail in the **failure envelope** (where a
+user is debugging) and, in verbose runs, under `engine_details`. Two facts
+that shape it: in the auto-started server the process's stdout is
+`DEVNULL` (`client.py`), so today the console text is discarded, not merely
+uncollected, and the per-job buffer would be its only record; and
+`redirect_stdout` is process-global, safe per job only because the server
+runs one job at a time (re/14). GSAS-II prints through Python's `print`
+(`GSASIIfiles.G2Print`), so a Python-level capture sees it; output from
+compiled code on file descriptor 1 is not captured and is not claimed.
+
+**Revisit.** The next branch touching `gateways/gsasii/gateway.py` or
+`server.py`, or the first user report of a GSAS-II failure whose envelope
+did not say enough.
 
 ---
 
@@ -381,11 +420,16 @@ the unit tests cover only the graceful sequence
 `os.kill(pid, SIGTERM)` maps to `TerminateProcess`, the correct hard kill — and
 unit tests drive the escalation path (`tests/test_gsas_server_unit.py`).
 
+**Second pass (2026-10-20).** The unit tests mock the process; the Windows
+escalation branch has never run live. It belongs in the maintainers' Windows
+matrix (`gsas-server start`, then `stop` against a server made unresponsive),
+not here.
+
 **Revisit.** Closed; kept for history.
 
 ---
 
-## KI-11 — Server discovery is split between PID file and port probe; an orphaned server is unmanageable `watch · minor`
+## KI-11 — Server discovery is split between PID file and port probe; an orphaned server is unmanageable `watch · minor` → accepted (2026-10-20)
 
 **What.** `gsas-server status|stop` trust the PID file
 (`<tempdir>/powderline_gsas_server.pid`), while `GSASClient` trusts an HTTP
@@ -425,6 +469,21 @@ no longer find or authenticate to it — but `status`/`stop` cannot see it
 either; it must be killed by hand (`pkill -u "$USER" -f "gsasii[/.]server"`).
 
 **Revisit.** Next branch touching `gateways/gsasii/server.py` / `client.py`.
+
+**Second pass (2026-10-20): `accepted`.** re/19 (KI-12) and re/21 both
+touched `server.py` without changing the picture: the residual needs the
+user's own runtime directory to be deleted under a running server, and the
+recovery is one documented command. A fallback was considered and declined:
+`status`/`stop` could look for a process whose command line is the server
+module when the state directory is missing (what the manual recovery does by
+hand), but that identifies a process, not *our* server (no lock, no token to
+verify), so it would be a guess dressed as a status. re/19 added the job scratch directories under the same
+state directory (`job-*`, swept at the next server start), so a deleted state
+directory also loses a running job's files — the same failure, same
+recovery. Accepted as a documented failure route; the id stays listed.
+
+**Revisit.** If the HTTP transport is replaced by a Unix-domain-socket /
+named-pipe transport (KI-14's revisit), which would give OS-level discovery.
 
 ---
 
@@ -513,8 +572,24 @@ the [migration guide](migration-0.26-to-1.0.md) and for contributors on the
 
 **Disposition (0.2.0, confirmed 2026-10-16: stays `watch`, A58).**
 
-**Revisit.** When a check command (`powderline doctor`-style) is added, or if
-a second discovery path is ever considered.
+**Second pass (2026-10-20): still `watch`, with the refactor's own evidence.**
+The failure mode is real and recurs: during the 0.2.0 work the `default` and
+`gsasii` environments each lost their editable install once (2026-10-16 and
+2026-10-19, after unrelated `pixi` operations; `registry.available()` returned
+`[]`), repaired with that env's own python,
+`python -m pip install --no-deps --no-build-isolation --no-index -e .`. A
+fresh checkout installs with `pixi install --frozen -e <env>` (a plain install
+re-locks on the pixi-build GSAS-II hash and re-installs; see the
+[cross-platform guide](cross-platform-guide.md)). The entry-point decision
+stands; the one thing that would retire this id is the check command, and
+after two losses in two weeks it is scheduled rather than wished for: a
+`powderline doctor` (or `--doctor`) that prints the registry's gateways, each
+installed engine's version against its pin, the server state directory and
+the Python environment, exiting non-zero when a gateway is missing. Half a
+day; a branch of its own.
+
+**Revisit.** When the check command lands (then `implemented`), or if a
+second discovery path is ever considered.
 
 ---
 
@@ -566,6 +641,10 @@ was no global way to keep `powderline.run()` from auto-starting a server.
 - *Upgrade.* A v0.1.1 server still running after the upgrade is never used,
   but is invisible to `gsas-server status|stop`; stop it by hand (see
   TROUBLESHOOTING).
+- *Since re/19 (KI-12).* The request carries no `output_dir` at all: the
+  server writes into its own private scratch directory and the files travel
+  back inside the signed response, so the "write into another user's
+  directory" surface no longer exists even in principle.
 
 **Evidence.** `src/powderline/gateways/gsasii/server.py` (`state_dir`,
 `_open_state_file`, `sign_request` / `sign_response`,
@@ -581,3 +660,75 @@ results, `POWDERLINE_NO_SERVER`), `tests/test_api.py`,
 **Revisit.** Closed; kept for history. A Unix-domain-socket / named-pipe
 transport would give OS-level peer authentication but needs separate POSIX and
 Windows code paths; revisit if the HTTP transport is replaced (see KI-12).
+
+---
+
+## KI-15 — Four committed example references refine unphysical values; their output recipes are invalid by design `accepted · minor`
+
+**What.** `example_DRX_33` (Li4MgWO6 crystallite size ≈ −1355 µm),
+`example_DRX_33_anisoADP` (DRX_33 size ≈ −9.7 µm), `example_DRX_33_atomrefine`
+(Li occupancy ≈ −0.35, a size ≈ −8 µm) and `example_LaB6_singlepeakfit` (its
+background peak's σ² ≈ −2700 centideg², below GSAS-II's silent 0.01 floor,
+EB-35) end their committed refinements on values the schemas refuse. Since
+re/20 every result carries the output recipe (KI-04), so these runs return
+`output_recipe_valid: false` with the warning `output_recipe_not_valid`
+naming the value — P-43 D5, the recipe is still written so the user sees
+what the engine produced. A user running the examples will meet that warning.
+
+**Evidence.** The three DRX_33 references' `output/refined_parameters.csv`
+(`Size;i` −1.355638e+03 and −9.677202e+00, `Afrac` −3.514487e-01); the
+single-peak fit writes no refined-parameter table — its value comes from the
+`peak_fit` block of a run (re/21) and is stated in its `DESCRIPTION.md` and
+asserted in `tests/test_api_gsasii_run.py`. `tests/test_gsasii_paths.py`
+and `tests/test_api_gsasii_run.py` assert the invalidity and the named value
+for DRX_33, atomrefine and the single-peak fit (the anisoADP test checks the
+Uij mapping only). Each example's `DESCRIPTION.md` "Known Issues" section
+gives the physical re-posing's result where one exists (size held at 10 µm
+as in `example_DRX_33_strainonly`: DRX_33 Rwp 8.46 vs 10.83 %, anisoADP 8.58
+vs 15.53 %; atomrefine then fails on the metric tensor; the single-peak fit
+with the background peak's widths and the last peak's γ held feeds back with
+Rwp unchanged within the test's 0.05 pp).
+
+**Decision (P-44).** The references stay as posed: they are the regression
+references and, deliberately, the ill-conditioned teaching cases (the SVD
+warnings, the railed sizes); `example_DRX_33_strainonly` is the physical
+DRX_33 variant. Re-posing any of them is a deliberate change with an
+equivalence record and regenerated outputs.
+
+**Revisit.** If a re-posed reference is wanted for a tutorial, or when a
+GSAS-II pin move regenerates the references anyway.
+
+---
+
+## KI-16 — TOPAS execution of 0.2.0 recipes is unverified; only INP generation is exercised `blocker (for the upstream merge) · major`
+
+**What.** No machine in the 0.2.0 work had TOPAS. The `topas.*` gateway's
+INP/XYE writer is pinned text-for-text to goldens produced on a TOPAS 6
+machine before re/07 (`tests/data/topas/native/golden/`,
+`test_topas_native_golden.py`, which also runs the current result parser on
+the committed TOPAS output), and on a machine without `tc.exe` a run writes
+the files and returns `status: generated`. Everything that needs a real run
+— the parser on output the current writer's INP produced, the background-only second run, the
+`topas_parameter_at_limit` warning against a real drift, non-ASCII output
+directories, the re/12 failure contract when `tc.exe` dies or rejects an INP,
+and the cell-refined LaB6 row of the cross-engine comparison page — has not
+run since the refactor. TOPAS 7 is out of scope for 0.2.0 (P-07, A143).
+
+**Evidence.** The maintainers keep the deferred list (eight items, T1–T8:
+the native-runner smoke on both workflows, a cell-refined LaB6 fixture for
+the comparison page, the at-limit warning and the non-ASCII output directory
+against real runs, the ionic scattering types, the failure contract when
+`tc.exe` dies or rejects an INP); `docs/cross-engine-comparison.md` (the
+TOPAS LaB6 row keeps the cell fixed); `docs/support-matrix.md` states the
+verification status.
+
+**Decision.** On the fork, keep shipping generate-only with the goldens as
+the contract, and say so where support is claimed (`docs/support-matrix.md`).
+For the **upstream merge this is a blocker**: an engine the support matrix
+lists must have had its execution path run at least once on the release's
+code — T1–T8 on the first machine with TOPAS 6, recorded in the devkit, moves
+this entry to `watch`. The goldens move only with an equivalence record
+(P-08: INP bytes must match).
+
+**Revisit.** The first session on a machine with `tc.exe`; before the
+upstream PR in any case.
