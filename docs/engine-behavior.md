@@ -435,6 +435,12 @@ simulated peak heights changed at the 0.2.0 re-baseline.
   cells stable to ~1e-5) (EB-90). *Policy:* every CrysFML refinement carries
   `easydiffraction_crysfml_start_dependent`; the calculator stays available
   because the user chooses it and PowderLine states the difference (A175).
+- **On GSAS-II-calculated LaB6 patterns, CrysFML TCH + FCJ puts the cell
+  14–31 ppm low and La's Uiso 10–22 % low** (B's Uiso and the thermal
+  expansion agree; GoF ≈ 1 in both engines) — the `example_LaB6_temperature_series`
+  easydiffraction leg (EB-93; cause not established: the La/B form factors or
+  dispersion terms, or the profile at high angle). *Policy:* documented
+  (`docs/cross-engine-comparison.md`), no code change.
 
 ## TOPAS platform facts
 

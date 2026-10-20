@@ -22,8 +22,8 @@ def _module(name):
 
 def _report(path):
     with open(path, newline="", encoding="utf-8") as f:
-        return [{k: (float(v) if k not in ("converged", "output_recipe_valid") else v == "True") for k, v in row.items()}
-                for row in csv.DictReader(f)]
+        return [{k: (v == "True" if k in ("converged", "output_recipe_valid") else None if v == "" else float(v))
+                 for k, v in row.items()} for row in csv.DictReader(f)]
 
 
 @pytest.mark.core
@@ -74,3 +74,51 @@ def test_series_runs_sequentially_through_the_output_recipe(tmp_path):
     final = json.loads((tmp_path / "out" / "final_output_recipe.json").read_text(encoding="utf-8"))
     assert final["payload"]["xrd_data"]["filename"] == "simulated_LaB6_500C"
     assert final["metadata"]["powderline_provenance"]["parent_run_id"]
+
+
+# --- the easydiffraction leg (re/22b): same data, same runner, its own first-step recipe; golden under tests/data ---
+
+ED_RECIPE = EXAMPLE / "easydiffraction" / "input.json"
+ED_GOLDEN = REPO / "tests" / "data" / "easydiffraction" / "native" / "golden" / "lab6_temperature_series.json"
+
+
+@pytest.mark.core
+def test_easydiffraction_leg_recipe_validates_with_every_step_and_the_golden_says_what_happened():
+    import powderline
+    from powderline import recipes
+    recipe = powderline.load_recipe_asset(ED_RECIPE)
+    assert recipe["schema_name"] == "easydiffraction.rietveld"
+    assert recipe["payload"]["instrument"]["broadening"]["parameters"]["broad_lorentz_x"][1] is False  # held: see DESCRIPTION
+    truth = json.loads((EXAMPLE / "data" / "truth.json").read_text(encoding="utf-8"))
+    for step in truth["steps"]:
+        data = json.loads((EXAMPLE / "data" / f"lab6_{int(step['temperature_C']):03d}C.json").read_text(encoding="utf-8"))
+        powderline.validate(recipes.with_block(recipe, "payload.xrd_data", data))
+    golden = json.loads(ED_GOLDEN.read_text(encoding="utf-8"))
+    rows = golden["series_report"]
+    assert len(rows) == 6 and all(r["output_recipe_valid"] for r in rows)
+    assert all(abs(r["a_refined"] - r["a_true"]) / r["a_true"] < 4e-5 for r in rows)      # the cell: within 40 ppm
+    assert all(r["Uiso_La_refined"] < r["Uiso_La_true"] for r in rows)                      # the recorded La Uiso offset
+    c, p = golden["thermal_expansion_fit"]["coefficients"], golden["thermal_expansion_fit"]["programmed"]
+    assert c[1] == pytest.approx(p[1], rel=0.05)                                             # the expansion itself
+    free = golden["free_lorentz_x_run"]
+    assert len(free["series_report"]) == 2 and free["series_report"][1]["output_recipe_valid"] is False
+    assert "Lorentzian FWHM" in free["stop_reason"]
+
+
+@pytest.mark.easydiffraction
+@pytest.mark.slow
+def test_easydiffraction_leg_runs_sequentially_and_matches_its_golden(tmp_path):
+    """Re-run the easydiffraction chain and compare with the golden as the CrysFML goldens are compared (cell within
+    1e-4 relative, counts, validity; no Rwp or ESD assertion): CrysFML's single-precision pattern makes its fits
+    start-dependent (EB-90), Rwp has moved 0.5 pp between builds."""
+    pytest.importorskip("easydiffraction")
+    run_series = _module("run_series")
+    rows = run_series.run_series(tmp_path / "out", tmp_path / "work", recipe_path=ED_RECIPE)
+    golden = json.loads(ED_GOLDEN.read_text(encoding="utf-8"))["series_report"]
+    assert len(rows) == len(golden) == 6
+    for got, ref in zip(rows, golden):
+        assert got["output_recipe_valid"] is True
+        assert got["a_refined"] == pytest.approx(ref["a_refined"], rel=1e-4)
+        assert got["parameters_varied"] == ref["parameters_varied"] == 14
+    fit = run_series.expansion_fit(rows)
+    assert fit["coefficients"][1] == pytest.approx(2.4645e-5, rel=0.05)  # the programmed linear coefficient (truth.json XI)

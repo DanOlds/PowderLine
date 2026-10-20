@@ -63,7 +63,13 @@ recipes do not validate; see the
   refined in sequence by swapping only the `xrd_data` block into each step's
   output recipe (`run_series.py`); the reference `output/series_report.csv`
   recovers the programmed a(T) within 1.5 ESD, and the regression test
-  re-runs the chain.
+  re-runs the chain. The same runner drives the **easydiffraction leg**
+  (`easydiffraction/input.json`, CrysFML TCH; golden
+  `tests/data/easydiffraction/native/golden/lab6_temperature_series.json`):
+  six valid steps, the expansion to 0.8 %, with the absolute cell 14–31 ppm
+  and La's Uiso 10–22 % below the GSAS-II-calculated truth (an inter-engine
+  model difference, EB-93, cause not established) and the free-Lorentzian-X
+  posing stopping honestly at step 1 on a negative width (EB-87).
   Regression reference: the easydiffraction `lab6_cryspy_pv` golden's warning
   list gains `output_recipe_not_valid` — that fit ends with a profile the schema
   refuses (a negative width near the window, EB-87), the case D5 is for.

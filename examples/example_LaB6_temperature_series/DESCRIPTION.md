@@ -141,7 +141,54 @@ regression tolerance.
 - Simulation (one-cycle, all flags held) and refinement from the same recipe
   frame.
 
-## Per-engine recipes
+## Per-engine recipes: the easydiffraction leg
 
-gsasii only. Extending the series to easydiffraction (the same data, its own
-recipe) is a future project: it would verify sequential refinement there.
+`easydiffraction/input.json` is the first step for easydiffraction (CrysFML,
+Thompson–Cox–Hastings profile with FCJ asymmetry; the `example_LaB6`
+easydiffraction recipe with the 25 °C block, both Uiso refined, and the TCH
+Lorentzian `broad_lorentz_x` **held** at 10⁻⁵ — see `easydiffraction/README.md`).
+The **same** `run_series.py` drives it (`--recipe easydiffraction/input.json`):
+the loop does not know which engine it runs. Reference: the golden
+`tests/data/easydiffraction/native/golden/lab6_temperature_series.json`
+(no easydiffraction output is committed under `examples/`). About 30 s per
+step.
+
+| T (°C) | a programmed (Å) | a refined (Å) | ESD (Å) | Δ (ppm) | La Uiso refined / programmed (Å²) | GoF |
+|---|---|---|---|---|---|---|
+| 25 | 4.156784 | 4.156712 | 0.000033 | −17 | 0.00667 / 0.00858 | 1.03 |
+| 120 | 4.159218 | 4.159107 | 0.000033 | −27 | 0.00907 / 0.01132 | 1.03 |
+| 215 | 4.161840 | 4.161783 | none | −14 | 0.01246 / 0.01405 | 1.04 |
+| 310 | 4.164647 | 4.164518 | 0.000032 | −31 | 0.01479 / 0.01679 | 1.03 |
+| 405 | 4.167641 | 4.167570 | 0.000040 | −17 | 0.01724 / 0.01953 | 1.01 |
+| 500 | 4.170821 | 4.170754 | 0.000040 | −16 | 0.02007 / 0.02226 | 1.02 |
+
+What the leg shows:
+
+- **The chain runs the same way in easydiffraction as in GSAS-II**: six
+  steps, every output recipe valid, the chain's last output recipe is the
+  next step's input (14 parameters varied against GSAS-II's 10: the profile
+  is refined here). The *expansion* is recovered as well as by GSAS-II: the
+  (unweighted) quadratic gives 2.445·10⁻⁵ Å/K and 1.08·10⁻⁸ Å/K² against the
+  programmed 2.4645·10⁻⁵ and 1.0325·10⁻⁸ (0.8 % and 4 %).
+- **The absolute cell is 14–31 ppm low** (1.7–4 ESD) at every temperature,
+  and **La's Uiso 10–22 % low** (8–12 ESD; largest at the lowest
+  temperatures) while B's Uiso is right (within 2 ESD wherever an ESD was
+  reported). The data were calculated by GSAS-II: these are differences between
+  the two engines' models of the same pattern (profile shape at high angle,
+  where GSAS-II's clamped Lorentzian width makes the simulated peaks pure
+  Gaussian; the La/B intensity ratio versus angle, i.e. form factors or
+  dispersion), not refinement failures — GoF is 1.01–1.04 in both engines.
+  The cause of the Uiso difference is **not established** (register EB-93
+  records the observation).
+- **One step reports no ESDs** (215 °C): CrysFML's single-precision pattern
+  leaves lmfit unable to estimate error bars at that start (EB-90, the
+  `easydiffraction_crysfml_start_dependent` warning on every CrysFML
+  refinement). The runner carries the step with empty ESD columns and fits
+  the expansion unweighted.
+- **With `broad_lorentz_x` refined** (the parent recipe's posing) the chain
+  stops at step 1: X refines negative to fit the Gaussian-only high-angle
+  peaks, the TCH Lorentzian FWHM X tan θ + Y/cos θ goes negative from 14.8°
+  2θ (inside the window's last degree), the schema refuses the output recipe
+  (EB-87) and `run_series.py` stops with the reason — the stop condition
+  working as designed. That run is recorded in the golden under
+  `free_lorentz_x_run`.

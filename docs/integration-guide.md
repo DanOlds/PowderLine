@@ -244,7 +244,9 @@ patterns from 25 to 500 °C with a programmed thermal expansion (Akdoğan &
 Payzant, J. Appl. Cryst. 2025) and Poisson noise, refined in sequence through the
 output recipe by `run_series.py`; its committed `output/series_report.csv`
 shows every refined cell within 1.5 ESD of the programmed value, and the
-regression test re-runs the chain.
+regression test re-runs the chain. The same runner drives the easydiffraction
+leg of the series from `easydiffraction/input.json`: the loop never looks at
+the engine, because only the core `xrd_data` block moves.
 
 ### Server-based refinement (`GSASClient`)
 

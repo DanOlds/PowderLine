@@ -65,6 +65,16 @@ puts the peak centroid, and therefore the lattice parameter:
   correlates with the cell, which lands **+915 ppm** off (EB-88). It is not in
   the table because the committed fixtures do not use it; the register entry
   records the run.
+- **GSAS-II-calculated data refined by easydiffraction (the temperature
+  series, re/22).** On the six `example_LaB6_temperature_series` patterns,
+  which GSAS-II calculated with a known cell and Uiso, CrysFML TCH + FCJ puts
+  the cell **14–31 ppm low** (1.7–4 ESD) at every temperature while recovering
+  the *expansion* to 0.8 %, and La's Uiso **10–22 % low** (8–12 ESD) with
+  B's Uiso right; GoF is 1.01–1.04 in both engines. The cell offset is of
+  the size of the EB-88 agreement above; the Uiso difference (the La/B
+  intensity ratio versus angle: form factors, dispersion, or the Gaussian-only
+  high-angle peaks GSAS-II's clamped Lorentzian width produces) is recorded,
+  cause not established (EB-93).
 - **TOPAS.** The committed TOPAS 6 LaB6 fixture keeps the cell **fixed** at
   the starting value (it exercises the instrument, background and scale), so
   the TOPAS row shows no refined LaB6 cell. A cell-refined TOPAS LaB6 fixture
@@ -127,6 +137,7 @@ what else each model was free to vary.
 | Comparable across the rows | Not directly comparable |
 |---|---|
 | Rwp / Rexp / GoF (same formula, same 3767 points) | Scale factors (each engine's own convention) |
+| The unit-cell report's columns (`parameter, value, esd`) | Its row names — gsasii `cell_a … cell_gamma, cell_volume`, topas and easydiffraction `a … gamma, volume` — and a fixed row's ESD (gsasii `0.0`, the others empty); `scripts/cross_engine_comparison.py` and the temperature-series runner strip the prefix |
 | Cells and their ESDs (same units) | Profile parameters (different parameterizations and units; see the engine pages) |
 | The number of parameters varied (each engine's own count) | What those parameters are |
 
