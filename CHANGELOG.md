@@ -68,7 +68,7 @@ recipes do not validate; see the
   `tests/data/easydiffraction/native/golden/lab6_temperature_series.json`):
   six valid steps, the expansion to 0.8 %, with the absolute cell 14–31 ppm
   and La's Uiso 10–22 % below the GSAS-II-calculated truth (an inter-engine
-  model difference, EB-93, cause not established) and the free-Lorentzian-X
+  model difference, EB-93: the re/24 probe points to profile shape) and the free-Lorentzian-X
   posing stopping honestly at step 1 on a negative width (EB-87).
   Regression reference: the easydiffraction `lab6_cryspy_pv` golden's warning
   list gains `output_recipe_not_valid` — that fit ends with a profile the schema
@@ -77,9 +77,10 @@ recipes do not validate; see the
   `<phase>_unit_cell_report.csv` / `unit_cell_data` has the seven rows
   `cell_a … cell_gamma, cell_volume` with one ESD rule (the engine's ESD for a
   refined member; `0.0` for a member fixed by symmetry or held; empty when the
-  engine refined it but reported none; the volume's ESD when propagated) —
-  with one standing exception: a gsasii *simulation* leaves every ESD empty
-  (the frozen extractor; the committed `example_LaB6_simulation` reference).
+  engine refined it but reported none; the volume's ESD when propagated).
+  A gsasii *simulation* (no covariance) wrote every ESD empty; it now writes
+  `0.0` (frozen-edits ledger row R34, re/24) — the two simulation references'
+  unit-cell reports change in their ESD column only (deliberate change 33).
   Core owns the vocabulary and builds the rows (`reports.UNIT_CELL_ROWS`,
   `unit_cell_rows`); the writer refuses any other row; `UNIT_CELL_ROW_OF` /
   `UNIT_CELL_MEMBER_OF` are the one bridge to the recipe paths of

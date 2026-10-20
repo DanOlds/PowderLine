@@ -56,7 +56,9 @@ def calculate_cell_esds_from_A_matrix(phase_idx: int, proj: Any, phase_name: str
         # Get covariance data
         cov_data = proj.data.get('Covariance', {}).get('data', {})
         if not cov_data:
-            return [None] * 7
+            # R34 (re/24, P-45): no covariance means nothing was refined (a simulation); every cell value is
+            # a stated number, so its ESD is 0.0 under the one unit-cell report ESD rule -- not "unknown".
+            return [0.0] * 7
 
         # Get space group data for this phase
         SGData = proj.data['Phases'][phase_name]['General'].get('SGData')

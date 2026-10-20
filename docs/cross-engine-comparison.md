@@ -70,11 +70,22 @@ puts the peak centroid, and therefore the lattice parameter:
   which GSAS-II calculated with a known cell and Uiso, CrysFML TCH + FCJ puts
   the cell **14–31 ppm low** (1.7–4 ESD) at every temperature while recovering
   the *expansion* to 0.8 %, and La's Uiso **10–22 % low** (8–12 ESD) with
-  B's Uiso right; GoF is 1.01–1.04 in both engines. The cell offset is of
-  the size of the EB-88 agreement above; the Uiso difference (the La/B
-  intensity ratio versus angle: form factors, dispersion, or the Gaussian-only
-  high-angle peaks GSAS-II's clamped Lorentzian width produces) is recorded,
-  cause not established (EB-93).
+  B's Uiso right; GoF is 1.01–1.04 in both engines (CrysPy's symmetric
+  pseudo-Voigt: Uiso 17 % low, cell +68 ppm — the shift above). The probe
+  (EB-93, re/24) points to **profile shape**: with CrysPy the engines'
+  integrated intensities agree (no trend with angle once the integration
+  window is wide) and its Uiso is still 17 % low, so the fitted offset is
+  not an intensity difference; the trend is the same with Uiso = 0, and
+  dispersion and the polarization mapping are ruled out. With CrysFML the
+  trend shrinks with the window but was not shown to vanish (its TCH tails
+  predict that), so a few-percent high-angle intensity difference is not
+  excluded for CrysFML alone. The mismatch is GSAS-II's Lorentzian width,
+  clamped to zero above ≈ 10.7° in the simulated peaks (plus SH/L asymmetry
+  at low angle), which neither a symmetric pseudo-Voigt nor TCH with its
+  FCJ terms held follows; it lands in the parameter that dominates the angle
+  dependence of the intensities. Holding Uiso at the truth costs GoF
+  1.030 → 1.045. Compare cells (with the EB-88-size offsets in mind) and
+  expansion across engines, not absolute Uiso.
 - **TOPAS.** The committed TOPAS 6 LaB6 fixture keeps the cell **fixed** at
   the starting value (it exercises the instrument, background and scale), so
   the TOPAS row shows no refined LaB6 cell. A cell-refined TOPAS LaB6 fixture
@@ -137,7 +148,7 @@ what else each model was free to vary.
 | Comparable across the rows | Not directly comparable |
 |---|---|
 | Rwp / Rexp / GoF (same formula, same 3767 points) | Scale factors (each engine's own convention) |
-| The unit-cell report: columns `parameter, value, esd`, rows `cell_a … cell_volume` and the ESD rule (`powderline.reports.unit_cell_rows`; until re/23 topas and easydiffraction wrote `a … volume`) | Whether a volume ESD is propagated (gsasii and topas yes, easydiffraction no); a gsasii simulation writes every ESD empty |
+| The unit-cell report: columns `parameter, value, esd`, rows `cell_a … cell_volume` and the ESD rule (`powderline.reports.unit_cell_rows`; until re/23 topas and easydiffraction wrote `a … volume`) | Whether a volume ESD is propagated (gsasii and topas yes, easydiffraction no) |
 | Cells and their ESDs (same units) | Profile parameters (different parameterizations and units; see the engine pages) |
 | The number of parameters varied (each engine's own count) | What those parameters are |
 

@@ -360,6 +360,9 @@ def test_every_shipped_unit_cell_table_uses_the_vocabulary():
         with open(ref, newline="", encoding="utf-8") as f:
             names = [row["parameter"] for row in csv.DictReader(f)]
         assert names == list(reports.UNIT_CELL_ROWS), ref
+        if "_simulation" in str(ref):                       # nothing refined: every ESD is 0.0 (R34), never empty
+            with open(ref, newline="", encoding="utf-8") as f:
+                assert all(float(row["esd"]) == 0.0 for row in csv.DictReader(f)), ref
         seen += 1
     for golden in sorted((REPO / "tests" / "data" / "easydiffraction" / "native" / "golden").glob("*.json")):
         data = json.loads(golden.read_text(encoding="utf-8"))

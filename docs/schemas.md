@@ -136,11 +136,11 @@ test holds the two lists equal). The ESD rule is the same for every engine: the 
 member; `0.0` for a member fixed by symmetry or held by the user; an empty field
 when the engine refined the member but reported no ESD; the volume's ESD when
 the engine propagates one (gsasii, topas), `0.0` for a cell with nothing refined,
-else empty (easydiffraction). One standing exception: a **gsasii simulation**
-(`refinement_cycles: 1`, nothing refined) leaves every ESD field empty, the
-volume's too — the frozen extractor's behaviour, kept as the committed
-`example_LaB6_simulation` reference shows; a gsasii *refinement* follows the
-rule (held cell → `0.0`, `example_LaB6`; refined → propagated, `example_DRX_33`).
+else empty (easydiffraction). gsasii follows it in every mode: held cell →
+`0.0` (`example_LaB6`), refined → propagated (`example_DRX_33`), a simulation
+(nothing refined, no covariance) → `0.0` everywhere (`example_LaB6_simulation`;
+frozen-edits ledger row R34, re/24 — before it a simulation left every ESD
+field empty).
 `refined_parameters.csv`, by contrast, deliberately
 speaks the **engine's** names (`0::A0`, `broad_gauss_u`, `p1_cell_a`): it is the
 engine's own table, with `descriptive_name`, `phase_name` and `atom_name` beside

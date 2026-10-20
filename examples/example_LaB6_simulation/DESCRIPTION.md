@@ -67,7 +67,7 @@ This simulation produces:
 
 - **dummy.gpx** - GSAS-II project file
 - **dummy.lst** - Log file (shows 1 cycle with no parameter changes)
-- **LaB6_unit_cell_report.csv** - Unit cell parameters (unchanged from input, the `esd` column is empty)
+- **LaB6_unit_cell_report.csv** - Unit cell parameters (unchanged from input; every `esd` is `0.0` — nothing refined, no covariance; re/24, ledger row R34)
 - **LaB6_peak_list_report.csv** - Reflection list (hkl, d-spacing, 2θ, intensities)
 - **fit_profile.txt** - Calculated pattern (2θ, Iobs, Iweight, Icalc, Ibackground, Idifference)
 
