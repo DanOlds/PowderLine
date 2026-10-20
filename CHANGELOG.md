@@ -55,7 +55,15 @@ recipes do not validate; see the
   are unchanged; the output recipe reports what they contain.
   `powderline.recipes.block` /
   `with_block` move core blocks (`xrd_data`, `fit_range`, a phase) between
-  recipes, the only parts shared across engines.
+  recipes, the only parts shared across engines. **Sequential refinement
+  example** (`examples/example_LaB6_temperature_series/`, re/22): six LaB6
+  patterns simulated with GSAS-II from 25 to 500 °C on the measured 28-ID-1
+  grid, with the SRM 660a thermal expansion of Akdoğan & Payzant (2025), a
+  temperature-dependent Uiso and Poisson noise (`make_series.py`, seeded),
+  refined in sequence by swapping only the `xrd_data` block into each step's
+  output recipe (`run_series.py`); the reference `output/series_report.csv`
+  recovers the programmed a(T) within 1.5 ESD, and the regression test
+  re-runs the chain.
   Regression reference: the easydiffraction `lab6_cryspy_pv` golden's warning
   list gains `output_recipe_not_valid` — that fit ends with a profile the schema
   refuses (a negative width near the window, EB-87), the case D5 is for.

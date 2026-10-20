@@ -238,6 +238,14 @@ at a limit. `powderline.recipes.block` / `with_block` move only core blocks
 (`payload.xrd_data`, `payload.fit_range`, `payload.phases.<name>`) between
 recipes; an engine's own blocks stay in that engine's terms.
 
+A complete, runnable instance of this loop is
+`examples/example_LaB6_temperature_series/` (re/22): six simulated LaB6
+patterns from 25 to 500 °C with a programmed thermal expansion (Akdoğan &
+Payzant, J. Appl. Cryst. 2025) and Poisson noise, refined in sequence through the
+output recipe by `run_series.py`; its committed `output/series_report.csv`
+shows every refined cell within 1.5 ESD of the programmed value, and the
+regression test re-runs the chain.
+
 ### Server-based refinement (`GSASClient`)
 
 ```python
