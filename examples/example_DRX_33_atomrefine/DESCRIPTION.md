@@ -145,7 +145,13 @@ This two-phase Rietveld refinement produces:
 
 ## Known Issues
 
-None.
+**The output recipe of this example is not valid as posed** (`output_recipe_valid:
+false`, warning `output_recipe_not_valid`; KI-04, P-43 D5): the committed reference
+refines the DRX_33 Li occupancy to about −0.35 and the Li4MgWO6 crystallite size to
+about −8 µm, which the schema refuses; the output recipe is written and returned with
+those values and the warning names them. Holding the sizes at 10 µm does not rescue
+this posing (GSAS-II then fails with an invalid metric tensor); the reference is kept
+as posed.
 
 ## Comparison to Related Examples
 

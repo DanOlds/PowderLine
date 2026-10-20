@@ -173,7 +173,15 @@ This two-phase Rietveld refinement produces:
 
 ## Known Issues
 
-None. If anisotropic refinement fails to converge or produces unphysical Uij values:
+**The output recipe of this example is not valid as posed** (`output_recipe_valid:
+false`, warning `output_recipe_not_valid`; KI-04, P-43 D5): the committed reference
+refines the DRX_33 isotropic crystallite size to about −9.7 µm (ESD ≈ 1.3 µm), which
+the schema refuses; the output recipe is written and returned with that value and
+the warning names it. Holding both sizes at 10 µm (the `example_DRX_33_strainonly`
+posing: `isotropic_size` and its `LG_eta` fixed, strain refined) gives Rwp 8.58 %
+against 15.53 % here with a valid output recipe; the reference is kept as posed.
+
+If anisotropic refinement fails to converge or produces unphysical Uij values:
 1. Check that starting values are reasonable (diagonal > 0, off-diagonal small)
 2. Consider fixing off-diagonal terms (U12, U13, U23) initially
 3. Ensure sufficient data quality (high-resolution powder data required for anisotropic ADPs)

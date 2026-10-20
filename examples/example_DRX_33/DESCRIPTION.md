@@ -70,7 +70,15 @@ This two-phase Rietveld refinement produces:
 
 ## Known Issues
 
-None.
+**The output recipe of this example is not valid as posed** (`output_recipe_valid:
+false`, warning `output_recipe_not_valid`; KI-04, P-43 D5). The committed reference
+refines both phases' isotropic crystallite size and microstrain over 1–15° 2θ, which
+is ill-conditioned (see the SVD warnings above): the Li4MgWO6 size ends at
+about −1355 µm (ESD ≈ 180 µm), which the schema refuses, so the output recipe is
+written and returned with that value and the warning names it. The reference is
+kept deliberately as the ill-conditioned posing; `example_DRX_33_strainonly` is the
+physical re-parameterisation (size held at 10 µm; Rwp 8.46 % against 10.83 % here)
+whose output recipe is valid and feeds back.
 
 ## Refine flags (gsasii 1.0.0)
 

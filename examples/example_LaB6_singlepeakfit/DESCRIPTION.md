@@ -81,7 +81,14 @@ This single peak fitting analysis produces:
 
 ## Known Issues
 
-None.
+**The output recipe of this example is not valid as posed** (`output_recipe_valid:
+false`, warning `output_recipe_not_valid`; KI-04, P-43 D5): the one background
+single peak refines all four of its parameters, and GSAS-II lets its σ² run far below
+the 0.01 centideg² floor it silently computes with (EB-35) — the committed fit ends
+near −2700 centideg² — which the schema refuses. The output recipe is written and
+returned with that value and the warning names it; the 36 Peak List peaks and the
+Chebyshev background come back with ESDs (`peak_fit`, re/21). The reference is kept
+as posed.
 
 ## Per-engine recipes
 
