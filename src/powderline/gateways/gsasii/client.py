@@ -605,23 +605,28 @@ class GSASClient:
             return envelopes.failure_envelope("backend", "backend_error", f"Failed to parse recipe: {str(e)}",
                                               method="subprocess")
 
+        from powderline.gateways.gsasii import console
+
         start_time = time.time()
         files = lambda: sorted(str(f) for f in output_dir.glob('*') if f.is_file())  # noqa: E731
-        try:
-            result = run_refinement(recipe, output_dir, verbose=verbose, method='subprocess')
-        except EngineExecutionError as e:  # R30: PowderLine's own failure (divergence, site, peak fit)
-            import traceback
-            return e.result or envelopes.failure_envelope("engine", e.reason, str(e), method="subprocess",
-                                                          elapsed=time.time() - start_time, output_files=files(),
-                                                          traceback=traceback.format_exc())
-        except Exception as e:
-            import traceback
-            return envelopes.failure_envelope("engine", "engine_crashed", str(e), method="subprocess",
-                                              elapsed=time.time() - start_time, traceback=traceback.format_exc(),
-                                              output_files=files())
+        with console.capture_console() as tail:  # the engine's console text, kept for a failed run (KI-05)
+            try:
+                result = run_refinement(recipe, output_dir, verbose=verbose, method='subprocess')
+            except EngineExecutionError as e:  # R30: PowderLine's own failure (divergence, site, peak fit)
+                import traceback
+                result = e.result or envelopes.failure_envelope("engine", e.reason, str(e), method="subprocess",
+                                                                elapsed=time.time() - start_time, output_files=files(),
+                                                                traceback=traceback.format_exc())
+            except Exception as e:
+                import traceback
+                result = envelopes.failure_envelope("engine", "engine_crashed", str(e), method="subprocess",
+                                                    elapsed=time.time() - start_time, traceback=traceback.format_exc(),
+                                                    output_files=files())
         if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
-            return envelopes.legacy_failure(result)
-        return envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
+            result = envelopes.legacy_failure(result)
+        if result.get('status') != 'failed':
+            result = envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
+        return console.attach_console(result, tail, verbose=verbose)
 
 
 def _with_validation_warnings(recipe, result: Dict[str, Any]) -> Dict[str, Any]:

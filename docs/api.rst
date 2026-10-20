@@ -61,9 +61,23 @@ Command line
 
 ``powderline <recipe.json> [--output DIR] [--validate-only] [--verbose]
 [--use-server | --no-server] [--topas-dir DIR] [--topas-version V]`` (the pixi
-task ``kicker`` runs the same ``main``). The engine is the one the recipe's
+task ``kicker`` runs the same ``main``), and ``powderline --doctor`` (the pixi
+task ``doctor``): what this environment can do — the gateways the registry
+finds, each engine's installed version against its requirement, the GSAS-II
+server's state — exiting 1 on a stale install or an engine outside its
+requirement (:mod:`powderline.doctor`). The engine is the one the recipe's
 ``schema_name`` names; an engine flag given for a recipe of another engine is
 an error; exit status 0 on success, 1 otherwise. The module imports no engine.
+
+.. py:module:: powderline.doctor
+
+``powderline --doctor``'s report (re/27, KI-13): ``report()`` returns the
+structured dict (``powderline``, ``python``, ``platform``, ``gateways`` — one
+entry per registered gateway with ``workflows``, ``engine_version_spec``,
+``engine_installed``, ``engine_status``, ``problem`` — ``server`` and
+``problems``), ``format_report()`` renders it, ``main()`` prints it and
+returns 1 when ``problems`` is non-empty. Engine-free at import; the gateway
+modules are imported lazily when the report runs.
 
 .. autofunction:: powderline.kicker.main
 

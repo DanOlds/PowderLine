@@ -42,6 +42,7 @@ preview = ["pixi-build"]
 # The one CLI (P-06): `powderline <recipe.json>` after `pixi reinstall powderline`;
 # this task runs the same main. Dispatches on the recipe's schema_name.
 kicker = { cmd = "python -m powderline.kicker", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
+doctor = { cmd = "python -m powderline.kicker --doctor", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
 # Regenerate src/powderline/_code_hash.json after editing the frozen GSAS-II
 # gateway modules (stdlib only; guarded by tests/test_code_hash.py).
 update-code-hash = "python scripts/update_code_hash.py"

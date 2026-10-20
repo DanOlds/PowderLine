@@ -35,7 +35,9 @@ Core (engine-free; `import powderline` imports no engine):
   refused (test-only, on the gateway's own `run`).
 - `kicker.py` — the one CLI: `powderline <recipe.json> [--output DIR]
   [--validate-only] [--verbose] [--use-server|--no-server] [--topas-dir DIR]
-  [--topas-version V]`; `pixi run kicker` runs the same `main`. Refuses
+  [--topas-version V]` and `powderline --doctor` (`doctor.py`: gateways,
+  engine versions vs pins, server state; non-zero on a stale install, KI-13);
+  `pixi run kicker` / `pixi run doctor` run the same `main`. Refuses
   templates; an engine flag for another engine's recipe exits 1.
 - `registry.py` — gateways from the `powderline.gateways` entry-point group
   (lazy `ep.load`), the frozen `Gateway` dataclass (`name`, `capabilities`,
@@ -74,7 +76,8 @@ imported lazily from `run()`):
   re/01 baseline `daace24`; code-hashed); non-frozen `routing.py`, `fit_report.py`
   (uniform statistics, `engine_details`, convergence, divergence = failure),
   `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`,
-  `paths.py` (GSAS-II parameter names → recipe paths for the output recipe, re/20b);
+  `paths.py` (GSAS-II parameter names → recipe paths for the output recipe, re/20b),
+  `console.py` (the engine's console tail into a failed envelope, re/27, KI-05);
   `server.py` / `client.py` (persistent FastAPI server + `GSASClient`, the
   `auto`/`server` execution modes; per-user state dir, token-signed requests
   and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2, KI-14; output files travel

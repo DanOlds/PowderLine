@@ -227,15 +227,18 @@ def run(
     # 5. Dispatch by execution_mode; every outcome is an envelope (powderline.results) and a failed one
     #    is raised (re/12 spec §6.2)
     if execution_mode == 'subprocess':
-        try:
-            result = run_refinement(recipe, output_dir, verbose=verbose, method='subprocess')
-        except EngineExecutionError as exc:  # R30: PowderLine's own failure, raised by the frozen executor
-            import traceback
-            result = exc.result or envelopes.failure_envelope(
-                "engine", exc.reason, str(exc), method="subprocess", traceback=traceback.format_exc(),
-                output_files=sorted(str(f) for f in output_dir.glob('*') if f.is_file()))
+        from powderline.gateways.gsasii import console
+        with console.capture_console() as tail:  # the engine's console text, kept for a failed run (KI-05)
+            try:
+                result = run_refinement(recipe, output_dir, verbose=verbose, method='subprocess')
+            except EngineExecutionError as exc:  # R30: PowderLine's own failure, raised by the frozen executor
+                import traceback
+                result = exc.result or envelopes.failure_envelope(
+                    "engine", exc.reason, str(exc), method="subprocess", traceback=traceback.format_exc(),
+                    output_files=sorted(str(f) for f in output_dir.glob('*') if f.is_file()))
         if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
             result = envelopes.legacy_failure(result)
+        console.attach_console(result, tail, verbose=verbose)
         result['warnings'] = warnings + list(result.get('warnings') or [])  # GSASClient adds them on its paths
     else:
         from powderline.gateways.gsasii.client import GSASClient

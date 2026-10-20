@@ -1060,3 +1060,18 @@ def test_simulate_unexpected_exception_is_an_engine_crashed_envelope_with_files(
     body = resp.json()
     assert body["status"] == "failed" and body["failure"]["reason"] == "engine_crashed" and "boom" in body["failure"]["message"]
     assert set(body["files"]) == {"dummy.lst"} and not list(state.glob("job-*"))
+
+
+def test_simulate_failure_carries_the_console_tail(monkeypatch, tmp_path, recipe_LaB6_dict):
+    """re/27 (KI-05): what the engine printed during a failed job comes back in failure.console_tail."""
+    from powderline.exceptions import EngineExecutionError
+
+    def stub(recipe, output_dir, verbose=False, method="server"):
+        print("Removing parameter: 0::A0")
+        print("**** Refinement failed - singular matrix ****")
+        raise EngineExecutionError("diverged", reason="diverged")
+    client, _ = _real_app(monkeypatch, tmp_path, stub)
+    body = _simulate(client, recipe_LaB6_dict).json()
+    assert body["status"] == "failed" and body["failure"]["reason"] == "diverged"
+    assert body["failure"]["console_tail"].rstrip().endswith("singular matrix ****")
+    assert "Removing parameter: 0::A0" in body["failure"]["console_tail"]

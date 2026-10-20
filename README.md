@@ -85,6 +85,7 @@ pixi run kicker <recipe.json> --validate-only     # check a recipe; needs no eng
 pixi run -e gsasii kicker <recipe.json>           # run a gsasii.* recipe
 pixi run -e easydiffraction kicker <recipe.json>  # run an easydiffraction.* recipe
 pixi run kicker <recipe.json> --topas-dir C:/TOPAS6 --topas-version 6   # run a topas.* recipe (tc.exe on Windows)
+pixi run -e gsasii doctor                                                  # what this environment can do (gateways, engines, server)
 ```
 
 After `pixi reinstall powderline` the same program is the installed command

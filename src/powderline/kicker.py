@@ -4,6 +4,7 @@
 
     powderline <recipe.json> [--output DIR] [--validate-only] [--verbose]
                              [--use-server | --no-server] [--topas-dir DIR] [--topas-version V]
+    powderline --doctor      (what this environment can do: gateways, engines, server; re/27)
 
 (``pixi run kicker ...`` / ``python src/powderline/kicker.py ...`` run the same
 ``main``; re/08 binds the task names.) The CLI loads the recipe
@@ -148,9 +149,13 @@ Examples:
   powderline examples/example_LaB6/input.json --no-server --verbose
   powderline recipe.json --validate-only                          # no engine needed
   powderline topas_recipe.json --topas-version 6 --output out/
+  powderline --doctor                                              # what this environment can do
         """
     )
-    parser.add_argument("input_json", type=Path, help="Path to the recipe file (.json / .yaml)")
+    parser.add_argument("input_json", type=Path, nargs="?", help="Path to the recipe file (.json / .yaml)")
+    parser.add_argument("--doctor", action="store_true",
+                        help="report what this environment can do (gateways, engines and versions, the GSAS-II "
+                             "server) and exit non-zero on a problem; no recipe needed")
     parser.add_argument("--output", type=Path, default=None,
                         help="Output directory (default: <recipe dir>/output)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
@@ -224,7 +229,13 @@ def main(argv: list[str] | None = None) -> int:
             except (ValueError, OSError):
                 pass
 
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.doctor:
+        from powderline import doctor
+        return doctor.main()
+    if args.input_json is None:
+        parser.error("a recipe file is required (or --doctor)")
     output_dir = args.output if args.output else args.input_json.parent / "output"
 
     try:
@@ -277,6 +288,12 @@ def main(argv: list[str] | None = None) -> int:
 
     except EngineExecutionError as e:  # the engine ran and failed (re/12)
         print(f"\n{CROSS} Refinement failed ({e.reason}): {e}")
+        tail = ((e.result or {}).get("failure") or {}).get("console_tail")
+        if tail:
+            lines = tail.strip().splitlines()
+            print("   The engine's last console lines:")
+            for line in lines[-12:]:
+                print(f"     | {line}")
         files = (e.result or {}).get('output_files') or []
         if files:
             print("   Files written before the failure (kept for diagnosis):")

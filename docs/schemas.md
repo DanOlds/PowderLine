@@ -111,7 +111,7 @@ tables are dicts keyed by phase name.
 | `run_id` | UUID4 of this run |
 | `rwp`, `r_exp`, `gof`, `chi2_red` | PowderLine's **uniform** statistics over the fit window (percent / dimensionless); `None` where undefined |
 | `simulation_mode` | `true` when nothing was refined |
-| `engine_details` | the engine's own statistics and counts: `parameters_requested` (from the recipe), `parameters_varied` (what the engine varied), `n_points`, the engine's own Rwp/GoF, and per engine `converged` (gsasii Rietveld), `calculator` / `peak_type` (easydiffraction), `tc_path` (topas: the executable that ran), `engine_version` |
+| `engine_details` | the engine's own statistics and counts (gsasii, verbose run: also `console_tail`, the engine's console text, re/27): `parameters_requested` (from the recipe), `parameters_varied` (what the engine varied), `n_points`, the engine's own Rwp/GoF, and per engine `converged` (gsasii Rietveld), `calculator` / `peak_type` (easydiffraction), `tc_path` (topas: the executable that ran), `engine_version` |
 | `warnings` | structured warnings `{code, message, field_path[, level]}` from validation and from the run; `level` is `"warning"` (absent means this) or `"info"` (a record of something PowderLine did that changes no outcome, e.g. `symmetry_value_derived`) |
 | `elapsed_time`, `method` | wall-clock seconds; which execution path ran (`server` / `subprocess` for gsasii; `topas`, `easydiffraction`, or their `_simulation` variants) |
 | `output_files` | paths written to the output directory |
@@ -123,6 +123,12 @@ tables are dicts keyed by phase name.
 | `refined_parameters` | 9 columns: `parameter_name, descriptive_name, phase_name, phase_idx, atom_name, atom_idx, value, esd, category` |
 | `spf_peaks`, `spf_convergence_diagnostics` | single peak fitting only (empty otherwise; the gsasii and topas column sets differ) |
 | `peak_fit` | `gsasii.spf` only (`None` otherwise): `{"parameters": [{"name", "value", "esd"}]}`, every parameter GSAS-II's peak fit varied by GSAS-II's own name (`Back;0`, `BkPkpos;0`, `U` … `Z`, `pos3`, `int3` …) with its ESD — the source of the output recipe for a peak fit, whose fit fills no covariance block (re/21) |
+
+**The failure record** (`e.result["failure"]`, the GSAS-II server's envelope
+alike): `kind` (`engine` / `backend`), `reason` (the table below), `message`,
+`traceback`, `engine_details`, and for `gsasii.*` runs `console_tail` — the
+last 64 KiB of what GSAS-II printed during the run (re/27, KI-05), `None`
+when it printed nothing.
 
 **Two vocabularies, one bridge** (re/23, P-45). The unit-cell report speaks the
 *spreadsheet* vocabulary: its rows are `cell_a … cell_gamma, cell_volume`, the

@@ -90,6 +90,18 @@ recipes do not validate; see the
   `output_recipe` / `parameter_dispositions`. topas and easydiffraction, which
   wrote `a … volume`, now write the vocabulary (their goldens' unit-cell keys
   renamed; no example reference moves — gsasii already wrote it).
+- **`powderline --doctor`** (`pixi run doctor`; re/27, KI-13 implemented): the
+  PowderLine version, the gateways the registry finds with their workflows
+  and engine requirements, each engine's installed version against its
+  requirement, the GSAS-II server's state directory and status; non-zero exit
+  for a missing registry (the stale editable install) or an engine outside
+  its requirement, naming the repair.
+- **The engine's console text on a failed `gsasii.*` run** (re/27, KI-05
+  implemented): `gateways/gsasii/console.py` tees GSAS-II's stdout for the
+  run (in-process and per server job) into a 64 KiB tail; a failed envelope
+  carries it as `failure.console_tail`, a verbose success under
+  `engine_details["console_tail"]`, and the CLI prints the last lines after
+  "Refinement failed". Nothing parsed, no new warning code.
 - **Known-issues second pass** (re/26, P-46): every `KI-NN` re-read against
   the 0.2.0 tip; KI-11 (orphaned server after its runtime directory is
   deleted) is `accepted`, KI-05's open half (GSAS-II's console-only messages)

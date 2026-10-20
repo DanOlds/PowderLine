@@ -276,11 +276,17 @@ or PowderLine is imported from `src/` with no installed distribution
 
 **Solution:**
 ```bash
+pixi run -e gsasii doctor                  # or: powderline --doctor — what this environment can do
 pixi reinstall powderline --all            # every environment
-pixi run -e gsasii python -c "from powderline import registry; print(registry.available())"
 ```
-If pixi cannot rebuild the editable install (offline), use that environment's
-own python: `pip install --no-deps --no-build-isolation --no-index -e .`.
+`powderline --doctor` (re/27) prints the PowderLine version, the gateways the
+registry finds, each engine's installed version against its gateway's
+requirement, and the GSAS-II server's state; it exits non-zero when no gateway
+is registered or an installed engine is outside its requirement, and names
+the repair. An engine that is simply not installed is reported, not a
+problem: the `default` environment runs nothing by design. If pixi cannot
+rebuild the editable install (offline), use that environment's own python:
+`python -m pip install --no-deps --no-build-isolation --no-index -e .`.
 
 ---
 
@@ -312,6 +318,14 @@ The word in parentheses is the **reason code** (`e.reason` in the API; the
 table is in [schemas](schemas.md#outputs)). "Refinement failed" means the
 engine ran and failed; "Could not run the engine" means it never ran
 (server, configuration); "Generated" is not a failure at all (exit 0).
+
+For a `gsasii.*` failure the CLI also prints **the engine's last console
+lines**, and the failed envelope carries them as `failure.console_tail`
+(`e.result["failure"]["console_tail"]` in the API; the last 64 KiB of what
+GSAS-II printed, in-process or inside the server, re/27). That is where
+GSAS-II says what it did not return: "Refinement failed - singular matrix",
+"Removing parameter: …", the constraint notices. A verbose run that succeeded
+keeps the same text under `engine_details["console_tail"]`.
 
 **Causes and solutions:**
 1. **A site GSAS-II misreads** (some 2-fold sites in R32, R-3m, R-3c, or a

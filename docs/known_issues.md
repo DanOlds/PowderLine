@@ -187,7 +187,7 @@ recovering the programmed thermal expansion.
 
 ---
 
-## KI-05 — GSAS-II refinement failures & constraint warnings don't raise `planned-fix · major` → resolved for refinement failures (0.2.0, re/12); console text `planned-fix · minor`
+## KI-05 — GSAS-II refinement failures & constraint warnings don't raise `planned-fix · major` → resolved for refinement failures (0.2.0, re/12); console text implemented (re/27)
 
 **What.** `proj.refine()` does not raise on refinement failure (singular matrix,
 etc.); constraint cascades/conflicts and frozen-variable notices go to stdout /
@@ -237,9 +237,17 @@ runs one job at a time (re/14). GSAS-II prints through Python's `print`
 (`GSASIIfiles.G2Print`), so a Python-level capture sees it; output from
 compiled code on file descriptor 1 is not captured and is not claimed.
 
-**Revisit.** The next branch touching `gateways/gsasii/gateway.py` or
-`server.py`, or the first user report of a GSAS-II failure whose envelope
-did not say enough.
+**Implemented (re/27)** as planned: `gateways/gsasii/console.py` tees
+`sys.stdout` for the engine run (the in-process path in `gateway.py`, the
+job in `server.py`) into a bounded tail (64 KiB); a failed envelope carries
+it as `failure.console_tail`, a verbose run that succeeded under
+`engine_details["console_tail"]`, and the CLI prints the last lines after
+"Refinement failed". Under the auto-started daemon (stdout discarded) the
+tail is the only record of that text; the client's in-process fallback and
+`--no-server` capture it too. Nothing is parsed; no warning code was added.
+**Resolved**; the id stays listed.
+
+**Revisit.** Closed; kept for history.
 
 ---
 
@@ -531,7 +539,7 @@ server on another node or in a container now works like a local one.
 
 ---
 
-## KI-13 — Engine dispatch depends on install-time entry-point metadata `watch · minor`
+## KI-13 — Engine dispatch depends on install-time entry-point metadata `watch · minor` → implemented (0.2.0, re/27: `powderline --doctor`)
 
 **What.** Since re/02, `powderline.run()` and `powderline.validate()` resolve
 the engine a recipe's `schema_name` names through the gateway registry,
@@ -588,8 +596,15 @@ installed engine's version against its pin, the server state directory and
 the Python environment, exiting non-zero when a gateway is missing. Half a
 day; a branch of its own.
 
-**Revisit.** When the check command lands (then `implemented`), or if a
-second discovery path is ever considered.
+**Implemented (re/27).** `powderline --doctor` (`pixi run doctor`;
+`src/powderline/doctor.py`) prints the PowderLine version, the gateways the
+registry finds with their workflows and engine requirements, each engine's
+installed version against its requirement, and the GSAS-II server's state
+directory and status; it exits non-zero for a missing registry or an engine
+outside its requirement, naming the repair. The entry-point decision is
+unchanged; the stale install is now a one-command diagnosis.
+
+**Revisit.** If a second discovery path is ever considered.
 
 ---
 

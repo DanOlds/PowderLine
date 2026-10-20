@@ -955,22 +955,29 @@ class GSASServer:
 
         # The job runs in a private scratch dir (KI-12): whatever it writes travels back in the envelope,
         # on every branch, and the dir is removed afterwards. The client writes the files where it wants them.
+        from powderline.gateways.gsasii import console
+
         job = Path(tempfile.mkdtemp(prefix=JOB_PREFIX, dir=state_dir()))
         try:
-            try:
-                result = run_refinement(recipe, job, verbose=verbose, method='server')
-            except EngineExecutionError as e:  # R30: PowderLine's own failure (divergence, site, peak fit)
-                import traceback
-                return _attach_files(e.result or envelopes.failure_envelope(
-                    "engine", e.reason, str(e), method="server", traceback=traceback.format_exc()), job)
-            except Exception as e:  # a crash in the engine or the frozen code: an envelope, with the job's files
-                import traceback
-                return _attach_files(envelopes.failure_envelope(
-                    "engine", "engine_crashed", str(e), method="server", traceback=traceback.format_exc()), job)
+            # the engine's console text: into the envelope for a failed job (KI-05). The daemon's stdout is
+            # discarded (DEVNULL), so this tail is its only record. Process-global; safe because one job
+            # runs at a time (re/14)
+            with console.capture_console() as tail:
+                try:
+                    result = run_refinement(recipe, job, verbose=verbose, method='server')
+                except EngineExecutionError as e:  # R30: PowderLine's own failure (divergence, site, peak fit)
+                    import traceback
+                    result = e.result or envelopes.failure_envelope(
+                        "engine", e.reason, str(e), method="server", traceback=traceback.format_exc())
+                except Exception as e:  # a crash in the engine or the frozen code: an envelope, with the job's files
+                    import traceback
+                    result = envelopes.failure_envelope(
+                        "engine", "engine_crashed", str(e), method="server", traceback=traceback.format_exc())
             if result.get('success') is False and 'status' not in result:  # a frozen catch-all's early exit
-                return _attach_files(envelopes.legacy_failure(result), job)
-            return _attach_files(envelopes.with_status_fields(result, status="ok",
-                                                              converged=envelopes.converged_of(result)), job)
+                result = envelopes.legacy_failure(result)
+            if result.get('status') != 'failed':
+                result = envelopes.with_status_fields(result, status="ok", converged=envelopes.converged_of(result))
+            return _attach_files(console.attach_console(result, tail, verbose=verbose), job)
         finally:
             shutil.rmtree(job, ignore_errors=True)
 
