@@ -136,7 +136,7 @@ EB-40, EB-05). Nothing is swallowed; the recipe does not state site symmetry
 
 ---
 
-## KI-04 — Recipe→output provenance is implicit; no round-trip `planned-fix · major` → resolved for topas and easydiffraction (0.2.0, re/20a); gsasii in re/20b
+## KI-04 — Recipe→output provenance is implicit; no round-trip `planned-fix · major` → resolved (0.2.0, re/20a + re/20b)
 
 **What.** Outputs are CSV/txt keyed by GSAS-II parameter names. Which parameters
 were *actually* varied vs held-by-user vs held-by-symmetry vs frozen-by-limit is
@@ -159,9 +159,12 @@ recipe) against `parameters_varied` (what the engine varied) and a structured
 recipe with the refined values written back; validates unchanged) and
 `parameter_dispositions` (`varied` / `held_by_user` / `held_by_symmetry` /
 `requested_not_varied` / `default_applied`, with ESDs and `at_limit`); topas and
-easydiffraction fill them from their own path bookkeeping; the GSAS-II
-name-to-path map is re/20b, until which its results say `output_recipe: null`
-with the warning `output_recipe_not_valid`. The id closes with re/20b.
+easydiffraction fill them from their own path bookkeeping, GSAS-II from a
+name-to-path map over its refined-parameter rows, unit-cell reports and peak
+table (`gateways/gsasii/paths.py`, re/20b). **Resolved.** Note what it exposed:
+the committed DRX_33 atom-refinement and anisotropic references hold
+occupancies below zero and negative crystallite sizes; their output recipes are
+honestly `output_recipe_valid: false`.
 
 ---
 

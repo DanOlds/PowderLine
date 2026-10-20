@@ -73,7 +73,8 @@ imported lazily from `run()`):
   `extractors.py`, `constraints.py` (moved verbatim from `kicker.py` at the
   re/01 baseline `daace24`; code-hashed); non-frozen `routing.py`, `fit_report.py`
   (uniform statistics, `engine_details`, convergence, divergence = failure),
-  `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`;
+  `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`,
+  `paths.py` (GSAS-II parameter names → recipe paths for the output recipe, re/20b);
   `server.py` / `client.py` (persistent FastAPI server + `GSASClient`, the
   `auto`/`server` execution modes; per-user state dir, token-signed requests
   and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2, KI-14; output files travel

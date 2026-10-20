@@ -571,6 +571,24 @@ the run itself failed (see "Refinement Failed") or the client could not write
 
 ---
 
+## Output Recipe Is Not Valid
+
+**Problem:** the result (or the CLI) says `Output recipe: … (not valid as
+written)` and carries the warning `output_recipe_not_valid`.
+
+**Cause:** the engine returned a value the recipe schema refuses — an
+occupancy outside [0, 1], a negative crystallite size or Uiso, a profile that
+makes a width negative (easydiffraction, EB-87) — or a symmetry tie came back
+inconsistent. The refinement result itself is unaffected; the output recipe is
+still written (`output_recipe.json`) so you can see exactly what the engine
+produced. `parameter_dispositions.csv` shows each value with its ESD.
+
+**Solution:** read the warning (it lists each offending path with the
+schema's message), decide whether the fit is physical, then fix the output
+recipe by hand (or hold the parameter) before feeding it back.
+
+---
+
 ## Server Is Stale (runs older code)
 
 **Problem:** `WARNING: the GSAS-II server is stale`, a `--use-server` run that

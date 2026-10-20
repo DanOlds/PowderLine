@@ -36,8 +36,15 @@ recipes do not validate; see the
   (`varied`, `held_by_user`, `held_by_symmetry`, `requested_not_varied`,
   `default_applied`; ESD; `at_limit`). Core propagates every symmetry tie group
   and asserts every site keeps its multiplicity. Files `output_recipe.json` and
-  `parameter_dispositions.csv`. TOPAS and easydiffraction fill it; GSAS-II
-  reports it unavailable until re/20b. `powderline.recipes.block` /
+  `parameter_dispositions.csv`. All three engines fill it: TOPAS and
+  easydiffraction from their builders' path bookkeeping, GSAS-II from a
+  name-to-path map over its refined-parameter rows, unit-cell reports and peak
+  table (`gateways/gsasii/paths.py`; coordinates are the recipe's plus
+  GSAS-II's shift). What it exposed: the committed DRX_33 atom-refinement and
+  anisotropic references refined occupancies below zero and negative crystallite
+  sizes, so their output recipes are `output_recipe_valid: false` — the
+  references are unchanged; the output recipe reports what they contain.
+  `powderline.recipes.block` /
   `with_block` move core blocks (`xrd_data`, `fit_range`, a phase) between
   recipes, the only parts shared across engines.
   Regression reference: the easydiffraction `lab6_cryspy_pv` golden's warning
