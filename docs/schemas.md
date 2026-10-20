@@ -118,11 +118,33 @@ tables are dicts keyed by phase name.
 | `output_recipe`, `output_recipe_valid` | **the next step's input** (re/20, KI-04): a complete recipe of the same `schema_name`, *resolved* — refined values written back at their recipe paths, symmetry-derived values in their exact (held) form, gateway defaults stated, the user's flags, bounds, controls and data unchanged, plus the one metadata key PowderLine writes, `metadata.powderline_provenance` (`parent_run_id`, `schema_name`, `powderline_version`, `created`). Core propagates every symmetry tie group and checks that every atom keeps its multiplicity. `output_recipe_valid` says whether it re-validates as written; when it does not (an engine returned a value the schema refuses, a tie came back inconsistent) the recipe is still returned and written and the warning `output_recipe_not_valid` lists why. The validate-only summary carries the resolved recipe too |
 | `parameter_dispositions` | one row per refinable leaf: `path, value, esd, disposition, at_limit`; `disposition` is `default_applied`, `held_by_symmetry`, `held_by_user`, `requested_not_varied` or `varied` (first that applies); `at_limit` marks a value that ended on a stated bound or an engine default limit |
 | `fit_profile` | `two_theta, y_obs, y_weights, y_calc, y_diff, y_bkg, q_values, d_spacings` |
-| `unit_cell_data` | per phase: `parameter, value, esd` |
+| `unit_cell_data` | per phase: `parameter, value, esd`, seven rows in the **report vocabulary** `cell_a, cell_b, cell_c, cell_alpha, cell_beta, cell_gamma, cell_volume` (see below) |
 | `peak_list_data` | per phase: reflection list (`h, k, l, …, d_spacing, 2theta, …`; columns are the engine's) |
 | `refined_parameters` | 9 columns: `parameter_name, descriptive_name, phase_name, phase_idx, atom_name, atom_idx, value, esd, category` |
 | `spf_peaks`, `spf_convergence_diagnostics` | single peak fitting only (empty otherwise; the gsasii and topas column sets differ) |
 | `peak_fit` | `gsasii.spf` only (`None` otherwise): `{"parameters": [{"name", "value", "esd"}]}`, every parameter GSAS-II's peak fit varied by GSAS-II's own name (`Back;0`, `BkPkpos;0`, `U` … `Z`, `pos3`, `int3` …) with its ESD — the source of the output recipe for a peak fit, whose fit fills no covariance block (re/21) |
+
+**Two vocabularies, one bridge** (re/23, P-45). The unit-cell report speaks the
+*spreadsheet* vocabulary: its rows are `cell_a … cell_gamma, cell_volume`, the
+same for every engine (`powderline.reports.UNIT_CELL_ROWS`; the writer refuses
+any other row), so a row stays self-describing when tables are concatenated.
+The same quantities appear in `output_recipe` and `parameter_dispositions` under
+their *recipe* paths, `payload.phases.<name>.unit_cell.a`; `reports.UNIT_CELL_ROW_OF`
+/ `UNIT_CELL_MEMBER_OF` convert between the two, and are the only non-frozen
+places that do (gsasii's frozen extractor spells the same rows itself; a core
+test holds the two lists equal). The ESD rule is the same for every engine: the engine's ESD for a refined
+member; `0.0` for a member fixed by symmetry or held by the user; an empty field
+when the engine refined the member but reported no ESD; the volume's ESD when
+the engine propagates one (gsasii, topas), `0.0` for a cell with nothing refined,
+else empty (easydiffraction). One standing exception: a **gsasii simulation**
+(`refinement_cycles: 1`, nothing refined) leaves every ESD field empty, the
+volume's too — the frozen extractor's behaviour, kept as the committed
+`example_LaB6_simulation` reference shows; a gsasii *refinement* follows the
+rule (held cell → `0.0`, `example_LaB6`; refined → propagated, `example_DRX_33`).
+`refined_parameters.csv`, by contrast, deliberately
+speaks the **engine's** names (`0::A0`, `broad_gauss_u`, `p1_cell_a`): it is the
+engine's own table, with `descriptive_name`, `phase_name` and `atom_name` beside
+each name; the recipe-path view of the same values is `parameter_dispositions`.
 
 **Reason codes** (`powderline.results.REASONS`; `e.reason` on the exception,
 `failure.reason` in the envelope):

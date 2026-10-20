@@ -16,6 +16,8 @@ import pytest
 
 from powderline import reports
 
+REPO = Path(__file__).resolve().parents[1]
+
 pytestmark = pytest.mark.core
 
 
@@ -320,6 +322,53 @@ def test_output_dir_created(tmp_path):
 # --- Engine-free guarantee (no GSASII import) ---
 
 
+# --- the unit-cell row vocabulary and ESD rule (re/23, P-45) ---
+
+def test_unit_cell_vocabulary_is_one_set_of_rows_and_a_bridge_to_the_members():
+    assert reports.UNIT_CELL_ROWS == ("cell_a", "cell_b", "cell_c", "cell_alpha", "cell_beta", "cell_gamma", "cell_volume")
+    assert all(reports.UNIT_CELL_MEMBER_OF[reports.UNIT_CELL_ROW_OF[m]] == m for m in reports.UNIT_CELL_MEMBERS + ("volume",))
+
+
+def test_unit_cell_rows_apply_the_esd_rule():
+    values = {"a": 4.1568, "b": 4.1568, "c": 4.1568, "alpha": 90.0, "beta": 90.0, "gamma": 90.0}
+    rows = {r["parameter"]: r for r in reports.unit_cell_rows(
+        values, {"a": 3e-5, "b": 3e-5, "c": None}, fixed=("alpha", "beta", "gamma"), refined=("a", "b", "c"))}
+    assert [r for r in rows] == list(reports.UNIT_CELL_ROWS)
+    assert rows["cell_a"]["esd"] == 3e-5 and rows["cell_b"]["esd"] == 3e-5
+    assert rows["cell_c"]["esd"] is None                      # refined, the engine reported no ESD: empty, not 0
+    assert rows["cell_alpha"]["esd"] == 0.0                   # fixed by symmetry
+    assert rows["cell_volume"]["value"] == pytest.approx(4.1568 ** 3) and rows["cell_volume"]["esd"] is None
+    held = {r["parameter"]: r for r in reports.unit_cell_rows(values, {}, fixed=("alpha", "beta", "gamma"), refined=())}
+    assert all(r["esd"] == 0.0 for r in held.values())        # nothing refined: every row a stated number, volume too
+    given = reports.unit_cell_rows(values, {"a": 1e-4}, fixed=("alpha", "beta", "gamma"), refined=("a", "b", "c"),
+                                   volume=71.83, volume_esd=0.005)[-1]
+    assert given["value"] == 71.83 and given["esd"] == 0.005  # the engine's own volume and its ESD
+
+
+def test_unit_cell_writer_refuses_a_row_outside_the_vocabulary(tmp_path):
+    with pytest.raises(ValueError, match="not in the report vocabulary"):
+        reports.write_unit_cell_report(tmp_path, "P", [{"parameter": "a", "value": 4.1, "esd": None}])
+    with pytest.raises(ValueError, match="volume"):
+        reports.write_unit_cell_report(tmp_path, "P", [["volume", 71.8, None]])
+
+
+def test_every_shipped_unit_cell_table_uses_the_vocabulary():
+    """The committed gsasii references (frozen extractor) and the easydiffraction goldens: one vocabulary."""
+    import json
+    seen = 0
+    for ref in sorted((REPO / "examples").glob("*/output/**/*_unit_cell_report.csv")):
+        with open(ref, newline="", encoding="utf-8") as f:
+            names = [row["parameter"] for row in csv.DictReader(f)]
+        assert names == list(reports.UNIT_CELL_ROWS), ref
+        seen += 1
+    for golden in sorted((REPO / "tests" / "data" / "easydiffraction" / "native" / "golden").glob("*.json")):
+        data = json.loads(golden.read_text(encoding="utf-8"))
+        for phase, rows in ((data.get("run") or {}).get("unit_cell") or {}).items():
+            assert [r["parameter"] for r in rows] == list(reports.UNIT_CELL_ROWS), (golden.name, phase)
+            seen += 1
+    assert seen >= 20
+
+
 def test_no_gsasii_import():
     """Importing powderline.reports does not import GSASII."""
     # Run in a subprocess to get a fresh import environment
@@ -398,4 +447,4 @@ def test_fit_profile_columns_constant():
 
 def test_sequence_row_length_mismatch_raises(tmp_path):
     with pytest.raises(ValueError, match="row has 2 values, expected 3"):
-        reports.write_unit_cell_report(tmp_path, "LaB6", [("a", "1.0")])
+        reports.write_unit_cell_report(tmp_path, "LaB6", [("cell_a", "1.0")])

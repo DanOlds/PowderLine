@@ -175,7 +175,7 @@ result = powderline.run(recipe, Path("output/"))
 # result['elapsed_time']             float
 # result['method']                   str  (which execution path was used)
 # result['fit_profile']              DataFrame
-# result['unit_cell_data']           dict[str, DataFrame]  (keyed by phase name)
+# result['unit_cell_data']           dict[str, DataFrame]  (keyed by phase name; rows cell_a … cell_volume, see schemas.md "Two vocabularies")
 # result['peak_list_data']           dict[str, DataFrame]  (keyed by phase name)
 # result['refined_parameters']       DataFrame  (9-column table with ESDs)
 # result['spf_peaks']                DataFrame  (single peak fitting; empty for Rietveld)

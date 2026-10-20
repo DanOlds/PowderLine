@@ -991,74 +991,74 @@
   "unit_cell": {
    "DRX_33": [
     {
-     "parameter": "a",
+     "parameter": "cell_a",
      "value": 4.182006026737868,
      "esd": 0.00029405213818992976
     },
     {
-     "parameter": "b",
+     "parameter": "cell_b",
      "value": 4.182006026737868,
      "esd": 0.00029405213818992976
     },
     {
-     "parameter": "c",
+     "parameter": "cell_c",
      "value": 4.182006026737868,
      "esd": 0.00029405213818992976
     },
     {
-     "parameter": "alpha",
+     "parameter": "cell_alpha",
      "value": 90.0,
      "esd": 0.0
     },
     {
-     "parameter": "beta",
+     "parameter": "cell_beta",
      "value": 90.0,
      "esd": 0.0
     },
     {
-     "parameter": "gamma",
+     "parameter": "cell_gamma",
      "value": 90.0,
      "esd": 0.0
     },
     {
-     "parameter": "volume",
+     "parameter": "cell_volume",
      "value": 73.13983277555336,
      "esd": NaN
     }
    ],
    "Li4MgWO6_SG12": [
     {
-     "parameter": "a",
+     "parameter": "cell_a",
      "value": 5.132612221007365,
      "esd": 0.00023977969715476675
     },
     {
-     "parameter": "b",
+     "parameter": "cell_b",
      "value": 8.7881770990685,
      "esd": 0.000384753253271482
     },
     {
-     "parameter": "c",
+     "parameter": "cell_c",
      "value": 5.104482953717024,
      "esd": 0.00022631546439692368
     },
     {
-     "parameter": "alpha",
+     "parameter": "cell_alpha",
      "value": 90.0,
      "esd": 0.0
     },
     {
-     "parameter": "beta",
+     "parameter": "cell_beta",
      "value": 110.81821323480737,
      "esd": 0.0037413540981832386
     },
     {
-     "parameter": "gamma",
+     "parameter": "cell_gamma",
      "value": 90.0,
      "esd": 0.0
     },
     {
-     "parameter": "volume",
+     "parameter": "cell_volume",
      "value": 215.21234382529843,
      "esd": NaN
     }

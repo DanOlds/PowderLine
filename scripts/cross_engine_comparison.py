@@ -132,14 +132,17 @@ def _sigma(value: float, esd: float | None, ref: float, ref_esd: float | None) -
 
 
 def _records_to_cell(records: list[dict]) -> dict[str, tuple[float, float | None]]:
-    """``[{parameter, value, esd}]`` -> ``{parameter: (value, esd)}`` for a..gamma.
+    """``[{parameter, value, esd}]`` -> ``{member: (value, esd)}`` for a..gamma.
 
-    GSAS-II's unit-cell report names the rows ``cell_a`` ...; TOPAS's and
-    easydiffraction's ``a`` ... (both shapes are the gateways' own).
+    Every engine's unit-cell report uses the core row vocabulary (``cell_a`` ...,
+    ``powderline.reports.UNIT_CELL_ROWS``); the bridge back to the members is
+    ``UNIT_CELL_MEMBER_OF``.
     """
+    from powderline.reports import UNIT_CELL_MEMBER_OF
+
     out = {}
     for rec in records:
-        name = str(rec["parameter"]).removeprefix("cell_")
+        name = UNIT_CELL_MEMBER_OF.get(str(rec["parameter"]), str(rec["parameter"]))
         if name in CELL_PARAMS:
             esd = rec.get("esd")
             out[name] = (float(rec["value"]), None if esd is None else float(esd))

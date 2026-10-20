@@ -73,6 +73,19 @@ recipes do not validate; see the
   Regression reference: the easydiffraction `lab6_cryspy_pv` golden's warning
   list gains `output_recipe_not_valid` — that fit ends with a profile the schema
   refuses (a negative width near the window, EB-87), the case D5 is for.
+- **One unit-cell report vocabulary** (re/23, P-45): every engine's
+  `<phase>_unit_cell_report.csv` / `unit_cell_data` has the seven rows
+  `cell_a … cell_gamma, cell_volume` with one ESD rule (the engine's ESD for a
+  refined member; `0.0` for a member fixed by symmetry or held; empty when the
+  engine refined it but reported none; the volume's ESD when propagated) —
+  with one standing exception: a gsasii *simulation* leaves every ESD empty
+  (the frozen extractor; the committed `example_LaB6_simulation` reference).
+  Core owns the vocabulary and builds the rows (`reports.UNIT_CELL_ROWS`,
+  `unit_cell_rows`); the writer refuses any other row; `UNIT_CELL_ROW_OF` /
+  `UNIT_CELL_MEMBER_OF` are the one bridge to the recipe paths of
+  `output_recipe` / `parameter_dispositions`. topas and easydiffraction, which
+  wrote `a … volume`, now write the vocabulary (their goldens' unit-cell keys
+  renamed; no example reference moves — gsasii already wrote it).
 
 **Schemas and versioning**
 - **Core schema 1.0.0** (`src/powderline/schema_core.py`): the shared top level

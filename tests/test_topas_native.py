@@ -463,21 +463,21 @@ def test_runner_successful_run(tmp_path, monkeypatch):
 
     # Unit cell report: b = c = a's refined value
     cell_data = result["unit_cell_data"]["LaB6"]
-    a_row = cell_data[cell_data["parameter"] == "a"].iloc[0]
-    b_row = cell_data[cell_data["parameter"] == "b"].iloc[0]
-    c_row = cell_data[cell_data["parameter"] == "c"].iloc[0]
+    a_row = cell_data[cell_data["parameter"] == "cell_a"].iloc[0]
+    b_row = cell_data[cell_data["parameter"] == "cell_b"].iloc[0]
+    c_row = cell_data[cell_data["parameter"] == "cell_c"].iloc[0]
     assert abs(a_row["value"] - 4.1580) < 1e-6
     assert abs(b_row["value"] - 4.1580) < 1e-6
     assert abs(c_row["value"] - 4.1580) < 1e-6
     assert abs(a_row["esd"] - 0.0002) < 1e-6
 
     # alpha = 90 with esd 0
-    alpha_row = cell_data[cell_data["parameter"] == "alpha"].iloc[0]
+    alpha_row = cell_data[cell_data["parameter"] == "cell_alpha"].iloc[0]
     assert abs(alpha_row["value"] - 90.0) < 1e-6
     assert alpha_row["esd"] == 0.0
 
     # Volume from p1_volume
-    vol_row = cell_data[cell_data["parameter"] == "volume"].iloc[0]
+    vol_row = cell_data[cell_data["parameter"] == "cell_volume"].iloc[0]
     assert abs(vol_row["value"] - 71.85) < 1e-6
 
 

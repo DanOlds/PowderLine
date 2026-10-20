@@ -673,16 +673,16 @@ def test_run_unit_cell_report_cubic_ties(lab6_crysfml_tch_result):
     result = lab6_crysfml_tch_result
     uc = result["unit_cell_data"]["LaB6"]
 
-    a_row = uc[uc["parameter"] == "a"].iloc[0]
-    b_row = uc[uc["parameter"] == "b"].iloc[0]
-    c_row = uc[uc["parameter"] == "c"].iloc[0]
+    a_row = uc[uc["parameter"] == "cell_a"].iloc[0]
+    b_row = uc[uc["parameter"] == "cell_b"].iloc[0]
+    c_row = uc[uc["parameter"] == "cell_c"].iloc[0]
 
     assert b_row["value"] == a_row["value"]
     assert c_row["value"] == a_row["value"]
     assert b_row["esd"] == a_row["esd"]
     assert c_row["esd"] == a_row["esd"]
 
-    for param in ["alpha", "beta", "gamma"]:
+    for param in ["cell_alpha", "cell_beta", "cell_gamma"]:
         row = uc[uc["parameter"] == param].iloc[0]
         assert row["value"] == 90.0
         assert row["esd"] == 0.0
@@ -693,8 +693,8 @@ def test_run_unit_cell_volume(lab6_crysfml_tch_result):
     result = lab6_crysfml_tch_result
     uc = result["unit_cell_data"]["LaB6"]
 
-    a = uc[uc["parameter"] == "a"].iloc[0]["value"]
-    vol = uc[uc["parameter"] == "volume"].iloc[0]["value"]
+    a = uc[uc["parameter"] == "cell_a"].iloc[0]["value"]
+    vol = uc[uc["parameter"] == "cell_volume"].iloc[0]["value"]
 
     assert abs(vol - a**3) / a**3 < 1e-12
 
@@ -1138,7 +1138,7 @@ def test_output_recipe_is_valid_and_feeds_back(lab6_crysfml_tch_result, tmp_path
     out = result["output_recipe"]
     phase = next(iter(out["payload"]["phases"]))
     reported = dict(zip(result["unit_cell_data"][phase]["parameter"], result["unit_cell_data"][phase]["value"]))
-    assert out["payload"]["phases"][phase]["unit_cell"]["a"][0] == pytest.approx(reported["a"], rel=1e-9)
+    assert out["payload"]["phases"][phase]["unit_cell"]["a"][0] == pytest.approx(reported["cell_a"], rel=1e-9)
     again = schema.validate_recipe(out)
     from powderline.schema_core import collect_warnings
     assert not [w for w in collect_warnings(again) if w["code"] == "symmetry_value_derived" or w["code"].endswith("_default_applied")]

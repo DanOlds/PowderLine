@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence, Union
+from typing import Iterable, Mapping, Optional, Sequence, Union
 
 #: Column order for refined_parameters.csv (9 columns).
 REFINED_PARAMETERS_COLUMNS = (
@@ -59,6 +59,16 @@ DISPOSITION_COLUMNS = ("path", "value", "esd", "disposition", "at_limit")
 
 #: Column order for <phase>_unit_cell_report.csv (3 columns).
 UNIT_CELL_COLUMNS = ("parameter", "value", "esd")
+
+#: The unit-cell report's **row vocabulary** (re/23, P-45): the six members and the volume, as the report names
+#: them. This is the spreadsheet vocabulary -- a row is self-describing when the table is concatenated with others.
+#: The same quantities appear in the output recipe and in parameter_dispositions under their *recipe* paths
+#: (``payload.phases.<name>.unit_cell.a``); :data:`UNIT_CELL_MEMBER_OF` is the bridge between the two, and the
+#: only place a report row name is turned back into a member.
+UNIT_CELL_MEMBERS = ("a", "b", "c", "alpha", "beta", "gamma")
+UNIT_CELL_ROW_OF = {m: f"cell_{m}" for m in UNIT_CELL_MEMBERS + ("volume",)}
+UNIT_CELL_ROWS = tuple(UNIT_CELL_ROW_OF.values())
+UNIT_CELL_MEMBER_OF = {row: m for m, row in UNIT_CELL_ROW_OF.items()}
 
 #: Column order for fit_profile.txt (8 columns, tab-delimited).
 FIT_PROFILE_COLUMNS = (
@@ -136,12 +146,47 @@ def write_refined_parameters(
     return path
 
 
+def unit_cell_rows(values: Mapping[str, float], esds: Mapping[str, Optional[float]], *, fixed: Iterable[str],
+                   refined: Iterable[str], volume: Optional[float] = None,
+                   volume_esd: Optional[float] = None) -> list[dict]:
+    """The seven rows of a phase's unit-cell report, in :data:`UNIT_CELL_ROWS` order, with the one ESD rule.
+
+    ``values`` holds the six members' refined (or stated) values in A / degrees; ``esds`` the engine's ESD for a
+    member it refined (``None`` when it refined the member but reported none; a tied member carries its group's
+    ESD scaled to it); ``fixed`` the members symmetry fixes; ``refined`` the members whose recipe flag is true (topas: the members
+    TOPAS reported, which are the same set for any run that gets this far).
+    The ESD rule (P-45): the engine's ESD for a refined member; ``0.0`` for a member fixed by symmetry or held by
+    the user; ``None`` (an empty field) when the engine refined the member but reported no ESD. The volume is
+    ``volume`` when the engine reports it, else gemmi's from the six values; its ESD is ``volume_esd`` when the
+    engine propagates one (``0.0`` for a cell with nothing refined), else ``None``.
+    """
+    fixed, refined = set(fixed), set(refined)
+    rows = []
+    for m in UNIT_CELL_MEMBERS:
+        v = float(values[m])
+        esd = esds.get(m) if (m in refined and m not in fixed) else 0.0
+        rows.append({"parameter": UNIT_CELL_ROW_OF[m], "value": v, "esd": None if esd is None else float(esd)})
+    if volume is None:
+        import gemmi  # a core dependency (powderline.symmetry)
+
+        volume = gemmi.UnitCell(*(float(values[m]) for m in UNIT_CELL_MEMBERS)).volume
+    if volume_esd is None and not (refined - fixed):
+        volume_esd = 0.0                                 # nothing refined: the volume is a stated number
+    rows.append({"parameter": UNIT_CELL_ROW_OF["volume"], "value": float(volume),
+                 "esd": None if volume_esd is None else float(volume_esd)})
+    return rows
+
+
 def write_unit_cell_report(
     output_dir: Path,
     phase_name: str,
     rows: Iterable[Union[Mapping[str, object], Sequence[object]]],
 ) -> Path:
     """Write <phase>_unit_cell_report.csv with the 3-column schema.
+
+    Every row's ``parameter`` must be one of :data:`UNIT_CELL_ROWS` (``cell_a`` ... ``cell_volume``): the report
+    speaks one vocabulary for every engine, and a gateway that spells a row differently fails here, at run time,
+    rather than shipping a table nobody else can read (re/23, P-45).
 
     Args:
         output_dir: Directory to write the file (created if needed).
@@ -151,7 +196,16 @@ def write_unit_cell_report(
 
     Returns:
         Path to the written file (output_dir / "<phase>_unit_cell_report.csv").
+
+    Raises:
+        ValueError: a row whose ``parameter`` is not in the vocabulary.
     """
+    rows = list(rows)
+    for row in rows:
+        name = row["parameter"] if isinstance(row, Mapping) else row[0]
+        if str(name) not in UNIT_CELL_ROWS:
+            raise ValueError(f"unit-cell report row {name!r} is not in the report vocabulary "
+                             f"{', '.join(UNIT_CELL_ROWS)} (powderline.reports.UNIT_CELL_ROWS)")
     path = Path(output_dir) / f"{phase_name}_unit_cell_report.csv"
     _write_table(path, UNIT_CELL_COLUMNS, rows, delimiter=",")
     return path

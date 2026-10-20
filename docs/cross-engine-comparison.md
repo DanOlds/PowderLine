@@ -137,7 +137,7 @@ what else each model was free to vary.
 | Comparable across the rows | Not directly comparable |
 |---|---|
 | Rwp / Rexp / GoF (same formula, same 3767 points) | Scale factors (each engine's own convention) |
-| The unit-cell report's columns (`parameter, value, esd`) | Its row names — gsasii `cell_a … cell_gamma, cell_volume`, topas and easydiffraction `a … gamma, volume` — and a fixed row's ESD (gsasii `0.0`, the others empty); `scripts/cross_engine_comparison.py` and the temperature-series runner strip the prefix |
+| The unit-cell report: columns `parameter, value, esd`, rows `cell_a … cell_volume` and the ESD rule (`powderline.reports.unit_cell_rows`; until re/23 topas and easydiffraction wrote `a … volume`) | Whether a volume ESD is propagated (gsasii and topas yes, easydiffraction no); a gsasii simulation writes every ESD empty |
 | Cells and their ESDs (same units) | Profile parameters (different parameterizations and units; see the engine pages) |
 | The number of parameters varied (each engine's own count) | What those parameters are |
 

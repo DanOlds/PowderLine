@@ -521,37 +521,37 @@
   "unit_cell": {
    "LaB6": [
     {
-     "parameter": "a",
+     "parameter": "cell_a",
      "value": 4.15717525296477,
      "esd": 1.777125055302559e-05
     },
     {
-     "parameter": "b",
+     "parameter": "cell_b",
      "value": 4.15717525296477,
      "esd": 1.777125055302559e-05
     },
     {
-     "parameter": "c",
+     "parameter": "cell_c",
      "value": 4.15717525296477,
      "esd": 1.777125055302559e-05
     },
     {
-     "parameter": "alpha",
+     "parameter": "cell_alpha",
      "value": 90.0,
      "esd": 0.0
     },
     {
-     "parameter": "beta",
+     "parameter": "cell_beta",
      "value": 90.0,
      "esd": 0.0
     },
     {
-     "parameter": "gamma",
+     "parameter": "cell_gamma",
      "value": 90.0,
      "esd": 0.0
     },
     {
-     "parameter": "volume",
+     "parameter": "cell_volume",
      "value": 71.8447437309459,
      "esd": NaN
     }

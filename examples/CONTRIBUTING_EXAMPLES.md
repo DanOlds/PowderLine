@@ -153,7 +153,7 @@ PowderLine generates fixed output filenames:
 - `dummy.gpx` - GSAS-II project file (reopenable in GUI)
 - `dummy.lst` - Human-readable refinement log with Rwp and parameter tables
 - `refined_parameters.csv` - All refined parameters with ESDs (9 columns: parameter_name, descriptive_name, phase_name, phase_idx, atom_name, atom_idx, value, esd, category)
-- `<phase_name>_unit_cell_report.csv` - Unit cell parameters with ESDs (3 columns: parameter, value, esd)
+- `<phase_name>_unit_cell_report.csv` - Unit cell parameters with ESDs (3 columns: parameter, value, esd; seven rows `cell_a` … `cell_volume`, the same for every engine — `docs/schemas.md`, "Two vocabularies, one bridge")
 - `<phase_name>_peak_list_report.csv` - Reflection lists (hkl, d-spacing, 2θ, intensities) per phase
 - `fit_profile.txt` - Observed/calculated/background/difference intensities
 

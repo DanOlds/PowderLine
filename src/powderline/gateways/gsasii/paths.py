@@ -43,6 +43,7 @@ import math
 import re
 from typing import Any, Mapping
 
+from powderline.reports import UNIT_CELL_ROW_OF
 from powderline.schema_core import refined_flags
 
 _INSTRUMENT = {
@@ -198,7 +199,7 @@ def refined_by_path(model, result: Mapping[str, Any]) -> tuple:
         fixed = set(cell_tie_groups(phases[phase].space_group).fixed)  # symmetry-fixed angles: the model's, no ESD
         reported = {str(r["parameter"]): r for r in _records(cells)}
         for k in _CELL:
-            r = reported.get(f"cell_{k}")
+            r = reported.get(UNIT_CELL_ROW_OF[k])             # report vocabulary -> recipe member (reports.py)
             if k not in fixed and r is not None and _float(r.get("value")) is not None:
                 refined[f"payload.phases.{phase}.unit_cell.{k}"] = (_float(r["value"]), _float(r.get("esd")))
 

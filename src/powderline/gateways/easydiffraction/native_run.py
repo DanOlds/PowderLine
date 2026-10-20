@@ -45,7 +45,6 @@ import uuid
 from importlib.metadata import version
 from pathlib import Path
 
-import gemmi
 import numpy as np
 import pandas as pd
 
@@ -353,7 +352,8 @@ def _refined_rows(model, build: Build) -> list[dict]:
 
 
 def _cell_rows(model, build: Build, name: str) -> list[dict]:
-    """a..gamma and volume: easydiffraction's values; a tied member takes its group's ESD, a fixed one 0."""
+    """The unit-cell report rows (core vocabulary and ESD rule, ``reports.unit_cell_rows``): easydiffraction's
+    values; a tied member takes its group's ESD scaled to it."""
     from powderline.gateways.easydiffraction.native_builder import _CELL
 
     phase = model.payload.phases[name]
@@ -365,15 +365,9 @@ def _cell_rows(model, build: Build, name: str) -> list[dict]:
             for member, k, _c in fp.members:
                 e = _esd(fp.parameter)
                 esd[member] = None if e is None else abs(float(k)) * e
-    rows, values = [], []
-    for member in ("a", "b", "c", "alpha", "beta", "gamma"):
-        v = float(getattr(cell, _CELL[member]).value)
-        values.append(v)
-        rows.append({"parameter": member, "value": v, "esd": esd.get(member, 0.0 if member in ties.fixed
-                                                                    or not getattr(phase.unit_cell, member).refine_flag
-                                                                    else None)})
-    rows.append({"parameter": "volume", "value": gemmi.UnitCell(*values).volume, "esd": None})
-    return rows
+    values = {m: float(getattr(cell, _CELL[m]).value) for m in reports.UNIT_CELL_MEMBERS}
+    refined = [m for m in reports.UNIT_CELL_MEMBERS if getattr(phase.unit_cell, m).refine_flag]
+    return reports.unit_cell_rows(values, esd, fixed=ties.fixed, refined=refined)   # easydiffraction propagates no volume ESD
 
 
 def validate_only_result(model, validated_warnings: list) -> dict:

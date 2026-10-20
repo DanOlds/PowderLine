@@ -453,24 +453,24 @@ def _refined_rows(model, native: NativeInput, values: dict) -> list[dict]:
 
 
 def _cell_rows(model, i: int, name: str, values: dict) -> list[dict]:
-    """a..gamma and volume: tied members take their group's refined value and ESD, fixed ones the model's."""
+    """The unit-cell report rows (core vocabulary and ESD rule, ``reports.unit_cell_rows``): tied members take
+    their group's refined value and ESD, fixed ones the model's; TOPAS's own volume and its ESD."""
     from powderline.symmetry import cell_tie_groups
 
     phase = model.payload.phases[name]
     ties = cell_tie_groups(phase.space_group)
     rep = {m: g.members[0] for g in ties.groups for m in g.members}
-    rows = []
-    for member in ("a", "b", "c", "alpha", "beta", "gamma"):
+    cell_values, esds, refined = {}, {}, []
+    for member in reports.UNIT_CELL_MEMBERS:
         key = f"p{i}_cell_{rep.get(member, member)}"
-        if member not in ties.fixed and key in values:
-            v, e = values[key]
+        if member not in ties.fixed and key in values:          # TOPAS reported the group's representative
+            cell_values[member], esds[member] = values[key]
+            refined.append(member)
         else:
-            v, e = getattr(phase.unit_cell, member).value, 0.0
-        rows.append({"parameter": member, "value": v, "esd": e})
+            cell_values[member] = getattr(phase.unit_cell, member).value
     vol = values.get(f"p{i}_volume")
-    rows.append({"parameter": "volume", "value": None if vol is None else vol[0],
-                 "esd": None if vol is None else vol[1]})
-    return rows
+    return reports.unit_cell_rows(cell_values, esds, fixed=ties.fixed, refined=refined,
+                                  volume=None if vol is None else vol[0], volume_esd=None if vol is None else vol[1])
 
 
 def _spf_rows(model, native: NativeInput, values: dict) -> tuple[list[dict], list[dict]]:

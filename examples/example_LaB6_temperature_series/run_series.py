@@ -70,7 +70,7 @@ def run_series(output: Path, work: Path, recipe_path: Path | None = None, verbos
         step_dir = work / f"step_{i}_{int(t_c):03d}C"
         result = powderline.run(recipe, step_dir, verbose=verbose, **engine_options)
         cell = result["unit_cell_data"][PHASE].set_index("parameter")
-        a_row = "cell_a" if "cell_a" in cell.index else "a"      # gsasii names the rows cell_a, easydiffraction a
+        a_row = "cell_a"                                          # the report vocabulary (powderline.reports.UNIT_CELL_ROWS)
         disp = result["parameter_dispositions"].set_index("path")
         uiso = {atom: disp.loc[f"payload.phases.{PHASE}.atoms.{atom}.Uiso"] for atom in ("La", "B")}
         rows.append({

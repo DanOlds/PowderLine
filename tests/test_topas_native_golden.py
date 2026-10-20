@@ -119,11 +119,11 @@ def test_drx33_cells(golden_result):
     cells = {name: df.set_index("parameter")["value"] for name, df in r["unit_cell_data"].items()}
     values = _values(fixture)
     (cubic, c1), (mono, c2) = cells.items()
-    assert c1["a"] == c1["b"] == c1["c"] == pytest.approx(values["p1_cell_a"][0], rel=1e-12)
+    assert c1["cell_a"] == c1["cell_b"] == c1["cell_c"] == pytest.approx(values["p1_cell_a"][0], rel=1e-12)
     for axis in ("a", "b", "c"):
-        assert c2[axis] == pytest.approx(values[f"p2_cell_{axis}"][0], rel=1e-12)
-    assert c2["beta"] == pytest.approx(values["p2_cell_beta"][0], rel=1e-12)
-    assert c1["volume"] == pytest.approx(values["p1_volume"][0], rel=1e-12)
+        assert c2[f"cell_{axis}"] == pytest.approx(values[f"p2_cell_{axis}"][0], rel=1e-12)
+    assert c2["cell_beta"] == pytest.approx(values["p2_cell_beta"][0], rel=1e-12)
+    assert c1["cell_volume"] == pytest.approx(values["p1_volume"][0], rel=1e-12)
 
 
 # --- A130 / A154: any non-finite number TOPAS writes is a divergence (re/05 PR review S1) ---------------
