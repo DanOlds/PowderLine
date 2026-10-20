@@ -164,6 +164,10 @@ def run(
         - ``spf_convergence_diagnostics`` (pd.DataFrame) — per-peak
           diagnostics for peaks with convergence issues (empty when all
           converged or for non-SPF runs)
+        - ``peak_fit`` (dict | None) — SPF only: ``{"parameters": [{"name",
+          "value", "esd"}]}``, every parameter GSAS-II's peak fit varied by
+          its own name (``Back;0``, ``U``, ``pos3`` …) with its ESD; the
+          source of the output recipe for a peak fit (re/21)
         - ``output_files`` (list[str]) — paths written to ``output_dir``
         - ``r_exp``, ``gof``, ``chi2_red``, ``simulation_mode``,
           ``engine_details`` and the structured ``warnings`` list (A125,

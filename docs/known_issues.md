@@ -160,11 +160,16 @@ recipe with the refined values written back; validates unchanged) and
 `parameter_dispositions` (`varied` / `held_by_user` / `held_by_symmetry` /
 `requested_not_varied` / `default_applied`, with ESDs and `at_limit`); topas and
 easydiffraction fill them from their own path bookkeeping, GSAS-II from a
-name-to-path map over its refined-parameter rows, unit-cell reports and peak
-table (`gateways/gsasii/paths.py`, re/20b). **Resolved.** Note what it exposed:
-the committed DRX_33 atom-refinement and anisotropic references hold
-occupancies below zero and negative crystallite sizes; their output recipes are
-honestly `output_recipe_valid: false`.
+name-to-path map over its refined-parameter rows, unit-cell reports and, for a
+peak fit (which fills no covariance block), the fit's own parameter block
+`peak_fit` read from the project — the background, the instrument profile with
+`use_instrument_profile`, the peaks, with ESDs (`gateways/gsasii/paths.py`,
+re/20b; `fit_report.peak_fit_parameters`, re/21). **Resolved.** Note what it
+exposed: the committed DRX_33 atom-refinement and anisotropic references hold
+occupancies below zero and negative crystallite sizes, and the LaB6 single-peak
+fitting reference's background peak refines its σ² far below GSAS-II's silent
+floor (EB-35); their output recipes are honestly `output_recipe_valid: false`
+(each example's DESCRIPTION says so).
 
 ---
 

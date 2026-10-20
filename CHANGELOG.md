@@ -38,12 +38,21 @@ recipes do not validate; see the
   and asserts every site keeps its multiplicity. Files `output_recipe.json` and
   `parameter_dispositions.csv`. All three engines fill it: TOPAS and
   easydiffraction from their builders' path bookkeeping, GSAS-II from a
-  name-to-path map over its refined-parameter rows, unit-cell reports and peak
-  table (`gateways/gsasii/paths.py`; coordinates are the recipe's plus
-  GSAS-II's shift). What it exposed: the committed DRX_33 atom-refinement and
-  anisotropic references refined occupancies below zero and negative crystallite
-  sizes, so their output recipes are `output_recipe_valid: false` — the
-  references are unchanged; the output recipe reports what they contain.
+  name-to-path map over its refined-parameter rows, unit-cell reports and, for
+  a peak fit, the fit's own parameter block (`gateways/gsasii/paths.py`;
+  coordinates are the recipe's plus GSAS-II's shift). A GSAS-II peak fit fills
+  no covariance block, so a `gsasii.spf` result carries `peak_fit`
+  (`{"parameters": [{name, value, esd}]}`, every parameter the fit varied by
+  GSAS-II's own name, read from the project: the background, the instrument
+  profile with `use_instrument_profile`, the peaks) and the output recipe is
+  built from it with ESDs (re/21; before it the peak-fit output recipe kept
+  the starting background, marked `requested_not_varied`, and the
+  instrument-profile mode was a stated gap). What it exposed: the committed
+  DRX_33 atom-refinement and anisotropic references refined occupancies below
+  zero and negative crystallite sizes, and the LaB6 single-peak fitting
+  reference's background peak refines its σ² far below GSAS-II's silent floor,
+  so their output recipes are `output_recipe_valid: false` — the references
+  are unchanged; the output recipe reports what they contain.
   `powderline.recipes.block` /
   `with_block` move core blocks (`xrd_data`, `fit_range`, a phase) between
   recipes, the only parts shared across engines.

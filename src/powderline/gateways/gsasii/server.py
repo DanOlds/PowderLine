@@ -714,6 +714,7 @@ class SimulationResponse(BaseModel):
     refined_parameters: Optional[list] = None
     spf_peaks: Optional[dict] = None
     spf_convergence_diagnostics: Optional[dict] = None
+    peak_fit: Optional[dict] = None  # the peak fit's varied parameters by GSAS-II name, with ESDs (re/21)
     # native gsasii.* runs (re/04): standard fit statistics, GSAS-II's own values, structured warnings
     r_exp: Optional[float] = None
     gof: Optional[float] = None

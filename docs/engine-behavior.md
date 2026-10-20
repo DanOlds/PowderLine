@@ -230,6 +230,13 @@ within 1e-6 of the starting value).
   singular parameters without a message (EB-53). *Policy:* a refine flag on
   the width source not in use is a validation error (A127), and
   `gsasii_parameters_not_varied` reports any remaining silent drop (A128).
+- **The peak fit fills no covariance block**: `DoPeakFit` keeps its varied
+  names and ESDs in `Peak List['sigDict']` and writes the refined values in
+  place (`Background[0]`, `Background[1]['peaksList']`, `Instrument
+  Parameters[0]`, `Peak List['peaks']`), so a peak fit has no
+  refined-parameter rows. *Policy:* the result's `peak_fit` block reads them
+  from there (`fit_report.peak_fit_parameters`), and the output recipe is
+  built from it (re/21).
 - **Validation errors that replace run-time failures**: wavelength ≤ 0 and
   crystallite size ≤ 0 (GSAS-II fails with "no reflections" / an SVD
   failure); a Peak List or background peak outside the fit window (GSAS-II's

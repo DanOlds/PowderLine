@@ -180,6 +180,7 @@ result = powderline.run(recipe, Path("output/"))
 # result['refined_parameters']       DataFrame  (9-column table with ESDs)
 # result['spf_peaks']                DataFrame  (single peak fitting; empty for Rietveld)
 # result['spf_convergence_diagnostics'] DataFrame
+# result['peak_fit']                 gsasii.spf only: {'parameters': [{name, value, esd}]}, every parameter GSAS-II's peak fit varied, by its own name
 # result['output_files']             list[str]
 ```
 

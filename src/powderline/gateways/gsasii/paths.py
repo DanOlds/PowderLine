@@ -22,21 +22,25 @@ Facts the map rests on (GSAS-II 5.7.9, read-only):
 * ``:h:Back;N`` the Chebyshev coefficients; ``:h:BkPkpos|int|sig|gam;N`` the
   background peaks; ``:h:U`` ... ``Z``, ``Zero``, ``Polariz.``, ``SH/L``, ``Lam`` the
   instrument -- all in the units the recipe states (centideg, A).
-* Single peak fitting reports no covariance rows; the peak table
-  (``position_2theta``, ``intensity``, ``sigma_squared``, ``gamma``) maps by index onto
-  ``payload.single_peaks``.
+* Single peak fitting (``gsasii.spf``) fills no covariance block, so there are no
+  refined-parameter rows; the non-frozen fit report carries every parameter the peak
+  fit varied under ``result['peak_fit']`` by GSAS-II's peak-fit names -- ``Back;n``
+  (the Chebyshev coefficients), ``BkPkpos|int|sig|gam;i`` (background peaks), ``U`` ..
+  ``Z`` (the instrument profile, with ``use_instrument_profile``), ``SH/L`` and
+  ``pos|int|sig|gam<i>`` (the peaks) -- with the refined values and ESDs read from the
+  project (``fit_report.peak_fit_parameters``, re/21). Without that block only the
+  peak table (``position_2theta``, ``intensity``, ``sigma_squared``, ``gamma``) is
+  available, by index, without ESDs, and the background / instrument values the peak
+  fit refined are missing: that is stated as a problem.
 
 A name this module does not know is reported as a *problem* (the mapped values are
 still applied; the output recipe is then marked not valid naming the parameter): an
-unmapped refined value must never be dropped silently. Single peak fitting with
-``use_instrument_profile`` is reported the same way: GSAS-II then overwrites the peak
-widths from the instrument profile and refines U..Z, but its peak fit fills no
-covariance and the frozen extractor reads no instrument parameters back, so the
-refined U..Z are not available to the output recipe.
+unmapped refined value must never be dropped silently.
 """
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Mapping
 
 from powderline.schema_core import refined_flags
@@ -101,6 +105,28 @@ def _atom_label(model, phase: str, row: Mapping, atom_index: str) -> str:
     return list(model.payload.phases[phase].atoms)[int(atom_index)]
 
 
+def _peak_fit_path(payload, name: str) -> str | None:
+    """The recipe path of a GSAS-II peak-fit parameter name, or ``None`` for one the recipe has no place for."""
+    base, _, index = name.partition(";")
+    background = getattr(payload, "background", None)
+    if base == "Back" and index.isdigit():
+        cheb = getattr(background, "chebyshev", None)
+        if cheb is not None and int(index) < len(cheb.coefficients):
+            return f"payload.background.chebyshev.coefficients.{int(index)}"
+        return None
+    if base.startswith("BkPk") and base[4:] in _PEAK and index.isdigit():
+        bk = getattr(background, "single_peaks", None)
+        if bk is not None and int(index) < len(getattr(bk, _PEAK[base[4:]])):
+            return f"payload.background.single_peaks.{_PEAK[base[4:]]}.{int(index)}"
+        return None
+    if name in _INSTRUMENT:
+        return f"payload.instrument.{_INSTRUMENT[name]}"
+    peak = re.fullmatch(r"(pos|int|sig|gam)(\d+)", name)
+    if peak and int(peak.group(2)) < len(getattr(payload.single_peaks, _PEAK[peak.group(1)])):
+        return f"payload.single_peaks.{_PEAK[peak.group(1)]}.{int(peak.group(2))}"
+    return None
+
+
 def refined_by_path(model, result: Mapping[str, Any]) -> tuple:
     """``(refined, not_varied, at_limit, problems)`` for :func:`powderline.roundtrip.build_output`.
 
@@ -108,7 +134,7 @@ def refined_by_path(model, result: Mapping[str, Any]) -> tuple:
     ``not_varied`` lists the flagged paths GSAS-II reported nothing for (a flagged parameter that does
     not affect the pattern, or one GSAS-II dropped); ``at_limit`` is empty: gsasii 1.0.0 has no bounds;
     ``problems`` are the reasons the output recipe cannot be trusted as the run's result (an unmapped
-    name, the instrument-profile peak-fit mode) -- the caller marks it not valid with them.
+    name, a peak fit whose refined values were not reported back) -- the caller marks it not valid with them.
     """
     refined: dict = {}
     problems: list = []
@@ -176,21 +202,37 @@ def refined_by_path(model, result: Mapping[str, Any]) -> tuple:
             if k not in fixed and r is not None and _float(r.get("value")) is not None:
                 refined[f"payload.phases.{phase}.unit_cell.{k}"] = (_float(r["value"]), _float(r.get("esd")))
 
-    # single peak fitting: the peak table, by index, no ESDs -- only the peak parameters the recipe refines
-    # (with use_instrument_profile GSAS-II overwrites the widths from U..Z, which the recipe holds)
+    # single peak fitting: the peak fit's own parameter block (values and ESDs for everything it varied: the
+    # background, the instrument profile with use_instrument_profile, the peaks), else the peak table by index
     peaks = getattr(payload, "single_peaks", None)
     if peaks is not None:
-        for i, r in enumerate(_records(result.get("spf_peaks"))):
-            for column, field in _SPF_COLUMNS.items():
-                v = _float(r.get(column))
-                params = getattr(peaks, field)
-                if v is not None and i < len(params) and params[i].refine_flag:
-                    refined[f"payload.single_peaks.{field}.{i}"] = (v, None)
-        mode = getattr(payload.refinement_controls, "single_peak_fitting_mode", None)
-        if mode is not None and mode.use_instrument_profile:
-            problems.append("single peak fitting with use_instrument_profile refines the instrument profile "
-                            "(U, V, W, X, Y, Z), but GSAS-II's peak fit reports no covariance and PowderLine reads "
-                            "no instrument parameters back, so the output recipe keeps their starting values")
+        peak_fit = result.get("peak_fit")
+        if peak_fit is not None:
+            for row in (peak_fit.get("parameters") or []):
+                name = str(row["name"])
+                value, esd = _float(row.get("value")), _float(row.get("esd"))
+                path = _peak_fit_path(payload, name)
+                if path is None:
+                    problems.append(f"GSAS-II peak-fit parameter {name!r} has no recipe path (teach "
+                                    "gateways/gsasii/paths.py the name); its refined value is not in the output recipe")
+                elif value is None:
+                    problems.append(f"GSAS-II peak-fit parameter {name!r} was varied but its refined value could not "
+                                    "be read from the project; the output recipe keeps the starting value")
+                else:
+                    refined[path] = (value, esd)
+        else:
+            for i, r in enumerate(_records(result.get("spf_peaks"))):
+                for column, field in _SPF_COLUMNS.items():
+                    v = _float(r.get(column))
+                    params = getattr(peaks, field)
+                    if v is not None and i < len(params) and params[i].refine_flag:
+                        refined[f"payload.single_peaks.{field}.{i}"] = (v, None)
+            mode = getattr(payload.refinement_controls, "single_peak_fitting_mode", None)
+            use_ip = mode is not None and mode.use_instrument_profile
+            problems.append("GSAS-II's peak fit reports its refined values only inside the project, and this result "
+                            "carries no peak_fit block: the peak table gives the peaks (without ESDs), but the "
+                            "background coefficients" + (" and the instrument profile U..Z" if use_ip else "")
+                            + " the peak fit refined keep their starting values in the output recipe")
 
     flagged = {".".join(str(x) for x in loc) for loc in refined_flags(model)}
     not_varied = {p for p in flagged if p not in refined and not p.endswith(".refine_flag")}

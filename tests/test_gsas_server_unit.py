@@ -253,7 +253,8 @@ def test_response_model_keeps_native_result_keys():
     native = {"status": "ok", "converged": False, "envelope_version": "1",
               "rwp": 6.53, "r_exp": 12.4, "gof": 0.52, "chi2_red": 0.27,
               "engine_details": {"engine": "GSAS-II", "parameters_varied": 13},
-              "warnings": [{"code": "c", "message": "m", "field_path": None}]}
+              "warnings": [{"code": "c", "message": "m", "field_path": None}],
+              "peak_fit": {"parameters": [{"name": "Back;0", "value": 27.2, "esd": 0.31}, {"name": "pos0", "value": 2.3, "esd": None}]}}
     dumped = gsas_server.SimulationResponse(**native).model_dump()
     assert {k: dumped[k] for k in native} == native
 

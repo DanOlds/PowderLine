@@ -226,7 +226,8 @@ distribution (out of tree) that provides:
      `simulation_mode`, `engine_details` with `parameters_requested` /
      `parameters_varied` / `n_points`, `warnings`, `elapsed_time`, `method`,
      `output_files`, `fit_profile`, `unit_cell_data`, `peak_list_data`,
-     `refined_parameters`, `spf_peaks`, `spf_convergence_diagnostics`). A gateway **never returns a failed
+     `refined_parameters`, `spf_peaks`, `spf_convergence_diagnostics`; gsasii adds
+     `peak_fit` for a peak fit). A gateway **never returns a failed
      result**: it raises `EngineExecutionError` (the engine ran and failed) or
      `ExecutionBackendError` (it did not run) with a `reason` from
      `powderline.results.REASONS`, or returns

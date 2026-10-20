@@ -122,6 +122,7 @@ tables are dicts keyed by phase name.
 | `peak_list_data` | per phase: reflection list (`h, k, l, …, d_spacing, 2theta, …`; columns are the engine's) |
 | `refined_parameters` | 9 columns: `parameter_name, descriptive_name, phase_name, phase_idx, atom_name, atom_idx, value, esd, category` |
 | `spf_peaks`, `spf_convergence_diagnostics` | single peak fitting only (empty otherwise; the gsasii and topas column sets differ) |
+| `peak_fit` | `gsasii.spf` only (`None` otherwise): `{"parameters": [{"name", "value", "esd"}]}`, every parameter GSAS-II's peak fit varied by GSAS-II's own name (`Back;0`, `BkPkpos;0`, `U` … `Z`, `pos3`, `int3` …) with its ESD — the source of the output recipe for a peak fit, whose fit fills no covariance block (re/21) |
 
 **Reason codes** (`powderline.results.REASONS`; `e.reason` on the exception,
 `failure.reason` in the envelope):

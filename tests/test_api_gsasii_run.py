@@ -388,14 +388,54 @@ def test_lab6_output_recipe_is_valid_and_feeds_back(lab6_subprocess_run, tmp_pat
     assert compared >= 3
 
 
-def test_singlepeakfit_output_recipe_feeds_back(tmp_path):
+def _spf_recipe(physical):
+    """The LaB6 single-peak-fit example; ``physical`` holds what the example as posed lets run unphysical: the
+    background peak's widths (its sigma^2 ends near -2700 centideg^2) and the Lorentzian width of the last, weak
+    peak at the window edge (which goes negative once the background peak is physical)."""
     recipe = json.loads((REPO / "examples" / "example_LaB6_singlepeakfit" / "input.json").read_text(encoding="utf-8"))
-    result = powderline.run(recipe, tmp_path / "first", execution_mode="subprocess")
+    if physical:
+        for k in ("pv_gaussian_sigma_sq", "pv_lorentzian_gamma"):
+            recipe["payload"]["background"]["single_peaks"][k][0][1] = False
+        recipe["payload"]["single_peaks"]["pv_lorentzian_gamma"][35][1] = False
+    return recipe
+
+
+def test_singlepeakfit_example_output_recipe_is_honestly_invalid_naming_the_background_peak(tmp_path):
+    """re/21: the peak fit's own block carries everything it varied. The example as committed refines its one
+    background peak's widths, which GSAS-II lets run far below its silent floor (sigma^2 of order -1e3, EB-35): the
+    output recipe reports that and is not valid, naming the value (P-43 D5). Before re/21 the SPF output recipe
+    kept the recipe's starting background, marked requested_not_varied."""
+    result = powderline.run(_spf_recipe(False), tmp_path, execution_mode="subprocess")
+    assert result["status"] == "ok"
+    assert result["output_recipe_valid"] is False
+    why = [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"][0]["message"]
+    assert "payload.background.single_peaks.pv_gaussian_sigma_sq.0" in why and "EB-35" in why
+    rows = result["parameter_dispositions"].set_index("path")
+    back0 = rows.loc["payload.background.chebyshev.coefficients.0"]
+    assert back0["disposition"] == "varied" and back0["esd"] > 0 and abs(back0["value"] - 10) > 1
+    assert result["output_recipe"]["payload"]["background"]["chebyshev"]["coefficients"][0] == pytest.approx(back0["value"])
+    assert rows.loc["payload.single_peaks.positions.0", "esd"] > 0
+    assert rows.loc["payload.background.single_peaks.pv_gaussian_sigma_sq.0", "value"] < 0
+    assert len(result["peak_fit"]["parameters"]) == result["engine_details"]["parameters_varied"]
+
+
+def test_singlepeakfit_output_recipe_feeds_back(tmp_path):
+    """With the background peak's widths and the last peak's gamma held the peak fit stays physical: the output
+    recipe is valid, carries the refined background and peaks (with ESDs) and reproduces the step when fed back."""
+    result = powderline.run(_spf_recipe(True), tmp_path / "first", execution_mode="subprocess")
     assert result["output_recipe_valid"] is True, [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"]
     out = result["output_recipe"]
     assert out["payload"]["single_peaks"]["positions"][0][0] == pytest.approx(float(result["spf_peaks"]["position_2theta"].iloc[0]))
+    rows = result["parameter_dispositions"].set_index("path")
+    assert rows.loc["payload.background.chebyshev.coefficients.0", "disposition"] == "varied"
+    assert rows.loc["payload.background.single_peaks.positions.0", "disposition"] == "varied"
+    assert rows.loc["payload.background.single_peaks.pv_gaussian_sigma_sq.0", "disposition"] == "held_by_user"
+    assert rows.loc["payload.single_peaks.pv_lorentzian_gamma.35", "disposition"] == "held_by_user"
+    assert rows.loc["payload.single_peaks.pv_lorentzian_gamma.34", "disposition"] == "varied"
+    assert rows.loc["payload.single_peaks.positions.0", "esd"] > 0
     second = powderline.run(out, tmp_path / "second", execution_mode="subprocess")
-    assert second["status"] == "ok"
+    assert second["status"] == "ok" and second["output_recipe_valid"] is True
+    assert second["rwp"] == pytest.approx(result["rwp"], abs=0.05)
 
 
 def test_atomrefine_output_recipe_reports_unphysical_values(tmp_path):
@@ -408,3 +448,26 @@ def test_atomrefine_output_recipe_reports_unphysical_values(tmp_path):
     assert result["output_recipe_valid"] is False  # the committed reference refines occupancies below zero
     why = [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"][0]["message"]
     assert "occupancy" in why or "isotropic_size" in why
+
+
+def test_instrument_profile_peak_fit_output_recipe_carries_the_refined_profile(tmp_path):
+    """re/21 (the re/20b review): with use_instrument_profile GSAS-II refines U..Z; the peak fit's block carries them
+    (with the peak ESDs) so the output recipe is valid and feeds back."""
+    recipe = _spf_recipe(True)
+    recipe["payload"]["refinement_controls"]["single_peak_fitting_mode"]["use_instrument_profile"] = True
+    for k in ("pv_gaussian_sigma_sq", "pv_lorentzian_gamma"):
+        for p in recipe["payload"]["single_peaks"][k]:
+            p[1] = False
+    start = {"U": 49.1, "V": 11.2, "W": 0.71, "X": 0.62, "Y": -10.3, "Z": 0.34}
+    for k, v in start.items():
+        recipe["payload"]["instrument"]["broadening"][k] = [v, True]
+    result = powderline.run(recipe, tmp_path / "first", execution_mode="subprocess")
+    assert result["status"] == "ok"
+    assert result["output_recipe_valid"] is True, [w for w in result["warnings"] if w["code"] == "output_recipe_not_valid"]
+    rows = result["parameter_dispositions"].set_index("path")
+    u = rows.loc["payload.instrument.broadening.U"]
+    assert u["disposition"] == "varied" and u["esd"] and u["esd"] > 0
+    assert any(abs(rows.loc[f"payload.instrument.broadening.{k}", "value"] - v) > 1e-9 for k, v in start.items())
+    assert rows.loc["payload.single_peaks.positions.0", "esd"] > 0  # peak ESDs come back too
+    second = powderline.run(result["output_recipe"], tmp_path / "second", execution_mode="subprocess")
+    assert second["status"] == "ok"

@@ -31,6 +31,17 @@ simulation (``refinement_cycles == 1``) gets the same statistics as a
 refinement, and every result says which it was (``simulation_mode``, A129).
 A statistic that is undefined (no degrees of freedom) is ``None``.
 
+For a peak fit (``gsasii.spf``) the result also carries ``peak_fit``: every
+parameter ``DoPeakFit`` varied, by its own name, with the refined value and ESD
+(re/21, KI-04). ``DoPeakFit`` fills no covariance block (the frozen extractor
+therefore reports no refined-parameter rows for a peak fit); its names and ESDs
+are ``Peak List['sigDict']`` and it writes the refined values in place --
+``Back;n`` into ``Background[0][3 + n]``, ``BkPkpos|int|sig|gam;i`` into
+``Background[1]['peaksList'][i]``, the instrument terms (``U`` .. ``Z``,
+``SH/L``) into ``Instrument Parameters[0][name][1]`` and ``pos|int|sig|gam<i>``
+into ``Peak List['peaks'][i]`` -- all in GSAS-II's own units, which are the
+recipe's. The gateway's name-to-path map (``paths.py``) reads this block.
+
 Runtime layer (called with GSAS-II objects); imports no GSAS-II module itself.
 """
 
@@ -127,4 +138,45 @@ def fit_report(proj, hist, recipe, engine_rwp, engine_rvals=None) -> dict:
             field_path=None))
     return {"rwp": num(stats.rwp), "r_exp": num(stats.rexp), "gof": num(stats.gof), "chi2_red": num(stats.chi2_red),
             "simulation_mode": simulation,
-            "engine_details": details, "warnings": warnings}
+            "engine_details": details, "warnings": warnings,
+            "peak_fit": {"parameters": peak_fit_parameters(hist)} if spf else None}
+
+
+#: value slots of a GSAS-II constant-wavelength peak row ``[pos, flag, int, flag, sig, flag, gam, flag]``
+#: (``getHeaderInfo``; TOF / pink-beam rows carry ``alp`` and ``bet`` before ``sig`` -- gsasii 1.0.0 is PXC only)
+_PEAK_SLOT = {"pos": 0, "int": 2, "sig": 4, "gam": 6}
+
+
+def peak_fit_parameters(hist) -> list[dict]:
+    """``[{"name", "value", "esd"}]`` for every parameter GSAS-II's peak fit varied (``Peak List['sigDict']``).
+
+    The refined values are read from where ``DoPeakFit`` wrote them in the project (see the module docstring),
+    in GSAS-II's units. A name whose value cannot be located in the project is reported with ``value: None``,
+    so that the path map names it instead of dropping it. An ESD of exactly 0 is ``None``: ``DoPeakFit`` starts
+    from ``sig = [0]*len(varyList)`` and leaves the zeros when its least squares ends on a singular matrix it
+    cannot repair (it prints "Refinement failed - singular matrix" and nothing else; the values are the last
+    cycle's), so 0 means undetermined, not exact (re/21 review).
+    """
+    data = hist.data
+    peak_list = data.get("Peak List") or {}
+    background = data.get("Background") or [[], {}]
+    inst = (data.get("Instrument Parameters") or [{}])[0]
+    peaks = peak_list.get("peaks") or []
+    rows = []
+    for name, esd in (peak_list.get("sigDict") or {}).items():
+        value = None
+        base, _, index = str(name).partition(";")
+        peak = re.fullmatch(r"(pos|int|sig|gam)(\d+)", str(name))
+        if base == "Back" and index.isdigit() and 3 + int(index) < len(background[0]):
+            value = background[0][3 + int(index)]
+        elif base.startswith("BkPk") and base[4:] in _PEAK_SLOT and index.isdigit() and len(background) > 1:
+            rows_bk = (background[1] or {}).get("peaksList") or []
+            if int(index) < len(rows_bk):
+                value = rows_bk[int(index)][_PEAK_SLOT[base[4:]]]
+        elif name in inst and isinstance(inst[name], (list, tuple)) and len(inst[name]) > 1:
+            value = inst[name][1]
+        elif peak and int(peak.group(2)) < len(peaks):
+            value = peaks[int(peak.group(2))][_PEAK_SLOT[peak.group(1)]]
+        esd = _finite_or_none(esd)
+        rows.append({"name": str(name), "value": _finite_or_none(value), "esd": None if esd == 0 else esd})
+    return rows
