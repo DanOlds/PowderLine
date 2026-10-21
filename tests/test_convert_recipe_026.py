@@ -388,3 +388,17 @@ def test_cli_writes_utf8_lf(tmp_path):
     assert b"\r\n" not in data and data.endswith(b"\n")
     validate_recipe(json.loads(data.decode("utf-8")))
     assert conv.main([str(LEGACY / "example_template" / "input.json")]) == 1
+
+
+def test_a_gsasii_spelled_ion_becomes_neutral_element_plus_scattering_types():
+    """re/28 (P-47): v0.1.1 passed GSAS-II's own ion spelling through unchecked; the converter maps it onto the
+    1.0.0 shape (neutral element, the ion in the recipe spelling under scattering_types) and notes it."""
+    r = copy.deepcopy(_lab6())
+    phase = next(iter(r["payload"]["phases"].values()))
+    phase["structure"]["atoms"]["La"]["element"] = "La+3"
+    new, report = _convert(r)
+    atoms = next(iter(new["payload"]["phases"].values()))["atoms"]
+    assert atoms["La"]["element"] == "La"
+    assert next(iter(new["payload"]["phases"].values()))["scattering_types"] == {"La": "La3+"}
+    assert "'La+3' -> neutral 'La' + scattering_types['La'] = 'La3+'" in report
+    validate_recipe(new)

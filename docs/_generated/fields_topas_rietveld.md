@@ -72,3 +72,5 @@
 | `payload.phases.<phase>.peak_broadening.strain_broadening.model` | engine | `"isotropic"` |  | yes |  |
 | `payload.phases.<phase>.peak_broadening.strain_broadening.Strain_L` | engine | `[value, flag, min, max]` | `degree 2theta` | no |  |
 | `payload.phases.<phase>.peak_broadening.strain_broadening.Strain_G` | engine | `[value, flag, min, max]` | `degree 2theta` | no |  |
+| `payload.phases.<phase>.scattering_types` | engine | object keyed by name |  | no | Ionic scattering types: NOT available in topas 1.0.0 (a validation error; the TOPAS half of P-47 awaits a TOPAS 6 run, T7) |
+| `payload.phases.<phase>.scattering_types.<name>` | engine | string |  | yes |  |

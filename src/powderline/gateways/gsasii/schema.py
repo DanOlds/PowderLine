@@ -39,6 +39,7 @@ from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from powderline.compat import schema_declarations
 from powderline.exceptions import StructuredWarning
+from powderline.gateways.gsasii.scattering import ENGINE_LABEL as SCATTERING_ENGINE_LABEL, GSASII_IONS
 from powderline.schema_core import (
     UNIT_ANGSTROM,
     UNIT_ARBITRARY,
@@ -62,6 +63,7 @@ from powderline.schema_core import (
     omit_absent,
     outside_window_problems,
     raise_problems,
+    scattering_type_problems,
     recipe_validator,
     refined_flag_problems,
     unique_phase_names,
@@ -418,8 +420,23 @@ class GsasiiPhase(Phase[RefinableParameter]):
     peak_broadening: PeakBroadening = Field(
         default_factory=PeakBroadening,
         description="Left out (in whole or part): 10 um, 0 microstrain, isotropic, fixed, with a warning (A107)")
+    scattering_types: Optional[dict[str, str]] = Field(
+        default=None, json_schema_extra=absent_not_null_schema(),
+        description="Ionic X-ray scattering types by atom label, CIF spelling ('La3+', 'O2-'); an atom left out "
+                    "scatters as the neutral element; only ions GSAS-II 5.7.9 has a form factor for (P-47)")
 
-    _gsasii_not_null = field_validator("peak_broadening", mode="before")(absent_not_null)
+    _gsasii_not_null = field_validator("peak_broadening", "scattering_types", mode="before")(absent_not_null)
+
+    @model_serializer(mode="wrap")
+    def _gsasii_omit_absent(self, handler):
+        return omit_absent(handler(self), self, ("scattering_types",))
+
+    @model_validator(mode="after")
+    def _gsasii_scattering_types(self) -> "GsasiiPhase":
+        if self.scattering_types:
+            raise_problems(type(self).__name__,
+                           scattering_type_problems(self.scattering_types, self.atoms, GSASII_IONS, SCATTERING_ENGINE_LABEL))
+        return self
 
     @field_validator("scale")
     @classmethod

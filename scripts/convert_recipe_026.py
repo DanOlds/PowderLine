@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -342,6 +343,15 @@ class _Conversion:
         new["unit_cell"] = self.cell(path, sg, structure.get("unit_cell") or {}, param.get("unit_cell") or {})
         new["atoms"] = {label: self.atom(f"{path}.atoms.{label}", sg, atom, (param.get("atoms") or {}).get(label))
                         for label, atom in (structure.get("atoms") or {}).items()}
+        ions = {}
+        for label, atom in new["atoms"].items():  # v0.1.1 passed GSAS-II's ion spelling through unchecked (P-03)
+            m = re.fullmatch(r"([A-Z][a-z]?)([+-])([1-8])", str(atom.get("element") or ""))
+            if m:
+                atom["element"], ions[label] = m.group(1), f"{m.group(1)}{m.group(3)}{m.group(2)}"
+                self.note(f"{path}.atoms.{label}.element", f"{m.group(0)!r} -> neutral {m.group(1)!r} + "
+                          f"scattering_types[{label!r}] = {ions[label]!r} (P-47; GSAS-II spelling -> recipe spelling)")
+        if ions:
+            new["scattering_types"] = ions
         for label in sorted(set(param.get("atoms") or {}) - set(structure.get("atoms") or {})):
             self.note(f"{path}.parameterization.atoms.{label}", "dropped: the structure has no atom of that label "
                                                                  "(v0.1.1 skipped it)")

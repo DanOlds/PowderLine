@@ -191,6 +191,14 @@ Defined in `src/powderline/schema_core.py`; every engine schema builds on it.
       values; otherwise the error gives them.
     - Atoms at the same position are independent: their flags are never tied.
 
+**1.0.0 was extended before its first release** (PowderLine 0.2.0 is tagged
+on the maintainers' fork only; P-43 D6): re/23 fixed the unit-cell report's row
+vocabulary (an output, not a recipe field), and re/28 (P-47) added the
+building block behind the engines' `scattering_types` — `element` stays the
+neutral atom; an ionic type is engine content. No recipe that validated
+before stops validating; the error text for a charged `element` now points at
+`scattering_types`.
+
 ## gsasii engine schema
 
 ### 1.0.0 — introduced in PowderLine 0.2.0
@@ -276,6 +284,12 @@ stop on any example). What it changed, per example:
 The pre-conversion recipes are kept byte-identical in `tests/data/convert_026/`
 as the converter's test fixtures (P-16, P-23); the 0.26.0 path itself is gone.
 
+**Extended before its first release (re/28, P-47):** the phase block gains
+`scattering_types: {<atom label>: "<El n±>"}` (CIF spelling), optional, never
+null; only ions GSAS-II 5.7.9 has a form factor for (114, pinned by a test);
+written into the GSAS-II atom record in GSAS-II's own spelling (`La+3`,
+ledger row R35). The converter maps a 0.26.0 `El±n` element onto it.
+
 ## topas engine schema
 
 ### 1.0.0 — introduced in PowderLine 0.2.0
@@ -347,6 +361,10 @@ was removed with the unified schema).
   the run (TOPAS 6's exit code says nothing; timestamps are not used); any
   non-finite number in them (`nan`, `1.#QNAN`, `-nan(ind)`, …) is a divergence
   error, while an undetermined ESD is left empty.
+
+**Extended before its first release (re/28, P-47):** `scattering_types` is
+declared and **refused** in 1.0.0 (the TOPAS half — `occ Fe+3` and ATMSCAT's
+coverage — awaits a TOPAS 6 run, T7; P-08).
 
 ## easydiffraction engine schema
 
@@ -432,6 +450,11 @@ easydiffraction translation path was removed with the unified schema).
   (CrysFML), `easydiffraction_position_translated`,
   `easydiffraction_crysfml_start_dependent`. Any non-finite calculated value,
   refined value or reflection-list value is a divergence error.
+
+**Extended before its first release (re/28, P-47):** the phase block gains
+`scattering_types` (CIF spelling), cryspy calculator only (CrysFML strips
+charges, EB-96) and only ions CrysPy has a form factor for (111, pinned by a
+test; CrysPy's silent neutral fallback for the others is EB-95).
 
 ---
 

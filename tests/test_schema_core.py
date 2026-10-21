@@ -819,9 +819,9 @@ def test_element_symbol_misspelled_rejected_with_spelling(symbol, canonical):
 
 @pytest.mark.parametrize("symbol", ["Fe3+", "Fe+3", "O2-", "O-2", "Fe3"])
 def test_charged_types_rejected_not_stripped(symbol):
-    # A63: gemmi reduces e.g. "Fe3+" to Fe, which would change the scattering;
-    # core rejects charged types until they are supported.
-    with pytest.raises(ValueError, match="charged scattering types are not supported"):
+    # A63: gemmi reduces e.g. "Fe3+" to Fe, which would change the scattering; core's element is always the
+    # neutral atom -- an ion is stated in the engine phase block's scattering_types (P-47), never here.
+    with pytest.raises(ValueError, match="element is the neutral atom; an ionic scattering type is stated"):
         check_element_symbol(symbol)
 
 
@@ -947,8 +947,8 @@ def test_atom_element_uppercase_rejected_with_suggestion():
 
 
 def test_atom_element_charged_rejected():
-    """Atom: 'Fe3+' rejected as charged."""
-    with pytest.raises(ValidationError, match="charged scattering types are not supported"):
+    """Atom: 'Fe3+' rejected as charged (element is the neutral atom; ions go to scattering_types, P-47)."""
+    with pytest.raises(ValidationError, match="element is the neutral atom"):
         Atom[RefinableParameter](element="Fe3+", x=[0.0, False], y=[0.0, False], z=[0.0, False], occupancy=[1.0, False], ADP="Uiso", Uiso=[0.01, False])
 
 

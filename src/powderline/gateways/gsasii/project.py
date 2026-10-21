@@ -12,6 +12,7 @@ from GSASII import GSASIIobj as G2obj
 from GSASII import GSASIIspc as G2spc
 from GSASII import GSASIIElem as G2elem
 from powderline.gateways.gsasii.schema import gsasii_space_group
+from powderline.gateways.gsasii.scattering import gsasii_type  # R35 (re/28, P-47)
 
 
 # Functions to add histogram with instrument parameters from recipe.xrd_data (dict with arrays) and recipe.instrument.initialization (list of dicts)
@@ -400,7 +401,8 @@ def add_phase_from_cif_dict(proj: Any, cif_data: Dict[str, Any], phase_name: str
         # Prepare atom record list (based on GSAS-II internal format):
         atom_record = ["", "", "", 0.0, 0.0, 0.0, 1.0, "", 0.0, "I", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         atom_record[0] = label
-        atom_record[1] = atom.get("element", label.rstrip('0123456789') or "X")
+        # R35 (re/28, P-47): the stated ionic type, in GSAS-II's own spelling (``La3+`` -> ``La+3``); neutral otherwise
+        atom_record[1] = gsasii_type((cif_data.get("scattering_types") or {}).get(label, atom.get("element", label.rstrip('0123456789') or "X")))
         atom_record[2] = ""  # refinement flags placeholder (left blank)
         atom_record[3] = x
         atom_record[4] = y

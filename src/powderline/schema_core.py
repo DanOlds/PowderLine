@@ -375,6 +375,69 @@ def check_within_bounds(value: float, param: BoundedRefinableParameter, field: s
 
 # --- plain-value checks (A32) ----------------------------------------------
 
+#: An ionic scattering type in the recipe spelling (CIF/IUCr ``_atom_site_type_symbol``): element, charge 1-8, sign.
+_SCATTERING_TYPE = re.compile(r"([A-Z][a-z]?)([1-8])([+-])")
+
+
+def scattering_type_parts(symbol: str) -> tuple[str, int]:
+    """``("La", 3)`` for ``"La3+"``, ``("O", -2)`` for ``"O2-"`` (P-47).
+
+    The recipe spelling is the CIF/IUCr one: element, charge magnitude 1-8, then the sign. The engine
+    spelling (GSAS-II's and TOPAS's ``La+3``) is an error naming the recipe form -- GSAS-II reads
+    ``Fe3+`` as hydrogen and TOPAS reports a wrong symbol only on its console, so the translation is the
+    gateway's, never the user's. A bare element is an error too: the neutral atom is stated by leaving
+    the atom out of ``scattering_types``. Raises ``ValueError``.
+    """
+    m = _SCATTERING_TYPE.fullmatch(symbol)
+    if m is None:
+        alt = re.fullmatch(r"([A-Z][a-z]?)([+-])([1-8])", symbol)
+        if alt:
+            raise ValueError(f"scattering type {symbol!r}: write the ion as element, charge, sign: "
+                             f"'{alt.group(1)}{alt.group(3)}{alt.group(2)}'")
+        if gemmi.Element(symbol).atomic_number > 0 and gemmi.Element(symbol).name == symbol:
+            raise ValueError(f"scattering type {symbol!r} is the neutral atom: leave the atom out of "
+                             "scattering_types instead")
+        raise ValueError(f"scattering type {symbol!r} is not of the form element, charge 1-8, sign (e.g. 'Fe3+', 'O2-')")
+    element, charge, sign = m.group(1), int(m.group(2)), m.group(3)
+    if not (gemmi.Element(element).atomic_number > 0 and gemmi.Element(element).name == element):
+        raise ValueError(f"scattering type {symbol!r}: {element!r} is not a known element symbol")
+    return element, charge if sign == "+" else -charge
+
+
+def scattering_type_problems(types: Mapping[str, str], atoms: Mapping[str, Any], available: Optional[frozenset],
+                             engine: str, loc: tuple = ("scattering_types",)) -> list:
+    """The engine-schema rule for ``scattering_types`` (P-47): every key an atom label of the phase, every
+    value an ion of that atom's element in the recipe spelling, and -- when ``available`` is given -- one the
+    engine has a form factor for (the error names the forms it has for that element, in the recipe
+    spelling, or says there is none). Returns ``InitErrorDetails``; the caller raises them."""
+    problems = []
+    for label, symbol in types.items():
+        if label not in atoms:
+            problems.append(custom_error("scattering_type_label",
+                                         "scattering_types names '{label}', which is not an atom of this phase",
+                                         loc + (label,), symbol, label=label))
+            continue
+        try:
+            element, _charge = scattering_type_parts(str(symbol))
+        except ValueError as exc:
+            problems.append(custom_error("scattering_type_spelling", "{why}", loc + (label,), symbol, why=str(exc)))
+            continue
+        atom_element = getattr(atoms[label], "element", None)
+        if atom_element is not None and element != atom_element:
+            problems.append(custom_error(
+                "scattering_type_element",
+                "scattering type '{symbol}' is not an ion of {label}'s element '{element}'",
+                loc + (label,), symbol, symbol=symbol, label=label, element=atom_element))
+            continue
+        if available is not None and symbol not in available:
+            forms = sorted(s for s in available if re.match(rf"^{re.escape(element)}[1-8][+-]$", s))
+            problems.append(custom_error(
+                "scattering_type_unavailable",
+                "{engine} has no X-ray form factor for '{symbol}'; " + (
+                    "it has {forms} for {element}" if forms else "it has no ionic form for {element}: use the neutral atom"),
+                loc + (label,), symbol, engine=engine, symbol=symbol, element=element, forms=", ".join(forms)))
+    return problems
+
 
 def check_element_symbol(symbol: str) -> str:
     """Return ``symbol`` if it is a bare element symbol in gemmi's table, exactly spelled.
@@ -382,16 +445,18 @@ def check_element_symbol(symbol: str) -> str:
     Raises ``ValueError`` otherwise. gemmi's own lookup is too lenient to use
     alone: it accepts any case (``"FE"``), reduces charged types to the neutral
     atom (``"Fe3+"`` -> Fe, which would change the X-ray scattering), and maps
-    unknown symbols to ``X``. Charged scattering types are not supported in core
-    schema 1.0.0 yet (A63 obligation); they are rejected, never stripped.
+    unknown symbols to ``X``. ``element`` is always the neutral atom (A63; the
+    phase block stays portable across engines, P-43 D4): an ionic scattering type
+    is stated in the engine's own phase block, ``scattering_types`` (P-47,
+    :func:`scattering_type_parts`), never here.
     """
     element = gemmi.Element(symbol)
     if element.atomic_number > 0 and element.name == symbol:
         return symbol
     if any(c in symbol for c in "+-") or (symbol[-1:].isdigit()):
         raise ValueError(
-            f"element {symbol!r}: charged scattering types are not supported in core schema "
-            f"{CORE_SCHEMA_VERSION} yet; give the bare element symbol"
+            f"element {symbol!r}: element is the neutral atom; an ionic scattering type is stated in the "
+            f"engine's phase block as scattering_types: {{<atom label>: \"Fe3+\"}} (element, charge, sign)"
         )
     # Suggest a spelling only for case/whitespace differences. gemmi also reads
     # a prefix (' Fe' -> F, 'Nax' -> Na), which must never be offered as a fix.

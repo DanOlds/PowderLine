@@ -63,6 +63,8 @@
 | `payload.phases.<phase>.unit_cell` | core | unit cell (core block) |  | yes | see the core fields |
 | `payload.phases.<phase>.atoms` | core | atoms (core block) |  | yes | see the core fields |
 | `payload.phases.<phase>.scale` | engine | `[value, flag, min, max]` | `arbitrary` | yes | Phase scale factor, >= 0 |
+| `payload.phases.<phase>.scattering_types` | engine | object keyed by name |  | no | Ionic X-ray scattering types by atom label, CIF spelling ('La3+', 'O1-'); an atom left out scatters as the neutral element; cryspy calculator only, and only ions CrysPy has (P-47) |
+| `payload.phases.<phase>.scattering_types.<name>` | engine | string |  | yes |  |
 | `payload.refinement_controls` | engine | block |  | yes | How the pattern is calculated and fitted, all stated (A162). lmfit runs only if a flag is set. |
 | `payload.refinement_controls.calculator` | engine | `"cryspy"` \| `"crysfml"` |  | yes | easydiffraction calculator; they compute different intensities and offer different peak types (EB-76..EB-79) |
 | `payload.refinement_controls.minimizer` | engine | `"lmfit (leastsq)"` |  | yes | Minimizer (lmfit's Levenberg-Marquardt only, A162) |

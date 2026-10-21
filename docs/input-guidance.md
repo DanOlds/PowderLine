@@ -105,11 +105,20 @@ derives it).
 
 ### Atoms
 
-- **`element`**: the bare symbol, spelled exactly (`"Fe"`, not `"FE"`).
-  Charged scattering types (`"Fe3+"`, `"O2-"`) are **rejected, never reduced
-  to the neutral atom**: each engine spells ions differently and at least one
-  reads an unknown form as a different element, so a refusal is safer than a
-  half-verified translation (support is planned for a later core version).
+- **`element`**: the bare symbol, spelled exactly (`"Fe"`, not `"FE"`), and
+  always the **neutral** atom — so the phase block means the same thing for
+  every engine and moves between recipes (P-43 D4).
+- **Ionic scattering types** are stated in the engine's phase block, beside
+  `scale`: `"scattering_types": {"La": "La3+", "O": "O2-"}` — the atom label,
+  then the ion in the CIF spelling (element, charge 1–8, sign; `"La+3"` is an
+  error naming `"La3+"`). An atom left out scatters as its neutral element,
+  which is normal where no ion exists (neither engine has a boron ion: LaB6
+  is `La3+` with neutral `B`). Each engine refuses an ion it has no form
+  factor for, naming the forms it has: GSAS-II 5.7.9 has 114 ions, CrysPy
+  111 (no `O2-`, only `O1-`), CrysFML computes neutral atoms only (use the
+  cryspy calculator), and **TOPAS does not accept `scattering_types` in
+  schema 1.0.0** (its half awaits a TOPAS run). PowderLine spells the ion
+  the engine's way itself; GSAS-II would read `"La3+"` as hydrogen (EB-94).
 - **Coordinates** are fractional JSON numbers. On a special position the
   values fixed or tied by symmetry follow one rule (the full table with
   worked examples is in

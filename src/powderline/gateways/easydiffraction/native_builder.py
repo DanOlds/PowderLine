@@ -205,7 +205,8 @@ def build_project(model) -> Build:
         for member, attr in _CELL.items():
             _set(s.cell, attr, getattr(phase.unit_cell, member).value)
         for label, atom in engine_atom_order(phase):
-            s.atom_sites.create(id=label, type_symbol=atom.element, fract_x=atom.x.value, fract_y=atom.y.value,
+            s.atom_sites.create(id=label, type_symbol=(phase.scattering_types or {}).get(label, atom.element),  # P-47
+                                fract_x=atom.x.value, fract_y=atom.y.value,
                                 fract_z=atom.z.value, occupancy=atom.occupancy.value)
             site = s.atom_sites[label]
             if atom.ADP == "Uiso":

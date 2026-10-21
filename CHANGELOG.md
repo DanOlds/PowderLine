@@ -90,6 +90,25 @@ recipes do not validate; see the
   `output_recipe` / `parameter_dispositions`. topas and easydiffraction, which
   wrote `a … volume`, now write the vocabulary (their goldens' unit-cell keys
   renamed; no example reference moves — gsasii already wrote it).
+- **Ionic scattering types** (re/28, P-47; closes A63): `element` stays the
+  neutral atom in core (the phase block stays portable, D4); each engine's
+  phase block gains `scattering_types: {<atom label>: "La3+"}` in the CIF
+  spelling (element, charge 1–8, sign), validated by core (the engine spelling
+  `La+3` is an error naming `La3+`) and by the engine's own table of ions it
+  has form factors for (GSAS-II 5.7.9: 114; CrysPy: 111; an ion the engine
+  lacks is an error naming the forms it has). gsasii translates to GSAS-II's
+  `La+3` where the frozen project builder writes the atom type (ledger R35;
+  GSAS-II reads `La3+` as hydrogen, EB-94); easydiffraction hands the CIF
+  spelling to CrysPy, and refuses ions with the crysfml calculator (it strips
+  every charge, EB-96) or outside CrysPy's table (its silent neutral fallback,
+  EB-95); **topas refuses `scattering_types` in 1.0.0** (TOPAS spells `Fe+3`
+  and reports an unknown ion only on its console; no TOPAS run here, P-08,
+  T7). Gate: the La3+/La per-reflection intensity ratios of the LaB6
+  calculation agree between GSAS-II and CrysPy within 1 % (golden
+  `tests/data/ions/`). The 0.26.0 converter turns a GSAS-II-spelled ion
+  (`Fe+3`, passed through unchecked by v0.1.1) into neutral `element` +
+  `scattering_types`. New example `example_LaB6_ionic` (La3+, B neutral: no
+  boron ion exists in either table) with an easydiffraction (cryspy) leg.
 - **`powderline --doctor`** (`pixi run doctor`; re/27, KI-13 implemented): the
   PowderLine version, the gateways the registry finds with their workflows
   and engine requirements, each engine's installed version against its

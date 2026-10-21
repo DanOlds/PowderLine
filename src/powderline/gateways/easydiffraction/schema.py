@@ -60,6 +60,7 @@ from pydantic_core import InitErrorDetails
 from powderline.compat import schema_declarations
 from powderline.gateways.easydiffraction.space_group_support import CRYSFML_SETTINGS, CRYSPY_SETTINGS
 from powderline.gateways.easydiffraction.space_group_table import SPACE_GROUPS
+from powderline.gateways.easydiffraction.scattering import CRYSPY_IONS, ENGINE_LABEL as SCATTERING_ENGINE_LABEL
 from powderline.schema_core import (
     UNIT_ANGSTROM,
     UNIT_ARBITRARY,
@@ -83,6 +84,7 @@ from powderline.schema_core import (
     name_keyed,
     omit_absent,
     raise_problems,
+    scattering_type_problems,
     recipe_validator,
     refined_flags,
     unique_phase_names,
@@ -395,12 +397,29 @@ class EasydiffractionPhase(Phase[BoundedRefinableParameter]):
     """
 
     scale: P = Field(json_schema_extra=unit_schema(UNIT_ARBITRARY), description="Phase scale factor, >= 0")
+    scattering_types: Optional[dict[str, str]] = Field(
+        default=None, json_schema_extra=absent_not_null_schema(),
+        description="Ionic X-ray scattering types by atom label, CIF spelling ('La3+', 'O1-'); an atom left out "
+                    "scatters as the neutral element; cryspy calculator only, and only ions CrysPy has (P-47)")
+
+    _easydiffraction_not_null = field_validator("scattering_types", mode="before")(absent_not_null)
+
+    @model_serializer(mode="wrap")
+    def _easydiffraction_omit_absent(self, handler):
+        return omit_absent(handler(self), self, ("scattering_types",))
 
     @field_validator("space_group")
     @classmethod
     def _easydiffraction_setting(cls, v: str) -> str:
         easydiffraction_space_group(v)
         return v
+
+    @model_validator(mode="after")
+    def _easydiffraction_scattering_types(self) -> "EasydiffractionPhase":
+        if self.scattering_types:
+            raise_problems(type(self).__name__,
+                           scattering_type_problems(self.scattering_types, self.atoms, CRYSPY_IONS, SCATTERING_ENGINE_LABEL))
+        return self
 
     @model_validator(mode="after")
     def _easydiffraction_limits(self) -> "EasydiffractionPhase":
@@ -502,6 +521,13 @@ class RietveldPayload(CoreModel):
             if why is not None:
                 problems.append(custom_error("easydiffraction_setting", "{why}", ("phases", name, "space_group"),
                                        phase.space_group, why=why))
+            if calculator == "crysfml" and phase.scattering_types:
+                problems.append(custom_error(
+                    "easydiffraction_ions_crysfml",
+                    "the crysfml calculator computes neutral atoms only: easydiffraction strips the charge from every "
+                    "type symbol it hands to CrysFML (EB-96), so these scattering types would have no effect; use the "
+                    "cryspy calculator, or leave scattering_types out",
+                    ("phases", name, "scattering_types"), phase.scattering_types))
             if calculator == "crysfml":
                 for label, atom in phase.atoms.items():
                     if atom.Uaniso is not None:

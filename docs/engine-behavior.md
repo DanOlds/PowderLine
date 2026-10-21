@@ -199,6 +199,12 @@ within 1e-6 of the starting value).
 
 ### gsasii
 
+- **GSAS-II reads the CIF ion spelling as hydrogen** (EB-94): `GetAtomInfo("La3+")`
+  gives Z = 1, silently; GSAS-II's own spelling is `La+3`, and its
+  `atmdata.XrayFF` has 114 ions. *Policy:* the recipe states ions in the CIF
+  spelling in `scattering_types`; the gateway writes GSAS-II's spelling into
+  the atom record (ledger row R35) and refuses an ion GSAS-II has no form
+  factor for (P-47).
 - **GSAS-II's own defaults add sample broadening and background the recipe
   never asked for**: a new project gets isotropic size 1 µm, microstrain 1000
   and a constant 1.0 Chebyshev background, all fixed (EB-36). *Policy:*
@@ -275,6 +281,14 @@ within 1e-6 of the starting value).
 
 - **No defaults** either: every control is stated (`calculator`, the lmfit
   tolerances, `max_iterations`); a left-out instrument slot is not modelled.
+- **An ion CrysPy has no form factor for becomes the neutral atom with a log
+  warning only** (EB-95): `atom_sites.create(type_symbol="O2-")` is accepted
+  (6341 CIF symbols) and the calculator substitutes `O`, `Logger.Reaction.RAISE`
+  notwithstanding; CrysPy has 111 ions (`DATABASE['Scattering amplitude']`;
+  no `O2-`, only `O1-`). **CrysFML computes neutral atoms only** (EB-96):
+  easydiffraction strips every charge before handing the type to it.
+  *Policy:* `scattering_types` is refused with the crysfml calculator and for
+  any ion outside CrysPy's table, naming the forms it has (P-47).
 - **σ < 1e-4 becomes σ = 1.0 silently** on every input path (EB-73):
   weights above 1e8 on handed points are refused (A159).
 - **Negative measured intensities are refused** by the library (EB-91): a

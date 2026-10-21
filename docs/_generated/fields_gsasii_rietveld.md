@@ -47,5 +47,7 @@
 | `payload.phases.<phase>.peak_broadening.strain_broadening.model` | engine | `"isotropic"` |  | yes | 'isotropic' (uniaxial and generalized are not supported) |
 | `payload.phases.<phase>.peak_broadening.strain_broadening.isotropic_strain` | engine | `[value, flag]` | `microstrain` | yes | Microstrain, Δd/d × 10^6 |
 | `payload.phases.<phase>.peak_broadening.strain_broadening.LG_eta` | engine | `[value, flag]` | `dimensionless` | yes | Lorentzian fraction of the strain profile (1 = Lorentzian) |
+| `payload.phases.<phase>.scattering_types` | engine | object keyed by name |  | no | Ionic X-ray scattering types by atom label, CIF spelling ('La3+', 'O2-'); an atom left out scatters as the neutral element; only ions GSAS-II 5.7.9 has a form factor for (P-47) |
+| `payload.phases.<phase>.scattering_types.<name>` | engine | string |  | yes |  |
 | `payload.refinement_controls` | engine | block |  | yes | Refinement controls; `refinement_cycles == 1` is a simulation (nothing refined, A88). |
 | `payload.refinement_controls.refinement_cycles` | engine | integer |  | no | GSAS-II least-squares cycles; default `5` |

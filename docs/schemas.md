@@ -59,7 +59,9 @@ four blocks (`radiation {type: "PXC", wavelength}`, `geometry {bank, azimuth}`,
 (`refinement_cycles`, default 5; `1` is a simulation in which nothing may be
 refined). Optional: `fit_range`, `background` (left out: no background),
 `peak_broadening` per phase (left out: 10 µm / 0 microstrain, fixed, with a
-warning), `instrument.description`.
+warning), `scattering_types` per phase (`{<atom label>: "La3+"}`, CIF spelling;
+left out: neutral atoms; only ions GSAS-II 5.7.9 has a form factor for, P-47),
+`instrument.description`.
 
 ### `gsasii.spf`
 
@@ -80,6 +82,8 @@ at least one phase (`space_group`, `unit_cell`, `atoms`, `scale`), and
 simulation). Nothing has a default: `fit_range`, `background`,
 `instrument.corrections`, `instrument.geometry` and the phases'
 `peak_broadening` are optional, and a block left out is **not modelled**.
+`scattering_types` (ionic types) is **refused** in topas 1.0.0: its TOPAS half
+awaits a TOPAS 6 run (P-47, T7).
 
 ### `topas.spf`
 
@@ -96,7 +100,9 @@ Required: `xrd_data`, `instrument` with `radiation {setup_wavelength}`,
 `parameter_change_tolerance`, `gradient_tolerance`). A recipe with no refine
 flag set is a simulation. Optional: `fit_range`, `background`,
 `instrument.polarization`, `instrument.absorption`, a Kα2 line in
-`radiation`; left out means not modelled.
+`radiation`, `scattering_types` per phase (cryspy calculator only, CIF
+spelling, ions CrysPy has a form factor for; P-47); left out means not
+modelled.
 
 ## Outputs
 

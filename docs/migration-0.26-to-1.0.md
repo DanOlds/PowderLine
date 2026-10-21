@@ -205,7 +205,7 @@ with `use_instrument_profile: false`, or a peak's σ²/γ with `true` — which
 GSAS-II ignored silently (row 19, EB-53); a `fit_range` with no weighted data
 point (row 24); a phase or atom **name** outside the rule *letter first, ASCII
 letters/digits/underscore only, distinct ignoring case* (A112; e.g.
-`"2H-MoS2"` → `MoS2_2H`); a charged element symbol (`"Fe3+"`, §5); a
+`"2H-MoS2"` → `MoS2_2H`); a charged `element` (`"Fe3+"` belongs in `scattering_types`, §5); a
 `Multiplicity`, cell or `Uaniso` inconsistent with the space group.
 
 ### 2.3 Field map: 0.26.0 `GSASII_*` → 1.0.0 `gsasii.*`
@@ -357,12 +357,13 @@ from a GSAS-II recipe:
 
 ## 5. Removed and still-unsupported features
 
-- **Charged scattering types** (`"Fe3+"`, `"O2-"`) are rejected, never
-  reduced to the neutral atom. 0.1.1 passed them to GSAS-II unchecked. Each
-  engine spells and handles ions differently (GSAS-II 5.7.9 wants `Fe+3` and
-  silently reads `Fe3+` as hydrogen), so a refusal is safer than a
-  half-verified translation until the per-engine behaviour is verified
-  (P-03, provisional; A63 re-dated to core 1.1.0).
+- **Charged scattering types** moved out of `element` (always the neutral
+  atom now) into the engine phase block's `scattering_types`, in the CIF
+  spelling (`{"Fe": "Fe3+"}`; P-47, re/28). 0.1.1 passed GSAS-II's own
+  spelling (`Fe+3`) through unchecked; the converter turns such an element
+  into the neutral symbol plus the `scattering_types` entry and notes it. Each
+  engine refuses an ion it has no form factor for; TOPAS accepts none in
+  schema 1.0.0 (its half awaits a TOPAS run, T7).
 - **`refinement_algorithm`** is gone (0.1.1 accepted and ignored it); the
   `null`-valued `broadening`, `corrections` and phase `parameterization`
   blocks that crashed 0.1.1 at run time have no equivalent (row 15).

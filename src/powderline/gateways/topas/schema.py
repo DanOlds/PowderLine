@@ -615,15 +615,32 @@ class TopasPhase(Phase[BoundedRefinableParameter]):
     scale: P = Field(json_schema_extra=unit_schema(UNIT_ARBITRARY), description="Phase scale factor (TOPAS magnitude), > 0")
     peak_broadening: Optional[PeakBroadening] = Field(default=None, json_schema_extra=absent_not_null_schema(),
                                                       description="Left out: no sample broadening")
+    scattering_types: Optional[dict[str, str]] = Field(
+        default=None, json_schema_extra=absent_not_null_schema(),
+        description="Ionic scattering types: NOT available in topas 1.0.0 (a validation error; the TOPAS half of "
+                    "P-47 awaits a TOPAS 6 run, T7)")
 
-    _topas_not_null = field_validator("peak_broadening", mode="before")(absent_not_null)
+    _topas_not_null = field_validator("peak_broadening", "scattering_types", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _topas_omit_absent(self, handler):
         data = handler(self)
         if self.peak_broadening is None:
             data.pop("peak_broadening", None)
+        if self.scattering_types is None:
+            data.pop("scattering_types", None)
         return data
+
+    @model_validator(mode="after")
+    def _topas_no_ions(self) -> "TopasPhase":
+        if self.scattering_types is not None:
+            raise_problems(type(self).__name__, [custom_error(
+                "topas_ions_unavailable",
+                "ionic scattering types are not available for TOPAS in schema 1.0.0: TOPAS spells them 'Fe+3' in "
+                "occ and reports an unknown ion only on its console, and that path has not been run on a TOPAS "
+                "machine (P-08, T7); use the neutral elements, or a gsasii / easydiffraction (cryspy) recipe",
+                ("scattering_types",), self.scattering_types)])
+        return self
 
     @field_validator("space_group")
     @classmethod
