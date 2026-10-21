@@ -908,8 +908,13 @@ and put the behaviour in a non-frozen module.
 ### Stale generated docs (`gen_schema_field_tables.py --check`)
 
 The field tables and the support matrix under `docs/_generated/` are
-generated from the schemas. After changing a schema module or a gateway's
-declarations:
+generated from the schemas. `pixi run fields-check` compares them with the
+code and prints one line on success:
+```
+fields-check: 7 files under docs/_generated match the schema declarations (core 1.0.0; easydiffraction 1.0.0, gsasii 1.0.0, topas 1.0.0)
+```
+A non-zero exit names the stale file. After changing a schema module or a
+gateway's declarations:
 ```bash
 PYTHONPATH=src python scripts/gen_schema_field_tables.py
 pixi run docs

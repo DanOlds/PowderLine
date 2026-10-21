@@ -7,7 +7,7 @@ Regenerate them after a schema change with
 
 ```bash
 PYTHONPATH=src python scripts/gen_schema_field_tables.py          # rewrites docs/_generated/fields_*.md
-PYTHONPATH=src python scripts/gen_schema_field_tables.py --check  # exit 1 if a committed table is stale
+PYTHONPATH=src python scripts/gen_schema_field_tables.py --check  # one line saying what matched; exit 1 naming a stale table
 ```
 
 (engine-free; the default environment suffices). The same script writes the

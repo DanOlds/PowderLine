@@ -540,6 +540,9 @@ recipes do not validate; see the
 - CI runs `scripts/gen_schema_field_tables.py --check` (pixi task
   `fields-check`) in the core job, so a schema edit without regenerated field
   tables fails; `probes/` is ignored; one unused test fixture removed (re/17).
+  The check prints one line on success naming what it compared (the file
+  count and the schema versions), so a smoke test or a CI log can tell a
+  pass from a no-op (re/29).
 
 ### Known limitations carried into 0.2.0
 

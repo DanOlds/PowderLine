@@ -308,6 +308,18 @@ def main(argv=None) -> int:
         print("stale (regenerate with scripts/gen_schema_field_tables.py): " + ", ".join(map(str, stale)),
               file=sys.stderr)
         return 1
+    if args.check:
+        # say what was compared, so a clean run is distinguishable from a run that did nothing (a smoke test or a CI
+        # log sees only this line)
+        import powderline
+        from powderline.schema_core import CORE_SCHEMA_VERSION
+        engines = ", ".join(f"{r['gateway']} {r['engine_schema_version']}" for r in powderline.support_matrix())
+        try:
+            shown = args.out_dir.resolve().relative_to(Path.cwd().resolve())
+        except ValueError:
+            shown = args.out_dir
+        print(f"fields-check: {len(fragments())} files under {shown} match the schema declarations "
+              f"(core {CORE_SCHEMA_VERSION}; {engines})")
     return 0
 
 
