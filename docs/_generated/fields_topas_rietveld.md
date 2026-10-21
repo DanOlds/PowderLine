@@ -74,3 +74,7 @@
 | `payload.phases.<phase>.peak_broadening.strain_broadening.Strain_G` | engine | `[value, flag, min, max]` | `degree 2theta` | no |  |
 | `payload.phases.<phase>.scattering_types` | engine | object keyed by name |  | no | Ionic scattering types: NOT available in topas 1.0.0 (a validation error; the TOPAS half of P-47 awaits a TOPAS 6 run, T7) |
 | `payload.phases.<phase>.scattering_types.<name>` | engine | string |  | yes |  |
+| `payload.phases.<phase>.preferred_orientation` | engine | block |  | no | March-Dollase preferred orientation: NOT available in topas 1.0.0 (a validation error; the TOPAS PO(...) macro awaits a TOPAS 6 run, P-48) |
+| `payload.phases.<phase>.preferred_orientation.model` | engine | `"march_dollase"` |  | yes | The only model in 1.0.0 |
+| `payload.phases.<phase>.preferred_orientation.hkl` | engine | list of 3 |  | yes | Texture axis as Miller indices, not all zero |
+| `payload.phases.<phase>.preferred_orientation.ratio` | engine | `[value, flag, min, max]` |  | yes | March coefficient r: 1 = random, < 1 platy, > 1 needle; > 0 |

@@ -862,6 +862,35 @@ _OPEN_PARAMETER_TYPE = (
 RESERVED_PHASE_FIELDS = ("space_group", "unit_cell", "atoms")
 
 
+class MarchDollase(CoreModel, Generic[P]):
+    """March-Dollase preferred orientation (P-48, re/29): a building block the engine phase models adopt.
+
+    ``hkl`` is the texture axis (integers, not all zero); ``ratio`` the March coefficient in the IUCr / GSAS-II
+    convention -- 1 random, < 1 platy, > 1 needle -- strictly positive. The parameter type is the engine's
+    (gsasii ``[value, flag]``, easydiffraction ``[value, flag, min, max]``). An engine adds its own extras beside
+    it (easydiffraction's ``march_random_fract``). Not a core ``Phase`` field: preferred orientation is an engine
+    capability, and a core field would reserve the name for engines that do not have it yet (A93, A109).
+    """
+
+    model: Literal["march_dollase"] = Field(description="The only model in 1.0.0")
+    hkl: tuple[CoreInt, CoreInt, CoreInt] = Field(description="Texture axis as Miller indices, not all zero")
+    ratio: P = Field(description="March coefficient r: 1 = random, < 1 platy, > 1 needle; > 0")
+
+    @field_validator("hkl")
+    @classmethod
+    def _axis(cls, v):
+        if all(int(x) == 0 for x in v):
+            raise ValueError("hkl must not be (0, 0, 0): the texture axis has no direction")
+        return v
+
+    @field_validator("ratio")
+    @classmethod
+    def _positive(cls, v):
+        if v.value <= 0:
+            raise ValueError(f"ratio must be > 0 (1 = no preferred orientation), got {v.value}")
+        return v
+
+
 class Phase(CoreModel, Generic[P]):
     """A phase block's core part: space group, cell and atoms (A93).
 

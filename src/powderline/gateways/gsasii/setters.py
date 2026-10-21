@@ -931,6 +931,28 @@ def set_phase_atom_parameters(proj: Any, phase_name: str, atom_parameters_dict: 
 
 # Main function to set phase parameterization from phases dictionary
 
+@require_phase("Cannot set preferred orientation.")
+def set_phase_preferred_orientation(proj: Any, hist: Any, phase_name: str, po_dict: dict, print_info: bool = False) -> None:
+    """R36 (re/29, P-48): write the recipe's March-Dollase block into the HAP ``'Pref.Ori.'`` entry.
+
+    The entry GSAS-II created for the phase (``GSASIImath.SetDefaultDData``: ``['MD', 1.0, False, [0, 0, 1], 0,
+    {}, [], 0.1]``) is kept and three slots are overwritten: ``[0]`` the type ``'MD'``, ``[1]`` the coefficient,
+    ``[2]`` its refine flag, ``[3]`` the axis. Nothing else in the HAP dict changes.
+    """
+    value, refine_flag, min_val, max_val = unpack_refinement_parameter(po_dict.get('ratio'), "ratio")
+    entry = proj.data['Phases'][phase_name]['Histograms'][hist.name]['Pref.Ori.']
+    entry[0] = 'MD'
+    if value is not None:
+        entry[1] = float(value)
+    if refine_flag is not None:
+        entry[2] = bool(refine_flag)
+    hkl = po_dict.get('hkl')
+    if hkl is not None:
+        entry[3] = [int(h) for h in hkl]
+    if print_info:
+        print(f"Set March-Dollase preferred orientation for phase '{phase_name}': r={value} refine={refine_flag} axis={entry[3]}")
+
+
 def set_phase_parameterization(proj: Any, hist: Any, phases_dict: dict, print_info: bool = False) -> list[str]:
     """
     Set phase parameterization in the GSAS-II project from a phases dictionary.
@@ -1002,6 +1024,11 @@ def set_phase_parameterization(proj: Any, hist: Any, phases_dict: dict, print_in
         if strain_broadening_dict is not None:
             if any(value is not None for value in strain_broadening_dict.values()):
                 set_phase_strain_broadening(proj, hist, phase_name, strain_broadening_dict, print_info=False)
+
+        # R37 (re/29, P-48): March-Dollase preferred orientation, when the phase block states it
+        po_dict = param_dict.get('preferred_orientation')
+        if po_dict:
+            set_phase_preferred_orientation(proj, hist, phase_name, po_dict, print_info=False)
 
         atoms_parameters_dict = param_dict.get('atoms', {})
         if atoms_parameters_dict and any(has_active_refinement_parameter(ap) for ap in atoms_parameters_dict.values()):

@@ -61,7 +61,10 @@ refined). Optional: `fit_range`, `background` (left out: no background),
 `peak_broadening` per phase (left out: 10 µm / 0 microstrain, fixed, with a
 warning), `scattering_types` per phase (`{<atom label>: "La3+"}`, CIF spelling;
 left out: neutral atoms; only ions GSAS-II 5.7.9 has a form factor for, P-47),
-`instrument.description`.
+`preferred_orientation` per phase (March–Dollase: `{model: "march_dollase",
+hkl: [h, k, l], ratio: [r, flag]}`, `hkl` integers not all zero, `r > 0`;
+GSAS-II's convention, 1 random, < 1 platy, > 1 needle, averaged over the
+axis's equivalents; left out: none; P-48), `instrument.description`.
 
 ### `gsasii.spf`
 
@@ -82,8 +85,9 @@ at least one phase (`space_group`, `unit_cell`, `atoms`, `scale`), and
 simulation). Nothing has a default: `fit_range`, `background`,
 `instrument.corrections`, `instrument.geometry` and the phases'
 `peak_broadening` are optional, and a block left out is **not modelled**.
-`scattering_types` (ionic types) is **refused** in topas 1.0.0: its TOPAS half
-awaits a TOPAS 6 run (P-47, T7).
+`scattering_types` (ionic types) and `preferred_orientation` (March–Dollase)
+are declared and **refused** in topas 1.0.0: their TOPAS halves (`occ Fe+3`,
+the `PO(...)` macro) await a TOPAS 6 run (P-47 T7, P-48 T9).
 
 ### `topas.spf`
 
@@ -101,7 +105,10 @@ Required: `xrd_data`, `instrument` with `radiation {setup_wavelength}`,
 flag set is a simulation. Optional: `fit_range`, `background`,
 `instrument.polarization`, `instrument.absorption`, a Kα2 line in
 `radiation`, `scattering_types` per phase (cryspy calculator only, CIF
-spelling, ions CrysPy has a form factor for; P-47); left out means not
+spelling, ions CrysPy has a form factor for; P-47), `preferred_orientation`
+per phase (March–Dollase as in gsasii with a bounded `ratio` plus the
+required `march_random_fract: [f, flag, min, max]` in [0, 1]; cryspy
+calculator only — CrysFML ignores it, EB-97; P-48); left out means not
 modelled.
 
 ## Outputs

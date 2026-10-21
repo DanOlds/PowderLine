@@ -276,6 +276,33 @@ the field changes what an existing recipe means, that is a deliberate change
 (table row, CHANGELOG, migration note) — and if the engine's own behaviour
 is unknown, that is a question for the maintainer, not an inference.
 
+Worked example — March–Dollase preferred orientation (re/29, P-48):
+
+1. **Ground truth first.** Read and run each engine: GSAS-II's HAP
+   `Pref.Ori.` entry and `GetPrefOri`; easydiffraction's
+   `preferred_orientation` rows, which only CrysPy reads, and only under the
+   lowercase structure key (EB-97); CrysPy's un-normalised correction (EB-98).
+2. **One core building block, engine fields.** `schema_core.MarchDollase[P]`
+   carries the shape and the engine-independent rules (`hkl` not all zero,
+   `ratio > 0`); each engine's phase model adds `preferred_orientation` in
+   its own parameter shape (gsasii `[value, flag]`, easydiffraction bounded
+   plus the required `march_random_fract`); topas declares the field and
+   refuses it until its half is verified on a TOPAS machine.
+3. **The gateway reads the model.** gsasii: an additive frozen setter and its
+   call, two ledger rows with proofs (the project-dict diff shows only
+   `Pref.Ori.`), and the refined name `p:h:MD` in `paths.py`;
+   easydiffraction: the builder's row plus the `_free` bookkeeping that maps
+   the refined value back to the recipe path.
+4. **A gate, then a demonstration.** The pass/fail gate is a formula check on a
+   simulated pattern (each engine's textured/untextured intensity ratio equals
+   Dollase's correction over the reflection's equivalents); the example
+   (`example_LaB6_textured`) is the demonstration that refinement recovers the
+   programmed value, with its caveats written down (the start at exactly 1.0
+   aborts, EB-99).
+5. **Record.** Fields tables regenerated, SCHEMA_HISTORY per engine,
+   engine-behaviour register rows, CHANGELOG, the T-list row for the TOPAS
+   half, the P-row.
+
 ## GSAS-II integration notes
 
 ### The frozen modules and the project dictionary
@@ -653,9 +680,9 @@ maintainer.
 
 ## Future roadmap
 
-- Preferred orientation (March–Dollase) as its own proving branch; a later
-  minor gsasii schema version with bounds (clamp-freeze-refit); charged
-  scattering types after per-engine verification; TOPAS 7 after a
+- The TOPAS halves of ionic scattering types (T7) and March–Dollase
+  preferred orientation (T9) on a TOPAS 6 machine; a later minor gsasii
+  schema version with bounds (clamp-freeze-refit); TOPAS 7 after a
   compatibility run on a TOPAS 7 machine; `unsafe_mode` for deliberately
   relaxed checks; a recipe builder / CIF importer upstream of the schemas;
   a structure-source plugin (Materials Project, CIF) upstream of the builder.

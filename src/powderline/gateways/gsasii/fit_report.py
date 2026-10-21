@@ -80,6 +80,25 @@ def fit_report(proj, hist, recipe, engine_rwp, engine_rvals=None) -> dict:
     mask = (xs >= lo) & (xs <= hi) & ~np.ma.getmaskarray(x)
     yc = np.ma.getdata(ycalc)
     diverged = int(np.count_nonzero(~np.isfinite(yc[mask])))
+    simulation = recipe.payload.refinement_controls.refinement_cycles == 1
+    aborted = bool((proj.data.get("Covariance", {}).get("data", {}).get("Rvals", {}) or {}).get("Aborted"))
+    if not diverged and not simulation and aborted:
+        # GSAS-II's Hessian least squares returns 'Ouch#4' when no damped step lowers chi-squared in a cycle
+        # (GSASIImath.HessianLSQ; e.g. a March-Dollase coefficient started at exactly 1.0 in a cubic phase, where the
+        # averaged correction is stationary) and RefineCore records it as ``Rvals['Aborted']``. The project then
+        # keeps the last *accepted* parameter vector (the start, in a first-cycle abort) while the stored pattern
+        # and wR are the *rejected* trial step's -- finite but worthless, wR printed at the 100 % cap -- so no
+        # statistic belongs to the parameters. GSAS-II's GUI keeps such a result behind "Minimizer halted because
+        # chi**2 increased"; PowderLine is deliberately stricter and fails it (re/29, EB-99; EB-52's other face,
+        # which the non-finite check above does not see).
+        raise EngineExecutionError(
+            "GSAS-II aborted the refinement: no step lowered chi-squared before its damping reached its limit (a "
+            "parameter the data cannot move, or a model far from the data). GSAS-II keeps the last accepted "
+            "parameter values but stores the rejected step's calculated pattern (finite but worthless; wR printed "
+            "at its 100 % cap, EB-52), so no statistic would belong to the parameters and no result is reported. "
+            "Start closer to the solution or refine fewer parameters; the GSAS-II files in the output directory "
+            "show the attempt.",
+            reason="diverged")
     if diverged:
         raise EngineExecutionError(
             f"GSAS-II's refinement diverged: the calculated pattern is not finite at {diverged} of "
@@ -110,7 +129,6 @@ def fit_report(proj, hist, recipe, engine_rwp, engine_rvals=None) -> dict:
         "message": message or None,
         "converged": None if spf or rvals.get("converged") is None else bool(rvals["converged"]),
     }
-    simulation = recipe.payload.refinement_controls.refinement_cycles == 1
     warnings = []
     if message:
         dropped = _dropped(message)

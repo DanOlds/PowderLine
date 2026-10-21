@@ -205,6 +205,22 @@ within 1e-6 of the starting value).
   spelling in `scattering_types`; the gateway writes GSAS-II's spelling into
   the atom record (ledger row R35) and refuses an ion GSAS-II has no form
   factor for (P-47).
+- **March–Dollase in GSAS-II** (re/29, P-48): the HAP entry
+  `'Pref.Ori.': ['MD', r, flag, [h,k,l], 0, {}, [], 0.1]`; the refinement
+  reads `p:h:MD` and `MDAxis` and applies `GetPrefOri` — Dollase 1986,
+  `A = 1/sqrt((r cosP)² + sin²P/r)`, averaged over the symmetry equivalents
+  of the axis (1 random, < 1 platy, > 1 needle). *Policy:* the recipe's
+  `preferred_orientation` block is written by a frozen setter (ledger rows
+  R36/R37) and the refined `MD` maps back to `…preferred_orientation.ratio`;
+  the Dollase-formula gate is `tests/test_gsasii_preferred_orientation.py`.
+  **Started at exactly r = 1.0 in a cubic phase the refinement aborts**
+  (textured and real LaB6 alike): the correction averaged over a cubic axis
+  set is stationary at r = 1, so no damped step lowers χ² and GSAS-II aborts
+  (`Rvals['Aborted']`): the last accepted values stay (the start, in a
+  first-cycle abort) but the stored pattern and wR are the rejected step's,
+  finite but worthless, wR printed at 100 % (its cap) — now a `diverged`
+  failure (EB-99, below). On the textured example 0.9 goes non-finite and 1.2 settles on the
+  needle-side minimum r = 1.73. Start on the expected side of 1.
 - **GSAS-II's own defaults add sample broadening and background the recipe
   never asked for**: a new project gets isotropic size 1 µm, microstrain 1000
   and a constant 1.0 Chebyshev background, all fixed (EB-36). *Policy:*
@@ -289,6 +305,20 @@ within 1e-6 of the starting value).
   easydiffraction strips every charge before handing the type to it.
   *Policy:* `scattering_types` is refused with the crysfml calculator and for
   any ion outside CrysPy's table, naming the forms it has (P-47).
+- **Preferred orientation reaches CrysPy only, and only under the right
+  key** (EB-97): the experiment's `preferred_orientation` rows are read by the
+  CrysPy calculator alone (`calculators/cryspy.py`, `texture_g1 = 1/march_r`);
+  CrysFML's pattern does not change with `march_r`, without a message; and a
+  row whose `structure_id` is not the lowercase linked structure name is
+  ignored by CrysPy too, silently. **CrysPy's March correction is Dollase's
+  times r^1.5** (EB-98): its texture is not volume-normalised, so every
+  textured/untextured intensity ratio carries the constant r^1.5; with
+  `march_random_fract = 0` the scale absorbs it and the refined `march_r` is
+  the same r as GSAS-II's, while with f > 0 the correction is
+  (1 − f)·r^1.5·A + f and the refined r and f are not GSAS-II's quantities
+  (easydiffraction's own source notes the distorted correspondence). *Policy:* `preferred_orientation` with `calculator: crysfml` is a
+  validation error; the builder keys the row by `structure_name(phase)`; the
+  gate compares normalised ratios (`tests/test_easydiffraction_preferred_orientation.py`).
 - **σ < 1e-4 becomes σ = 1.0 silently** on every input path (EB-73):
   weights above 1e8 on handed points are refused (A159).
 - **Negative measured intensities are refused** by the library (EB-91): a
@@ -375,7 +405,13 @@ silent drops (A45); when varied < requested the result warns
   raise `EngineExecutionError` when the engine ran and failed — `diverged` (a
   calculated pattern that is not finite inside the window, or any non-finite
   number the engine writes: `nan`, `1.#QNAN`, `-nan(ind)`; A130; GSAS-II itself
-  prints wR `nan` and reports 100 %, EB-52; v0.1.1 returned success),
+  prints wR `nan` and reports 100 %, EB-52; v0.1.1 returned success; **and,
+  re/29, a Rietveld refinement GSAS-II aborted**, `Rvals['Aborted']` — no
+  step lowered χ² before its damping hit its limit; it keeps the last accepted
+  values but stores the rejected step's finite, worthless pattern and a wR at
+  the 100 % cap, so no statistic belongs to the parameters; GSAS-II's GUI keeps
+  this behind "Minimizer halted because chi**2 increased", PowderLine is
+  deliberately stricter, EB-99; simulations exempt),
   `unusable_site` (gsasii, A117, before refining), `peak_fit_failed` (gsasii,
   EB-38), `engine_crashed` (any engine), `output_missing` / `output_malformed`
   (TOPAS files, easydiffraction's pattern) — and `ExecutionBackendError` when
@@ -400,7 +436,9 @@ points. The engine's own values stay under `engine_details`, and they differ:
 - **GSAS-II's `GOF` means two things**: √(reduced χ²) in a Rietveld refinement
   and the reduced χ² itself in a Peak List fit (EB-52). GSAS-II caps R and wR
   at 100 %, so a simulation against placeholder data and a diverged
-  refinement both read 100 % (EB-52). Its `Nobs` counted one point past the
+  refinement both read 100 % (EB-52; an *aborted* refinement is a failure
+  since re/29, EB-99 — a poor fit at the cap is still reported, with core's
+  uncapped Rwp beside it). Its `Nobs` counted one point past the
   window (EB-54); with limits on data points (A149) its Rwp now equals core's
   on the native path.
 - **TOPAS's `r_wp`** equals core's Rwp once the window is on data points

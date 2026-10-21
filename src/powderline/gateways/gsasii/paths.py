@@ -179,6 +179,8 @@ def refined_by_path(model, result: Mapping[str, Any]) -> tuple:
             phase = _phase_name(model, row, phase_idx)
             if key == "Scale":
                 path = f"payload.phases.{phase}.scale"
+            elif key == "MD":                                     # March-Dollase coefficient (re/29, P-48)
+                path = f"payload.phases.{phase}.preferred_orientation.ratio"
             elif key in _BROADENING:
                 path = f"payload.phases.{phase}.peak_broadening.{_BROADENING[key]}"
         if path is None:

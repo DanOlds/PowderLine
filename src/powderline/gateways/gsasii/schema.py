@@ -62,6 +62,7 @@ from powderline.schema_core import (
     name_keyed,
     omit_absent,
     outside_window_problems,
+    MarchDollase,
     raise_problems,
     scattering_type_problems,
     recipe_validator,
@@ -424,12 +425,16 @@ class GsasiiPhase(Phase[RefinableParameter]):
         default=None, json_schema_extra=absent_not_null_schema(),
         description="Ionic X-ray scattering types by atom label, CIF spelling ('La3+', 'O2-'); an atom left out "
                     "scatters as the neutral element; only ions GSAS-II 5.7.9 has a form factor for (P-47)")
+    preferred_orientation: Optional[MarchDollase[RefinableParameter]] = Field(
+        default=None, json_schema_extra=absent_not_null_schema(),
+        description="March-Dollase preferred orientation (GSAS-II 'MD': one axis, coefficient r > 0); left out: none (P-48)")
 
-    _gsasii_not_null = field_validator("peak_broadening", "scattering_types", mode="before")(absent_not_null)
+    _gsasii_not_null = field_validator("peak_broadening", "scattering_types", "preferred_orientation",
+                                       mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _gsasii_omit_absent(self, handler):
-        return omit_absent(handler(self), self, ("scattering_types",))
+        return omit_absent(handler(self), self, ("scattering_types", "preferred_orientation"))
 
     @model_validator(mode="after")
     def _gsasii_scattering_types(self) -> "GsasiiPhase":

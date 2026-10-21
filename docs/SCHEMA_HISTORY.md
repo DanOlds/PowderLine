@@ -195,8 +195,12 @@ Defined in `src/powderline/schema_core.py`; every engine schema builds on it.
 on the maintainers' fork only; P-43 D6): re/23 fixed the unit-cell report's row
 vocabulary (an output, not a recipe field), and re/28 (P-47) added the
 building block behind the engines' `scattering_types` — `element` stays the
-neutral atom; an ionic type is engine content. No recipe that validated
-before stops validating; the error text for a charged `element` now points at
+neutral atom; an ionic type is engine content. re/29 (P-48) added the
+`MarchDollase` building block (`model: "march_dollase"`, `hkl` integers not
+all zero, `ratio > 0` in the engine's parameter shape) behind the engines'
+`preferred_orientation`; it is not a core `Phase` field (texture is a sample
+and engine matter, not a crystal fact). No recipe that validated before stops
+validating; the error text for a charged `element` now points at
 `scattering_types`.
 
 ## gsasii engine schema
@@ -289,6 +293,10 @@ as the converter's test fixtures (P-16, P-23); the 0.26.0 path itself is gone.
 null; only ions GSAS-II 5.7.9 has a form factor for (114, pinned by a test);
 written into the GSAS-II atom record in GSAS-II's own spelling (`La+3`,
 ledger row R35). The converter maps a 0.26.0 `El±n` element onto it.
+**And (re/29, P-48):** the phase block gains `preferred_orientation: {model:
+"march_dollase", hkl, ratio: [r, flag]}`, optional, never null, `r > 0`;
+written into the HAP `Pref.Ori.` entry (`['MD', r, flag, [h,k,l], …]`, ledger
+rows R36/R37); the refined name `p:h:MD` maps back to `…preferred_orientation.ratio`.
 
 ## topas engine schema
 
@@ -362,9 +370,10 @@ was removed with the unified schema).
   non-finite number in them (`nan`, `1.#QNAN`, `-nan(ind)`, …) is a divergence
   error, while an undetermined ESD is left empty.
 
-**Extended before its first release (re/28, P-47):** `scattering_types` is
-declared and **refused** in 1.0.0 (the TOPAS half — `occ Fe+3` and ATMSCAT's
-coverage — awaits a TOPAS 6 run, T7; P-08).
+**Extended before its first release (re/28, P-47; re/29, P-48):**
+`scattering_types` and `preferred_orientation` are declared and **refused**
+in 1.0.0 (the TOPAS halves — `occ Fe+3` and ATMSCAT's coverage, T7; the
+`PO(...)` macro, T9 — await a TOPAS 6 run; P-08).
 
 ## easydiffraction engine schema
 
@@ -454,7 +463,14 @@ easydiffraction translation path was removed with the unified schema).
 **Extended before its first release (re/28, P-47):** the phase block gains
 `scattering_types` (CIF spelling), cryspy calculator only (CrysFML strips
 charges, EB-96) and only ions CrysPy has a form factor for (111, pinned by a
-test; CrysPy's silent neutral fallback for the others is EB-95).
+test; CrysPy's silent neutral fallback for the others is EB-95). **And
+(re/29, P-48):** `preferred_orientation` — the `MarchDollase` block with a
+bounded `ratio` (> 0) plus the required `march_random_fract` ([0, 1]) —
+written as a `preferred_orientation` row of the experiment (keyed by the
+lowercase linked structure name, EB-97); cryspy calculator only (CrysFML
+ignores the row without a message, EB-97); CrysPy's March correction is
+Dollase's times r^1.5 (EB-98), so with `march_random_fract = 0` the refined
+`r` is the same quantity (with f > 0 it is not).
 
 ---
 

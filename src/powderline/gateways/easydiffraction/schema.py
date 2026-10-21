@@ -83,6 +83,7 @@ from powderline.schema_core import (
     fit_range_problems,
     name_keyed,
     omit_absent,
+    MarchDollase,
     raise_problems,
     scattering_type_problems,
     recipe_validator,
@@ -389,6 +390,40 @@ class Background(CoreModel):
 # --- phase ------------------------------------------------------------------------------
 
 
+class EasydiffractionMarchDollase(MarchDollase[BoundedRefinableParameter]):
+    """easydiffraction's March-Dollase row: core's axis and ``ratio`` (``march_r`` > 0) plus the fraction of
+    randomly oriented crystallites, ``march_random_fract`` in [0, 1] -- stated, never defaulted (P-48)."""
+
+    march_random_fract: BoundedRefinableParameter = Field(
+        description="Fraction of the sample with no preferred orientation, 0..1 (easydiffraction 'march_random_fract')")
+
+    @field_validator("march_random_fract")
+    @classmethod
+    def _fraction(cls, v):
+        if not 0.0 <= v.value <= 1.0:
+            raise ValueError(f"march_random_fract must be within [0, 1], got {v.value}")
+        return v
+
+    @model_validator(mode="after")
+    def _bounds_inside_the_engine_limits(self) -> "EasydiffractionMarchDollase":
+        """A stated bound the engine would refuse (``march_r`` > 0, ``march_random_fract`` in [0, 1], its own
+        ``RangeValidator``s): refused here, like a value (EB-71); ``null`` stays open."""
+        template = "{what} {value} is outside easydiffraction's physical limit {span}: the engine refuses it (EB-71)"
+        problems = []
+        if self.ratio.min is not None and self.ratio.min <= 0:
+            problems.append(custom_error("easydiffraction_physical_limit", template, ("ratio",), self.ratio.model_dump(),
+                                         what="ratio min", value=self.ratio.min, span="> 0"))
+        for side, outside in (("min", lambda v: v < 0.0), ("max", lambda v: v > 1.0)):
+            bound = getattr(self.march_random_fract, side)
+            if bound is not None and outside(bound):
+                problems.append(custom_error("easydiffraction_physical_limit", template, ("march_random_fract",),
+                                             self.march_random_fract.model_dump(), what=f"march_random_fract {side}",
+                                             value=bound, span="[0, 1]"))
+        if problems:
+            raise_problems(type(self).__name__, problems)
+        return self
+
+
 class EasydiffractionPhase(Phase[BoundedRefinableParameter]):
     """An easydiffraction phase: core's space group, cell and atoms, plus ``scale`` (A93).
 
@@ -401,12 +436,16 @@ class EasydiffractionPhase(Phase[BoundedRefinableParameter]):
         default=None, json_schema_extra=absent_not_null_schema(),
         description="Ionic X-ray scattering types by atom label, CIF spelling ('La3+', 'O1-'); an atom left out "
                     "scatters as the neutral element; cryspy calculator only, and only ions CrysPy has (P-47)")
+    preferred_orientation: Optional[EasydiffractionMarchDollase] = Field(
+        default=None, json_schema_extra=absent_not_null_schema(),
+        description="March-Dollase preferred orientation (one axis, march_r > 0, march_random_fract 0..1); cryspy "
+                    "calculator only -- CrysFML ignores it; left out: none (P-48)")
 
-    _easydiffraction_not_null = field_validator("scattering_types", mode="before")(absent_not_null)
+    _easydiffraction_not_null = field_validator("scattering_types", "preferred_orientation", mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _easydiffraction_omit_absent(self, handler):
-        return omit_absent(handler(self), self, ("scattering_types",))
+        return omit_absent(handler(self), self, ("scattering_types", "preferred_orientation"))
 
     @field_validator("space_group")
     @classmethod
@@ -521,6 +560,13 @@ class RietveldPayload(CoreModel):
             if why is not None:
                 problems.append(custom_error("easydiffraction_setting", "{why}", ("phases", name, "space_group"),
                                        phase.space_group, why=why))
+            if calculator == "crysfml" and phase.preferred_orientation is not None:
+                problems.append(custom_error(
+                    "easydiffraction_po_crysfml",
+                    "the crysfml calculator ignores preferred orientation: easydiffraction emits the March-Dollase "
+                    "texture for CrysPy only (EB-97), so this block would have no effect; use the cryspy calculator, "
+                    "or leave preferred_orientation out",
+                    ("phases", name, "preferred_orientation"), phase.preferred_orientation.model_dump()))
             if calculator == "crysfml" and phase.scattering_types:
                 problems.append(custom_error(
                     "easydiffraction_ions_crysfml",

@@ -531,7 +531,7 @@ import powderline.gateways.easydiffraction.native_run
 allowed = {
     "powderline.gateways.topas": {"schema", "native_writer", "native_run", "peak_list", "runner", "gateway"},
     "powderline.gateways.easydiffraction": {"schema", "native_builder", "native_run", "space_group_support",
-                                            "space_group_table", "gateway"},
+                                            "space_group_table", "gateway", "scattering"},
 }
 for pkg, names in allowed.items():
     loaded = {m[len(pkg) + 1:] for m in sys.modules if m.startswith(pkg + ".")}

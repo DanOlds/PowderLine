@@ -65,6 +65,11 @@
 | `payload.phases.<phase>.scale` | engine | `[value, flag, min, max]` | `arbitrary` | yes | Phase scale factor, >= 0 |
 | `payload.phases.<phase>.scattering_types` | engine | object keyed by name |  | no | Ionic X-ray scattering types by atom label, CIF spelling ('La3+', 'O1-'); an atom left out scatters as the neutral element; cryspy calculator only, and only ions CrysPy has (P-47) |
 | `payload.phases.<phase>.scattering_types.<name>` | engine | string |  | yes |  |
+| `payload.phases.<phase>.preferred_orientation` | engine | block |  | no | March-Dollase preferred orientation (one axis, march_r > 0, march_random_fract 0..1); cryspy calculator only -- CrysFML ignores it; left out: none (P-48) |
+| `payload.phases.<phase>.preferred_orientation.model` | engine | `"march_dollase"` |  | yes | The only model in 1.0.0 |
+| `payload.phases.<phase>.preferred_orientation.hkl` | engine | list of 3 |  | yes | Texture axis as Miller indices, not all zero |
+| `payload.phases.<phase>.preferred_orientation.ratio` | engine | `[value, flag, min, max]` |  | yes | March coefficient r: 1 = random, < 1 platy, > 1 needle; > 0 |
+| `payload.phases.<phase>.preferred_orientation.march_random_fract` | engine | `[value, flag, min, max]` |  | yes | Fraction of the sample with no preferred orientation, 0..1 (easydiffraction 'march_random_fract') |
 | `payload.refinement_controls` | engine | block |  | yes | How the pattern is calculated and fitted, all stated (A162). lmfit runs only if a flag is set. |
 | `payload.refinement_controls.calculator` | engine | `"cryspy"` \| `"crysfml"` |  | yes | easydiffraction calculator; they compute different intensities and offer different peak types (EB-76..EB-79) |
 | `payload.refinement_controls.minimizer` | engine | `"lmfit (leastsq)"` |  | yes | Minimizer (lmfit's Levenberg-Marquardt only, A162) |

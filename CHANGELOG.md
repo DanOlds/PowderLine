@@ -109,6 +109,38 @@ recipes do not validate; see the
   (`Fe+3`, passed through unchecked by v0.1.1) into neutral `element` +
   `scattering_types`. New example `example_LaB6_ionic` (La3+, B neutral: no
   boron ion exists in either table) with an easydiffraction (cryspy) leg.
+- **Preferred orientation, March–Dollase** (re/29, P-48; Adam's re/11 for
+  gsasii and easydiffraction): the core building block `MarchDollase`
+  (`{model: "march_dollase", hkl: [h, k, l], ratio}`; `hkl` not all zero,
+  `ratio > 0`; GSAS-II's convention, 1 random, < 1 platy, > 1 needle) behind an
+  optional `preferred_orientation` in each engine's phase block. gsasii writes
+  the HAP `Pref.Ori.` entry through a new frozen setter (ledger rows R36/R37)
+  and maps the refined `p:h:MD` back to the recipe path; easydiffraction adds
+  the experiment's `preferred_orientation` row (bounded `ratio` plus the
+  required `march_random_fract` in [0, 1]), **cryspy calculator only**
+  (CrysFML ignores the row silently, EB-97; the row must be keyed by the
+  lowercase structure name or CrysPy ignores it too, EB-97); **topas refuses
+  it in 1.0.0** (`PO(...)` awaits a TOPAS 6 run, T9). Gate (C1): on a
+  simulated textured LaB6, each engine's textured/untextured intensity ratio
+  per resolved reflection equals Dollase's correction averaged over the
+  reflection's cubic equivalents within 0.2 % (CrysPy's correction carries a
+  constant r^1.5, EB-98; compared normalised). New example
+  `example_LaB6_textured` — a **mathematical demonstration** (LaB6 does not
+  texture): r = 0.6 along [001] programmed, 0.5978(14) recovered by GSAS-II
+  from a start of 0.8, with an easydiffraction (cryspy) leg.
+- **A refinement GSAS-II aborted is a divergence** (re/29, EB-99;
+  deliberate change 35): a `gsasii.*` *refinement* whose `Rvals['Aborted']`
+  is set (no damped step lowered χ² before its Marquardt limit) now raises
+  `EngineExecutionError(reason="diverged")`. GSAS-II then keeps the last
+  accepted parameter values (the start, in a first-cycle abort) but stores
+  the rejected step's calculated pattern — finite but worthless, wR printed at
+  its 100 % cap — so no statistic belongs to the parameters; the non-finite
+  check (EB-52) passed it as `status: ok` with an astronomical uniform Rwp
+  (seen with the March–Dollase coefficient started at exactly 1.0 in a cubic
+  phase, where the averaged correction is stationary). GSAS-II's own GUI keeps
+  such a result behind a "Minimizer halted" warning; PowderLine is
+  deliberately stricter. A poor but honest fit (wR at the cap, no abort) is
+  still reported; simulations are exempt.
 - **`powderline --doctor`** (`pixi run doctor`; re/27, KI-13 implemented): the
   PowderLine version, the gateways the registry finds with their workflows
   and engine requirements, each engine's installed version against its

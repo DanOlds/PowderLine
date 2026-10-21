@@ -61,6 +61,19 @@ each atom's `x`, `y`, `z`, `occupancy`, `Uiso` or `U11`…`U23`) is a parameter
 engine schema, so a structure can be pasted from a `gsasii.*` recipe into a
 `topas.*` or `easydiffraction.*` one, adding the two bound slots.
 
+Two optional engine fields sit beside the structure and are **not** part of
+it: `scattering_types` (an ion's form factor per atom label, CIF spelling,
+`{"La": "La3+"}`; `element` stays the neutral atom) and `preferred_orientation`
+(March–Dollase: `{"model": "march_dollase", "hkl": [0, 0, 1], "ratio": [0.8,
+true]}`; `hkl` integers not all zero, `ratio` > 0 in the engine's parameter
+shape; 1 is random, < 1 platy, > 1 needle, in GSAS-II's convention averaged
+over the axis's symmetry equivalents). easydiffraction's block also requires
+`march_random_fract` (`[f, flag, min, max]`, 0 ≤ f ≤ 1) and needs the cryspy
+calculator; topas 1.0.0 refuses both fields (their TOPAS halves await a TOPAS
+machine). Start `ratio` on the expected side of 1, not at exactly 1.0: in a cubic phase
+the averaged correction is stationary at r = 1 and GSAS-II aborts the
+refinement (EB-99, `example_LaB6_textured`).
+
 PowderLine reads **formatted dictionaries, not CIF files**: there is no CIF
 parser and no recipe builder in the package. Whatever produces the block
 (a script, a notebook, a database export) owns the conversion; PowderLine
@@ -286,10 +299,9 @@ approximated; each is a validation error or simply absent.
   one pattern, one refinement per recipe; chain runs yourself.
 - **Anisotropic size/strain models** (uniaxial, ellipsoidal, Stephens):
   gsasii and topas accept `isotropic` only.
-- **Preferred orientation** (March–Dollase): planned as its own branch after
-  the core functionality; may land after 0.2.0.
-- **Charged scattering types** (ions): rejected until each engine's handling
-  is verified.
+- **Preferred orientation beyond March–Dollase** (spherical harmonics, a
+  second axis) and **March–Dollase in topas 1.0.0** (declared, refused; T9).
+- **Charged scattering types in topas 1.0.0** (declared, refused; T7).
 - **Parameter bounds in gsasii recipes**: GSAS-II clamps after the fit, so
   bounds are not exposed; they may come in a later gsasii schema version.
 - **User-defined constraints** between atoms (shared occupancies, tied ADPs

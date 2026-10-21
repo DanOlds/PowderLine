@@ -28,3 +28,28 @@ def resolved(centres, min_separation=0.3):
         if others.size == 0 or np.min(np.abs(others - c)) >= min_separation:
             keep.append(i)
     return keep
+
+
+def cubic_equivalents(h, k, l):
+    """All permutations and sign changes of (h, k, l): the m-3m equivalents (right for LaB6, P m -3 m)."""
+    import itertools
+    out = set()
+    for perm in itertools.permutations((h, k, l)):
+        for signs in itertools.product((1, -1), repeat=3):
+            out.add(tuple(int(p) * s for p, s in zip(perm, signs)))
+    return sorted(out)
+
+
+def dollase_correction(hkl, axis, r, equivalents=cubic_equivalents):
+    """March-Dollase correction for reflection ``hkl`` in GSAS-II's convention (``GSASIIstrMath.GetPrefOri``):
+    ``A = 1 / sqrt((r cos P)^2 + sin^2 P / r)``, ``A^3`` averaged over the reflection's equivalents, ``P`` the
+    angle between each equivalent and the texture ``axis`` (a cubic cell: direct = reciprocal directions).
+    r = 1 gives 1 everywhere; r < 1 platy, r > 1 needle."""
+    ax = np.asarray(axis, dtype=float); ax = ax / np.linalg.norm(ax)
+    total = 0.0
+    eq = equivalents(*hkl)
+    for e in eq:
+        v = np.asarray(e, dtype=float); cosp = abs(float(v @ ax)) / np.linalg.norm(v); cosp = min(cosp, 1.0)
+        sinp = np.sqrt(1.0 - cosp * cosp)
+        total += (1.0 / np.sqrt((r * cosp) ** 2 + sinp ** 2 / r)) ** 3
+    return total / len(eq)

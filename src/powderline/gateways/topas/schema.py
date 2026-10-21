@@ -62,6 +62,7 @@ from powderline.schema_core import (
     CoreName,
     EngineRecipe,
     FitRange,
+    MarchDollase,
     Phase,
     XRDData,
     absent_not_null,
@@ -619,8 +620,13 @@ class TopasPhase(Phase[BoundedRefinableParameter]):
         default=None, json_schema_extra=absent_not_null_schema(),
         description="Ionic scattering types: NOT available in topas 1.0.0 (a validation error; the TOPAS half of "
                     "P-47 awaits a TOPAS 6 run, T7)")
+    preferred_orientation: Optional[MarchDollase[BoundedRefinableParameter]] = Field(
+        default=None, json_schema_extra=absent_not_null_schema(),
+        description="March-Dollase preferred orientation: NOT available in topas 1.0.0 (a validation error; the "
+                    "TOPAS PO(...) macro awaits a TOPAS 6 run, P-48)")
 
-    _topas_not_null = field_validator("peak_broadening", "scattering_types", mode="before")(absent_not_null)
+    _topas_not_null = field_validator("peak_broadening", "scattering_types", "preferred_orientation",
+                                      mode="before")(absent_not_null)
 
     @model_serializer(mode="wrap")
     def _topas_omit_absent(self, handler):
@@ -629,6 +635,8 @@ class TopasPhase(Phase[BoundedRefinableParameter]):
             data.pop("peak_broadening", None)
         if self.scattering_types is None:
             data.pop("scattering_types", None)
+        if self.preferred_orientation is None:
+            data.pop("preferred_orientation", None)
         return data
 
     @model_validator(mode="after")
@@ -640,6 +648,13 @@ class TopasPhase(Phase[BoundedRefinableParameter]):
                 "occ and reports an unknown ion only on its console, and that path has not been run on a TOPAS "
                 "machine (P-08, T7); use the neutral elements, or a gsasii / easydiffraction (cryspy) recipe",
                 ("scattering_types",), self.scattering_types)])
+        if self.preferred_orientation is not None:
+            raise_problems(type(self).__name__, [custom_error(
+                "topas_po_unavailable",
+                "preferred orientation is not available for TOPAS in schema 1.0.0: the PO(...) March-Dollase macro, "
+                "its bounds and the read-back of the refined r have not been run on a TOPAS machine (P-08, P-48); "
+                "leave preferred_orientation out, or use a gsasii / easydiffraction (cryspy) recipe",
+                ("preferred_orientation",), self.preferred_orientation.model_dump())])
         return self
 
     @field_validator("space_group")

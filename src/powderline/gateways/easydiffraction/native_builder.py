@@ -268,6 +268,23 @@ def _free_parameters(model, build: Build) -> None:
             _free(build, expt.linked_structures[structure_name(name)].scale, phase.scale, name=f"{name}_scale",
                   path=f"{ppath}.scale", descriptive=f"{name} scale", category="scale", phase=name,
                   physical=PHYSICAL_LIMITS["nonnegative"])
+        po = phase.preferred_orientation
+        if po is not None:                                       # March-Dollase row for this structure (P-48)
+            # the row is keyed by the *linked structure's* name (the lowercased phase name): a row with any other
+            # structure_id is silently ignored by the CrysPy calculator (EB-97)
+            expt.preferred_orientation.create(structure_id=structure_name(name), march_r=po.ratio.value,
+                                              march_random_fract=po.march_random_fract.value,
+                                              index_h=int(po.hkl[0]), index_k=int(po.hkl[1]), index_l=int(po.hkl[2]))
+            row = next(r for r in expt.preferred_orientation if r.structure_id.value == structure_name(name))
+            if po.ratio.refine_flag:
+                _free(build, row.march_r, po.ratio, name=f"{name}_march_r", path=f"{ppath}.preferred_orientation.ratio",
+                      descriptive=f"{name} March-Dollase r", category="preferred_orientation", phase=name,
+                      physical=(0.0, None))
+            if po.march_random_fract.refine_flag:
+                _free(build, row.march_random_fract, po.march_random_fract, name=f"{name}_march_random_fract",
+                      path=f"{ppath}.preferred_orientation.march_random_fract",
+                      descriptive=f"{name} March-Dollase random fraction", category="preferred_orientation",
+                      phase=name, physical=(0.0, 1.0))
         for group in cell_tie_groups(phase.space_group).groups:
             _free_group(build, s.cell, _CELL, phase.unit_cell, group, path=f"{ppath}.unit_cell", phase=name,
                         category="unit_cell",

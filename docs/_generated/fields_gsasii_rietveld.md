@@ -49,5 +49,9 @@
 | `payload.phases.<phase>.peak_broadening.strain_broadening.LG_eta` | engine | `[value, flag]` | `dimensionless` | yes | Lorentzian fraction of the strain profile (1 = Lorentzian) |
 | `payload.phases.<phase>.scattering_types` | engine | object keyed by name |  | no | Ionic X-ray scattering types by atom label, CIF spelling ('La3+', 'O2-'); an atom left out scatters as the neutral element; only ions GSAS-II 5.7.9 has a form factor for (P-47) |
 | `payload.phases.<phase>.scattering_types.<name>` | engine | string |  | yes |  |
+| `payload.phases.<phase>.preferred_orientation` | engine | block |  | no | March-Dollase preferred orientation (GSAS-II 'MD': one axis, coefficient r > 0); left out: none (P-48) |
+| `payload.phases.<phase>.preferred_orientation.model` | engine | `"march_dollase"` |  | yes | The only model in 1.0.0 |
+| `payload.phases.<phase>.preferred_orientation.hkl` | engine | list of 3 |  | yes | Texture axis as Miller indices, not all zero |
+| `payload.phases.<phase>.preferred_orientation.ratio` | engine | `[value, flag]` |  | yes | March coefficient r: 1 = random, < 1 platy, > 1 needle; > 0 |
 | `payload.refinement_controls` | engine | block |  | yes | Refinement controls; `refinement_cycles == 1` is a simulation (nothing refined, A88). |
 | `payload.refinement_controls.refinement_cycles` | engine | integer |  | no | GSAS-II least-squares cycles; default `5` |
