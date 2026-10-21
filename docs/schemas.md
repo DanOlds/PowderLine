@@ -120,7 +120,7 @@ tables are dicts keyed by phase name.
 
 | Key | Meaning |
 |---|---|
-| `status`, `converged`, `envelope_version` | outcome (re/12): `status` is `"ok"` or `"generated"` (a TOPAS run whose input was written but no `tc.exe` is declared); **a failed run never returns** — it raises `EngineExecutionError` (the engine ran and failed) or `ExecutionBackendError` (it did not run), each with `.reason` (table below) and `.result`, the failed envelope: `failure = {kind, reason, message, traceback, engine_details}` plus `output_files` (the files written before the failure, kept), `warnings`, `run_id`, `method`, `elapsed_time`. `converged` is `true` / `false` / `null` (`null`: the engine cannot report it — TOPAS 6 — or nothing was refined). `envelope_version` is `"1"`: it names the shape of this Python-facing envelope (the GSAS-II client/server wire form is internal and version-locked by the stale-server check). There is no `success` key; the pre-0.2.0 `error` / `traceback` keys are gone |
+| `status`, `converged`, `envelope_version` | outcome (re/12): `status` is `"ok"` or `"generated"` (a TOPAS run whose input was written but no `tc.exe` is declared); **a failed run never returns** — it raises `EngineExecutionError` (the engine ran and failed) or `ExecutionBackendError` (it did not run), each with `.reason` (table below) and `.result`, the failed envelope: `failure = {kind, reason, message, traceback, engine_details, console_tail (gsasii)}` plus `output_files` (the files kept for diagnosis: the engine's own files written so far and `failure.json`, the envelope written to the output directory with a `powderline_provenance` block; no PowderLine result table exists for a failed run, re/30), `warnings`, `run_id`, `method`, `elapsed_time`. `converged` is `true` / `false` / `null` (`null`: the engine cannot report it — TOPAS 6 — or nothing was refined). `envelope_version` is `"1"`: it names the shape of this Python-facing envelope (the GSAS-II client/server wire form is internal and version-locked by the stale-server check). There is no `success` key; the pre-0.2.0 `error` / `traceback` keys are gone |
 | `run_id` | UUID4 of this run |
 | `rwp`, `r_exp`, `gof`, `chi2_red` | PowderLine's **uniform** statistics over the fit window (percent / dimensionless); `None` where undefined |
 | `simulation_mode` | `true` when nothing was refined |
@@ -197,7 +197,11 @@ Written by every engine into the output directory, with fixed names:
 `<phase>_peak_list_report.csv` (not with the CrysFML calculator, which reports
 no reflection list), `fit_profile.txt`, and since re/20 `output_recipe.json` and
 `parameter_dispositions.csv` (the output recipe and how each value came about;
-the recipe repeats the data arrays, so it is about the size of the input). Single peak fitting adds a peak report
+the recipe repeats the data arrays, so it is about the size of the input).
+`powderline.run()` removes these fixed-name files (and `failure.json`) from
+the directory before every run and never the engine's own files, so a reused
+directory holds one run's results; a failed run writes none of them and
+leaves `failure.json` beside the engine's files (re/30). Single peak fitting adds a peak report
 (`single_peaks_report.txt` for gsasii, `single_peaks_report.csv` for topas;
 gsasii also writes `peak_convergence_diagnostics.txt` when a peak did not
 converge).

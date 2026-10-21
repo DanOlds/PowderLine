@@ -88,7 +88,8 @@ except powderline.EngineNotAvailableError as exc:
     # the gateway is installed but its engine is not in this environment
     raise SystemExit(f"  {exc}")
 except powderline.EngineExecutionError as exc:
-    # the engine ran and failed (re/12): the reason code and the files written before the failure
+    # the engine ran and failed (re/12): the reason code and the files kept for diagnosis (the engine's own
+    # files and failure.json, which holds this envelope; no result table exists for a failed run)
     raise SystemExit(f"  Refinement failed ({exc.reason}): {exc}\n  kept: {exc.result['output_files']}")
 except powderline.ExecutionBackendError as exc:
     raise SystemExit(f"  Could not run the engine ({exc.reason}): {exc}")

@@ -10,7 +10,10 @@ recipe and hand the recipe to it:
   :class:`ValidationResult`: the gateway's validated model plus the structured
   warnings the validation produced.
 - :func:`run` uses the gateway's **runtime layer**; engine options are
-  forwarded to the gateway unchanged.
+  forwarded to the gateway unchanged. Around the gateway it owns the output
+  directory's PowderLine files (re/30): it removes the fixed-name outputs
+  before dispatch and, when the run fails, writes the failed envelope to
+  ``failure.json`` beside the engine's own files before re-raising.
 
 This module imports no engine and no gateway module at import time (enforced
 by an import-block test). There is no engine argument: the recipe names its
@@ -26,7 +29,7 @@ from pydantic import ValidationError
 from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from powderline import registry
-from powderline.exceptions import StructuredWarning
+from powderline.exceptions import EngineExecutionError, ExecutionBackendError, StructuredWarning
 from powderline.schema_core import CoreRecipe, collect_warnings
 
 #: Gateway ``run()`` options the public ``run()`` refuses to forward (A53: test-only).
@@ -183,7 +186,7 @@ def run(recipe, output_dir, *, verbose: bool = False, validate_only: bool = Fals
         EngineExecutionError: the engine ran and failed. ``.reason`` is one of
             ``diverged``, ``unusable_site``, ``peak_fit_failed``, ``engine_crashed``,
             ``output_missing``, ``output_malformed``; ``.result`` is the failed
-            envelope, listing the files written before the failure (kept).
+            envelope, listing the files kept for diagnosis (the engine's own files and ``failure.json``).
         ExecutionBackendError: the engine did not run. ``.reason`` is one of
             ``server_unavailable``, ``server_disabled``,
             ``communication_failed``, ``timeout``, ``backend_error``.
@@ -197,4 +200,49 @@ def run(recipe, output_dir, *, verbose: bool = False, validate_only: bool = Fals
                 f"{name} is not a powderline.run() option: it is the gateway's test-only bypass of the "
                 "engine version check (A53); call the gateway's run() directly for compatibility testing")
     gateway = gateway_for(recipe)
-    return gateway.run(recipe, output_dir, verbose=verbose, validate_only=validate_only, **engine_options)
+    if validate_only:
+        return gateway.run(recipe, output_dir, verbose=verbose, validate_only=True, **engine_options)
+    from powderline import reports
+    reports.clear_fixed_outputs(output_dir)       # one run's results per directory (re/30); the engine's files stay
+    try:
+        return gateway.run(recipe, output_dir, verbose=verbose, validate_only=False, **engine_options)
+    except (EngineExecutionError, ExecutionBackendError) as exc:
+        _record_failure(output_dir, exc, _schema_name_of(recipe))
+        raise
+
+
+def _schema_name_of(recipe) -> str:
+    if isinstance(recipe, dict):
+        return str(recipe.get("schema_name", ""))
+    return str(getattr(recipe, "schema_name", ""))
+
+
+def _record_failure(output_dir, exc, schema_name: str) -> None:
+    """Write the failed envelope to ``<output_dir>/failure.json`` (re/30) and list it in ``exc.result``.
+
+    Only when ``output_dir`` already exists (a backend failure before the gateway created it leaves nothing). The
+    record is the envelope as the exception carries it -- or a minimal one built here when a gateway raised without
+    one -- plus a ``powderline_provenance`` block in the output recipe's shape, so a directory found later says which
+    recipe and which PowderLine failed.
+    """
+    import datetime as _dt
+    import json
+    from pathlib import Path
+
+    from powderline import __version__, reports, results as envelopes
+    from powderline.roundtrip import PROVENANCE_KEY
+
+    out = Path(output_dir)
+    if not out.is_dir():
+        return
+    if not exc.result:
+        kind = "engine" if isinstance(exc, EngineExecutionError) else "backend"
+        exc.result = envelopes.failure_envelope(kind, exc.reason, str(exc))
+    envelope = exc.result
+    path = out / reports.FAILURE_FILE
+    record = dict(envelope)
+    record[PROVENANCE_KEY] = {"schema_name": schema_name, "powderline_version": __version__,
+                              "created": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+                              "run_id": envelope.get("run_id")}
+    path.write_text(json.dumps(record, indent=2, default=str) + "\n", encoding="utf-8")
+    envelope["output_files"] = sorted(set(envelope.get("output_files") or []) | {str(path.resolve())})

@@ -351,3 +351,26 @@ def test_engine_failure_through_authenticated_server(test_server, server_state_r
     assert "state the equivalent position" in result["failure"]["message"]
     assert result["failure"]["traceback"]  # the raise site travels with the envelope
     assert not (tmp_path / "dummy.lst").exists()  # refused before GSAS-II refined anything
+
+
+def test_a_failed_server_job_leaves_the_engine_files_and_failure_json_locally(test_server, server_state_root, monkeypatch, tmp_path):
+    """re/30 through the server: the job's GSAS-II files travel back (re/19) and powderline.run() records the failure
+    locally; no result table exists for the failed run."""
+    import json
+    import powderline
+    from powderline.exceptions import EngineExecutionError
+    monkeypatch.delenv("POWDERLINE_NO_SERVER", raising=False)
+    monkeypatch.setattr(gsas_server, "state_dir", lambda: server_state_root / "powderline")
+    repo = Path(__file__).parent.parent
+    recipe = json.loads((repo / 'examples' / 'example_LaB6_textured' / 'input.json').read_text(encoding='utf-8'))
+    recipe['payload']['phases']['LaB6']['preferred_orientation']['ratio'] = [1.0, True]      # GSAS-II aborts (EB-99)
+    out = tmp_path / 'out'
+    with pytest.raises(EngineExecutionError) as info:
+        powderline.run(recipe, out, execution_mode='server')
+    assert info.value.reason == 'diverged' and info.value.result['method'] == 'server'
+    names = {p.name for p in out.iterdir()}
+    assert {'dummy.gpx', 'dummy.lst', 'failure.json'} <= names
+    assert not names & {'refined_parameters.csv', 'LaB6_unit_cell_report.csv', 'LaB6_peak_list_report.csv',
+                        'fit_profile.txt', 'output_recipe.json', 'parameter_dispositions.csv'}, sorted(names)
+    record = json.loads((out / 'failure.json').read_text(encoding='utf-8'))
+    assert record['failure']['reason'] == 'diverged' and record['powderline_provenance']['schema_name'] == 'gsasii.rietveld'

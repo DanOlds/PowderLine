@@ -245,7 +245,8 @@ it as `failure.console_tail`, a verbose run that succeeded under
 "Refinement failed". Under the auto-started daemon (stdout discarded) the
 tail is the only record of that text; the client's in-process fallback and
 `--no-server` capture it too. Nothing is parsed; no warning code was added.
-**Resolved**; the id stays listed.
+Since re/30 the failed envelope, tail included, is also on disk as
+`failure.json` in the output directory. **Resolved**; the id stays listed.
 
 **Revisit.** Closed; kept for history.
 

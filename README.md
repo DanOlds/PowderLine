@@ -67,8 +67,14 @@ Results are written next to the recipe in `examples/example_LaB6/output/`:
 | `LaB6_unit_cell_report.csv` | Per-phase unit-cell parameters + ESDs |
 | `LaB6_peak_list_report.csv` | Reflection list (hkl, d-spacing, 2θ, intensity) |
 | `fit_profile.txt` | Observed / calculated / background / difference |
+| `output_recipe.json`, `parameter_dispositions.csv` | The recipe with the refined values written back, and how each value came about |
 | `dummy.lst` | Human-readable GSAS-II refinement log (Rwp, parameter tables) |
 | `dummy.gpx` | GSAS-II project — reopenable in the GSAS-II GUI |
+
+PowderLine removes its own fixed-name files from the output directory before
+each run, so a reused directory holds one run's results. A failed run raises,
+and its directory holds the engine's own files plus `failure.json` (the reason,
+the message and the engine's last console lines) — never a result table.
 
 The same case as a TOPAS and an easydiffraction recipe sits in
 `examples/example_LaB6/topas/` and `examples/example_LaB6/easydiffraction/`.

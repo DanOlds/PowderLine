@@ -416,8 +416,15 @@ silent drops (A45); when varied < requested the result warns
   EB-38), `engine_crashed` (any engine), `output_missing` / `output_malformed`
   (TOPAS files, easydiffraction's pattern) — and `ExecutionBackendError` when
   the engine did not run (the GSAS-II server unavailable, disabled, timed out). The exception's `.reason` names the case and
-  `.result` is the failed envelope; the files written before the failure stay
-  on disk and are listed in it. Every returned result carries `status`
+  `.result` is the failed envelope. A failed run's directory holds the
+  engine's own files written so far (gsasii `dummy.gpx`/`dummy.lst`, topas's
+  INP/`.xye` and whatever TOPAS wrote) and **`failure.json`**, the envelope
+  with a provenance block, written by `powderline.run()`; **no PowderLine
+  result table exists for a failed run** on any engine (gsasii's checks run
+  before its tables are written, ledger row R38; re/30). `powderline.run()`
+  also removes PowderLine's own fixed-name outputs from the directory before
+  every run, so a reused directory holds one run's results; the engine's files
+  and anything else there are never touched. Every returned result carries `status`
   (`ok` / `generated`) and `converged` (`true` / `false` / `null`); see
   [schemas](schemas.md#outputs).
 - **A phase that contributes nothing** gets the informative

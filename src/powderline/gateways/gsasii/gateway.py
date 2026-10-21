@@ -185,7 +185,7 @@ def run(
         EngineVersionError: the installed GSAS-II is outside ``ENGINE_VERSION_SPEC``.
         EngineExecutionError: the engine ran and failed (``.reason``: ``diverged``,
             ``unusable_site``, ``peak_fit_failed``, ``engine_crashed``; ``.result`` is the
-            failed envelope listing the files written before the failure, which are kept).
+            failed envelope listing the engine's own files written so far, which are kept).
         ExecutionBackendError: the engine did not run (``.reason``: ``server_unavailable``,
             ``server_disabled``, ``communication_failed``,
             ``timeout``, ``backend_error``).

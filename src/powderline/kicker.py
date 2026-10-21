@@ -296,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"     | {line}")
         files = (e.result or {}).get('output_files') or []
         if files:
-            print("   Files written before the failure (kept for diagnosis):")
+            print("   Files kept for diagnosis (the engine's own files and failure.json):")
             for f in files:
                 print(f"     {f}")
         hint = f"{output_dir}/*.lst" if gateway_name == "gsasii" else str(output_dir)

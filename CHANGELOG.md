@@ -141,6 +141,27 @@ recipes do not validate; see the
   such a result behind a "Minimizer halted" warning; PowderLine is
   deliberately stricter. A poor but honest fit (wR at the cap, no abort) is
   still reported; simulations are exempt.
+- **A failed run leaves the engine's own files and `failure.json`, nothing
+  else** (re/30; deliberate change 36; ledger row R38): the GSAS-II executor
+  now runs PowderLine's checks (divergence, abort, convergence) *before* it
+  writes any result table, as TOPAS and easydiffraction already did, so a
+  diverged or aborted gsasii run no longer leaves `refined_parameters.csv`,
+  the two reports or `fit_profile.txt` describing a result that does not
+  exist (the pattern stays in `dummy.gpx`). `powderline.run()` writes the
+  failed envelope — reason, message, traceback, console tail, the file list —
+  plus a `powderline_provenance` block to `failure.json` in the output
+  directory, for both failure classes, when the directory exists. The CLI
+  lists "Files kept for diagnosis".
+- **`powderline.run()` clears PowderLine's own fixed-name outputs before
+  every run** (re/30; deliberate change 37): `refined_parameters.csv`,
+  `*_unit_cell_report.csv`, `*_peak_list_report.csv`, `fit_profile.txt`,
+  `single_peaks_report.txt` / `.csv`, `output_recipe.json`, `parameter_dispositions.csv`
+  and `failure.json` (`reports.FIXED_OUTPUT_NAMES` / `FIXED_OUTPUT_PATTERNS`);
+  never the engine's files or anything else in the directory. A reused
+  directory therefore holds one run's results: a renamed phase no longer
+  leaves its old report behind, a failed run's directory is not padded with
+  the previous run's tables, and a success does not sit beside a stale
+  `failure.json`. Validate-only runs touch nothing.
 - **`powderline --doctor`** (`pixi run doctor`; re/27, KI-13 implemented): the
   PowderLine version, the gateways the registry finds with their workflows
   and engine requirements, each engine's installed version against its
@@ -275,8 +296,8 @@ recipes do not validate; see the
   `output_malformed`) or the new `ExecutionBackendError` (the engine did not run:
   `server_unavailable`, `server_disabled`, `communication_failed`, `timeout`,
   `backend_error`), each with `.reason` and
-  `.result` (the failed envelope, listing the files written before the failure,
-  which are kept). gsasii no longer returns `success: False` dicts (ledger R30).
+  `.result` (the failed envelope, listing the files kept for diagnosis — since
+  re/30 the engine's own files and `failure.json`, no result table). gsasii no longer returns `success: False` dicts (ledger R30).
   Every returned result has `status` (`"ok"`, or `"generated"` for a TOPAS run
   without a declared `tc.exe`, on which the CLI now exits 0), `converged`
   (`true`/`false`/`null`) and `envelope_version` (`"1"`, the GSAS-II server's wire

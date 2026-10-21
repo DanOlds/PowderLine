@@ -160,6 +160,15 @@ the output directory:
   easydiffraction's CrysFML calculator, which reports none)
 - ``fit_profile.txt`` — ``two_theta, y_obs, y_weights, y_calc, y_diff, y_bkg, q_values, d_spacings``
 
+- ``output_recipe.json`` and ``parameter_dispositions.csv`` — the recipe with the
+  refined values written back, and each parameter's disposition (refinement runs)
+
+Before every run ``powderline.run()`` removes its own fixed-name files from the
+output directory (never the engine's), so a reused directory holds one run's
+results. A failed run raises and writes none of them; the directory then holds
+the engine's own files and ``failure.json`` (the failed envelope: reason,
+message, traceback, the engine's last console lines).
+
 **Native artifacts, always kept alongside:**
 
 - gsasii: ``dummy.gpx`` (the GSAS-II project, reopenable in the GUI) and

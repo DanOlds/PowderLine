@@ -142,9 +142,11 @@ tooling). `pixi install -e <env>`.
 `src/powderline/gateways/gsasii/{helpers,project,setters,executors,extractors,constraints}.py`
 are **move-only**: they do GSAS-II's project-dictionary work exactly as the
 pre-refactor code did. Never change what they do to the GSAS-II project dict.
-Additive or input-side edits go **only** through the maintainers' signed-off
-edits ledger (`_dev/dossiers/multi-engine/tasks/re04-frozen-edits.md`), each
-row with its proof, then `pixi run update-code-hash`. New behaviour goes in
+Additive or input-side edits — and output-side control flow that leaves the
+project-dictionary work untouched (R30, R38) — go **only** through the
+maintainers' signed-off edits ledger
+(`_dev/dossiers/multi-engine/tasks/re04-frozen-edits.md`), each row with its
+proof, then `pixi run update-code-hash`. New behaviour goes in
 the non-frozen modules (`fit_report.py`, `sites.py`, `routing.py`,
 `gateway.py`). Restart the GSAS-II server after any edit it runs (the client
 compares the server's source-tree hash with its own and refuses a stale one).
@@ -205,8 +207,13 @@ compares the server's source-tree hash with its own and refuses a stale one).
   the GSAS-II server speaks the same envelope).
 - Output uses fixed filenames (`refined_parameters.csv`,
   `<phase>_unit_cell_report.csv`, `<phase>_peak_list_report.csv`,
-  `fit_profile.txt`; gsasii `dummy.gpx`/`dummy.lst`; topas `<base>.inp` etc.).
+  `fit_profile.txt`, `output_recipe.json`, `parameter_dispositions.csv`;
+  gsasii `dummy.gpx`/`dummy.lst`; topas `<base>.inp` etc.).
   `unit_cell_data`/`peak_list_data` from `run()` are dicts keyed by phase name.
+  `powderline.run()` removes PowderLine's own fixed-name files from the output
+  directory before every run (`reports.clear_fixed_outputs`) and, when a run
+  fails, writes the failed envelope to `failure.json` beside the engine's own
+  files; no result table is written for a failed run on any engine (re/30, R38).
 - Known, deliberately-deferred behaviours are registered with stable `KI-NN`
   ids in `docs/known_issues.md` — check it before "fixing" a quirk; engine
   quirks and PowderLine's policy are on `docs/engine-behavior.md`.

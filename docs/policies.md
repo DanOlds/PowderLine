@@ -87,7 +87,10 @@ regenerated.
   **signed-off edits ledger** (one row per edit: the line, the reason, the
   proof, the signature); additive behaviour goes into new modules
   (`fit_report.py`, `sites.py`, `routing.py`, `gateway.py`) rather than into
-  the frozen ones.
+  the frozen ones. What the ledger admits: additive or input-side edits
+  (R31–R37), and output-side control flow that leaves the project-dictionary
+  work untouched when the failure contract needs it (R30, the failure
+  propagation; R38, the checks before any result table is written).
 - After a signed edit, run `pixi run update-code-hash` and commit
   `_code_hash.json` with the change; the commit message cites the ledger
   row.

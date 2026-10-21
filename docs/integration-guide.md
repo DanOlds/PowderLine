@@ -193,7 +193,7 @@ from powderline import EngineExecutionError, ExecutionBackendError
 try:
     result = powderline.run(recipe, Path("output/"))
 except EngineExecutionError as e:      # the engine ran and failed: diverged, unusable_site, engine_crashed, ...
-    print(e.reason, e.result["output_files"])   # the files written before the failure are kept
+    print(e.reason, e.result["output_files"])   # the engine's own files and failure.json; no result tables
 except ExecutionBackendError as e:     # the engine did not run: server_unavailable, timeout, ...
     print(e.reason)
 ```

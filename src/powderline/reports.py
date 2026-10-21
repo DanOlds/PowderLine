@@ -5,6 +5,11 @@ emitted by all PowderLine engines: ``refined_parameters.csv``,
 ``<phase>_unit_cell_report.csv``, ``fit_profile.txt``, and
 ``<phase>_peak_list_report.csv``.
 
+The module also owns the list of fixed file names PowderLine writes into an
+output directory (``FIXED_OUTPUT_NAMES`` / ``FIXED_OUTPUT_PATTERNS``, including
+``failure.json``) and ``clear_fixed_outputs``, which :func:`powderline.run`
+calls before every run so a reused directory holds one run's results (re/30).
+
 The writers own file naming, column order, header, delimiter, and quoting
 (csv QUOTE_MINIMAL, like pandas). All files are written with UTF-8 encoding
 and LF line endings (``encoding="utf-8", newline=""`` on open with csv
@@ -40,6 +45,39 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 from typing import Iterable, Mapping, Optional, Sequence, Union
+
+#: The failed envelope on disk (re/30): written by :func:`powderline.run` beside the engine's own files when a
+#: run fails; see :func:`powderline.api.run`.
+FAILURE_FILE = "failure.json"
+
+#: Every fixed file name PowderLine itself writes into an output directory (the engines' own files -- ``dummy.gpx``,
+#: ``.lst``, ``.inp``, ``.xye`` -- are not PowderLine's and are never touched). ``powderline.run`` removes these
+#: before every run (re/30): a directory used twice then holds one run's results, and a failed run's directory
+#: holds the engine's files and ``failure.json`` only.
+FIXED_OUTPUT_NAMES = ("refined_parameters.csv", "fit_profile.txt",
+                      "single_peaks_report.txt", "single_peaks_report.csv",     # gsasii's and topas's SPF reports
+                      "output_recipe.json", "parameter_dispositions.csv", FAILURE_FILE)
+FIXED_OUTPUT_PATTERNS = ("*_unit_cell_report.csv", "*_peak_list_report.csv")
+
+
+def clear_fixed_outputs(output_dir) -> list:
+    """Remove PowderLine's own fixed-name outputs from ``output_dir`` (nothing else); return what was removed.
+
+    A missing directory is left missing (nothing is created). Files, not directories, are removed.
+    """
+    out = Path(output_dir)
+    if not out.is_dir():
+        return []
+    removed = []
+    candidates = [out / name for name in FIXED_OUTPUT_NAMES]
+    for pattern in FIXED_OUTPUT_PATTERNS:
+        candidates.extend(sorted(out.glob(pattern)))
+    for path in candidates:
+        if path.is_file():
+            path.unlink()
+            removed.append(str(path))
+    return removed
+
 
 #: Column order for refined_parameters.csv (9 columns).
 REFINED_PARAMETERS_COLUMNS = (

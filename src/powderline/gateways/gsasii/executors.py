@@ -431,6 +431,10 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
         # 12. Extract final Rwp from result
         rwp = result.get('rwp')
 
+        # 12a. PowderLine's checks (divergence, abort, convergence) run before any result table is written, so a
+        #      failed run leaves GSAS-II's own files only, as the other engines do (ledger row R38, re/30)
+        statistics = fit_report(proj, hist, recipe, engine_rwp=rwp, engine_rvals=result.get('engine_rvals'))
+
         # --- Post-refinement data extraction ---
         # Each helper writes its own output files and returns JSON-serializable data.
         # run() normalises all dicts/lists to DataFrames for programmatic callers.
@@ -486,8 +490,8 @@ def run_refinement(recipe: GsasiiRietveldRecipe | GsasiiSpfRecipe, output_dir: P
             'spf_peaks': spf_peaks_data,
             'spf_convergence_diagnostics': spf_diagnostics_data,
             # Standard fit statistics from core fitstats; 'rwp' becomes the standard Rwp and
-            # GSAS-II's own values go to engine_details (A23, A45, A125)
-            **fit_report(proj, hist, recipe, engine_rwp=rwp, engine_rvals=result.get('engine_rvals')),
+            # GSAS-II's own values go to engine_details (A23, A45, A125); computed at 12a (R38)
+            **statistics,
         }
 
     except EngineExecutionError:  # R30: PowderLine's own failure (divergence, site, peak fit) propagates

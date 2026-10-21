@@ -58,7 +58,7 @@ reproducible, automatable, and accessible.
 | `symmetry.py` | gemmi-backed symmetry: canonical space-group names, cell tie groups and the cell check, special-position analysis, coupling groups for coordinates and Uij |
 | `compat.py` | declared schema-version compatibility: `check_engine_schema_version`, `support_matrix()`, `schema_declarations()` (a gateway's `DECLARATIONS`) |
 | `fitstats.py` | the uniform Rwp / Rexp / GoF / χ²_red over the fit window with positive weights |
-| `reports.py` | the standardized report writers (`refined_parameters.csv`, unit-cell and peak-list reports, `fit_profile.txt`): one column order, UTF-8, LF |
+| `reports.py` | the standardized report writers (`refined_parameters.csv`, unit-cell and peak-list reports, `fit_profile.txt`): one column order, UTF-8, LF; the fixed-name list PowderLine owns (`FIXED_OUTPUT_NAMES` / `FIXED_OUTPUT_PATTERNS`, `FAILURE_FILE`) and `clear_fixed_outputs()` |
 | `recipes.py` | `load_recipe_asset` (JSON / YAML) |
 | `exceptions.py` | `PowderLineError`, `SymmetryError`, `GatewayNotInstalledError`, `EngineNotAvailableError`, `EngineVersionError`, `EngineExecutionError`, `ExecutionBackendError` (both with `.reason` / `.result`), the `StructuredWarning` shape; `WARNING_CODES`, the registry of every structured-warning code with its owner and level (asserted against `src/` and the engine-behaviour table) |
 | `results.py` | the run-result envelope (re/12): `ENVELOPE_VERSION`, the reason-code sets, `failure_envelope`, `generated_envelope`, `with_status_fields`, `raise_if_failed` |
@@ -383,7 +383,15 @@ Fixed filenames in every engine (`refined_parameters.csv`,
 `powderline.reports` with one column order and LF line endings so the files
 are byte-stable across platforms. gsasii keeps `dummy.gpx`, `dummy.bak0.gpx`
 and `dummy.lst`; topas keeps the INP, `.xye` and every file TOPAS wrote;
-easydiffraction writes the reports only. The `refined_parameters.csv`
+easydiffraction writes the reports only. Refinement runs add
+`output_recipe.json` and `parameter_dispositions.csv`. `powderline.run()`
+removes every PowderLine-owned fixed name (`reports.FIXED_OUTPUT_NAMES` /
+`FIXED_OUTPUT_PATTERNS`) from the directory before dispatch and never the
+engine's files; a failed run leaves the engine's files plus `failure.json`
+(the envelope with a `powderline_provenance` block) and no result table —
+in gsasii the checks run before the tables are written (ledger row R38).
+
+ The `refined_parameters.csv`
 columns: `parameter_name` (the engine's identifier), `descriptive_name`,
 `phase_name`, `phase_idx`, `atom_name`, `atom_idx`, `value`, `esd`,
 `category`. gsasii's ESDs come from GSAS-II's covariance matrix

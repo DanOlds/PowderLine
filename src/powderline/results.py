@@ -50,7 +50,9 @@ def failure_envelope(kind: str, reason: str, message: str, *, run_id: Optional[s
                      simulation_mode: Optional[bool] = None) -> dict:
     """A ``failed`` envelope. ``kind`` is ``"engine"`` (the engine ran and failed) or ``"backend"`` (it did not run).
 
-    ``output_files`` lists what was written before the failure: those files are kept for diagnosis.
+    ``output_files`` lists the files kept for diagnosis: the engine's own files written so far and, once
+    :func:`powderline.run` has recorded the failure, ``failure.json`` (re/30). PowderLine's result tables are never
+    written for a failed run.
     """
     if kind not in _KINDS:
         raise ValueError(f"unknown failure kind {kind!r}; expected one of {sorted(_KINDS)}")
