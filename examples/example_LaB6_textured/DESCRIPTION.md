@@ -73,7 +73,7 @@ row `varied`).
 ## Output Files
 
 The standard gsasii set (`refined_parameters.csv`, `LaB6_unit_cell_report.csv`,
-`LaB6_peak_list_report.csv`, `fit_profile.txt`, `dummy.gpx`, `dummy.lst`,
+`LaB6_peak_list_report.csv`, `fit_profile.txt`, `dummy.gpx` (gitignored), `dummy.lst`,
 `output_recipe.json`, `parameter_dispositions.csv`).
 
 ## Known Issues

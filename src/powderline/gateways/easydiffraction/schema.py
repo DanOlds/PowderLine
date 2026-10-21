@@ -46,6 +46,11 @@ easydiffraction rules checked here:
   Lorentzian FWHM): easydiffraction would compute a wrong pattern without a
   message, also from a reflection just outside the window (EB-87, A171, A178);
 - the Kα2 wavelength and its intensity ratio are stated together;
+- ``scattering_types`` (CIF spelling, ions CrysPy has a form factor for, EB-95)
+  and ``preferred_orientation`` (March-Dollase with the required
+  ``march_random_fract``; stated bounds inside the engine's own limits) need
+  the cryspy calculator: CrysFML computes neutral atoms only (EB-96) and
+  ignores preferred orientation (EB-97) (P-47, P-48);
 - simulation = no refine flag set (lmfit is not run).
 """
 

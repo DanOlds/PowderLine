@@ -126,7 +126,7 @@ via `G2spc.SytSym`, inside a bare `except Exception: pass`, defaulting to `""`
 and `1` on failure. The recipe never states these, and a derivation failure is
 invisible.
 
-**Evidence.** `kicker.py:1170-1176`.
+**Evidence.** `kicker.py:1170-1176` at the time (the `SytSym` call now lives in `gateways/gsasii/project.py`).
 
 **Decision.** Candidate for dedicated work: make site symmetry and multiplicity
 explicit, validated recipe fields, with an immediate safety patch to stop
@@ -729,11 +729,11 @@ directories, the re/12 failure contract when `tc.exe` dies or rejects an INP,
 and the cell-refined LaB6 row of the cross-engine comparison page — has not
 run since the refactor. TOPAS 7 is out of scope for 0.2.0 (P-07, A143).
 
-**Evidence.** The maintainers keep the deferred list (eight items, T1–T8:
+**Evidence.** The maintainers keep the deferred list (nine items, T1–T9:
 the native-runner smoke on both workflows, a cell-refined LaB6 fixture for
 the comparison page, the at-limit warning and the non-ASCII output directory
 against real runs, the ionic scattering types, the failure contract when
-`tc.exe` dies or rejects an INP); `docs/cross-engine-comparison.md` (the
+`tc.exe` dies or rejects an INP, the March–Dollase preferred orientation); `docs/cross-engine-comparison.md` (the
 TOPAS LaB6 row keeps the cell fixed); `docs/support-matrix.md` states the
 verification status.
 

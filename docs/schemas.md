@@ -170,7 +170,7 @@ each name; the recipe-path view of the same values is `parameter_dispositions`.
 
 | Reason | Kind | Meaning |
 |---|---|---|
-| `diverged` | engine | a non-finite calculated pattern or value inside the fit window (A130) |
+| `diverged` | engine | a non-finite calculated pattern or value inside the fit window (A130), or a GSAS-II refinement GSAS-II itself aborted — no damped step lowered χ² (`Rvals['Aborted']`, EB-99; simulations exempt) |
 | `unusable_site` | engine | the engine reads an atom's site or a symmetry tie differently from core (gsasii A117 / EB-40, EB-05; easydiffraction EB-47); the run stops before refining |
 | `peak_fit_failed` | engine | GSAS-II's peak fit returned nothing (EB-38) |
 | `engine_crashed` | engine | the engine raised or exited abnormally (GSAS-II crash, lmfit/CrysPy/CrysFML error, `tc.exe` could not start) |
@@ -216,6 +216,6 @@ Kept alongside the standardized reports, always:
   column (TOPAS 6 cannot output the fit's background). `<base>` is the
   example directory's name when the output directory is `.../<name>/output`,
   else `topas`. Without `tc.exe` a run writes the `.inp` and `.xye` only and
-  reports failure.
+  returns with `status: "generated"` (a normal outcome, exit 0).
 - **easydiffraction**: none beyond the standardized reports; the data and
   structure are handed to the library in memory.

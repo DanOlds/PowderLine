@@ -252,7 +252,7 @@ within 1e-6 of the starting value).
   singular parameters without a message (EB-53). *Policy:* a refine flag on
   the width source not in use is a validation error (A127), and
   `gsasii_parameters_not_varied` reports any remaining silent drop (A128).
-- **The peak fit fills no covariance block**: `DoPeakFit` keeps its varied
+- **The peak fit fills no covariance block** (EB-92): `DoPeakFit` keeps its varied
   names and ESDs in `Peak List['sigDict']` and writes the refined values in
   place (`Background[0]`, `Background[1]['peaksList']`, `Instrument
   Parameters[0]`, `Peak List['peaks']`), so a peak fit has no

@@ -42,7 +42,7 @@ Defined in `src/powderline/schema_core.py`; every engine schema builds on it.
   `value` is always a number and `refine_flag` a JSON boolean; neither is ever
   `null`.
 - **Data and ranges**: `xrd_data` (2θ in degrees, weights 1/σ², validated as in
-  0.26.0); `fit_range` `[min, max]`, with `max > min`, inside the data's 2θ range, holding at least one point with a positive weight (re/05).
+  0.26.0); `fit_range` `[min, max]`, with `max > min`, inside the data's 2θ range, holding at least two points with a positive weight (re/05).
 - **Background**: Chebyshev (`num_coefficients`, `coefficients`, `refine_flag`).
   Coefficient semantics are documented per engine.
 - **Units** are fixed per field in the schema, never written in a recipe.
@@ -114,9 +114,10 @@ Defined in `src/powderline/schema_core.py`; every engine schema builds on it.
     mismatch is an error stating each value and the value to write
     (`stated b = 4.2, but by symmetry b = a; write b = 4.15692`). (GSAS-II
     alone would silently apply the symmetry only when the cell is refined.)
-  - **Elements**: a bare element symbol spelled exactly (`"Fe"`, not `"FE"`).
-    Charged scattering types (`"Fe3+"`) are not supported yet and are rejected,
-    never reduced to the neutral atom.
+  - **Elements**: a bare element symbol spelled exactly (`"Fe"`, not `"FE"`),
+    always the neutral atom. A charged symbol here is an error pointing at the
+    engine block's `scattering_types`, where an ion is stated in the CIF
+    spelling (`"Fe3+"`; re/28, P-47) — never reduced to the neutral atom.
   - **Occupancy**: 0 to 1 inclusive, even where an engine would accept more.
   - **Symmetry-determined values** (special positions, anisotropic ADPs,
     tied bounds). Within 5e-6 of a special position an atom is on it; from
@@ -477,7 +478,9 @@ Dollase's times r^1.5 (EB-98), so with `march_random_fract = 0` the refined
 ## Archive: unified-schema era (0.21–0.26)
 
 The single schema shared by all engines up to PowderLine 0.1.1, kept verbatim
-(headings moved one level down).
+(headings moved one level down). Nothing below is current policy: 1.0.0 models
+are `extra='forbid'`, parameters are engine-shaped lists, and the sequential
+and multi-strategy text describes removed code.
 
 This document provides a concise summary of PowderLine's schema evolution for context. For detailed commit history, see the repository's git log. Current schema: **0.26.0**
 

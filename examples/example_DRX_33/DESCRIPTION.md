@@ -58,7 +58,7 @@ This example demonstrates multi-phase refinement capabilities:
 
 This two-phase Rietveld refinement produces:
 
-- **dummy.gpx** - GSAS-II project file (reopenable in GUI)
+- **dummy.gpx** - GSAS-II project file (reopenable in the GUI; gitignored)
 - **dummy.lst** - Human-readable refinement log with Rwp and parameter tables
 - **refined_parameters.csv** - All refined parameters with ESDs (9 columns: parameter_name, descriptive_name, phase_name, phase_idx, atom_name, atom_idx, value, esd, category)
 - **DRX_33_unit_cell_report.csv** - Phase 1 unit cell parameters with ESDs (3 columns: parameter, value, esd)

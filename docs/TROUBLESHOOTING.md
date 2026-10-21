@@ -279,7 +279,7 @@ or PowderLine is imported from `src/` with no installed distribution
 pixi run -e gsasii doctor                  # or: powderline --doctor — what this environment can do
 pixi reinstall powderline --all            # every environment
 ```
-`powderline --doctor` (re/27) prints the PowderLine version, the gateways the
+`powderline --doctor` prints the PowderLine version, the gateways the
 registry finds, each engine's installed version against its gateway's
 requirement, and the GSAS-II server's state; it exits non-zero when no gateway
 is registered or an installed engine is outside its requirement, and names
@@ -309,6 +309,7 @@ rebuild the editable install (offline), use that environment's own python:
 ```
 ❌ Refinement failed (unusable_site): GSAS-II cannot use these atom positions as stated: ... state the equivalent position (1/3, 0, 1/6) ...
 ❌ Refinement failed (diverged): GSAS-II's refinement diverged: the calculated pattern is not finite at 212 of 3767 points in the fit window, so no result is reported ...
+❌ Refinement failed (diverged): GSAS-II aborted the refinement: no step lowered chi-squared before its damping reached its limit (a parameter the data cannot move, or a model far from the data) ...
    Files written before the failure (kept for diagnosis): .../dummy.gpx, .../dummy.lst
 ❌ Could not run the engine (server_unavailable): Server not available and fallback disabled
 ℹ️ Generated the engine input only (topas_generate_only, 0.0s): .../LaB6.inp, .../LaB6.xye
@@ -322,7 +323,7 @@ engine ran and failed; "Could not run the engine" means it never ran
 For a `gsasii.*` failure the CLI also prints **the engine's last console
 lines**, and the failed envelope carries them as `failure.console_tail`
 (`e.result["failure"]["console_tail"]` in the API; the last 64 KiB of what
-GSAS-II printed, in-process or inside the server, re/27). That is where
+GSAS-II printed, in-process or inside the server). That is where
 GSAS-II says what it did not return: "Refinement failed - singular matrix",
 "Removing parameter: …", the constraint notices. A verbose run that succeeded
 keeps the same text under `engine_details["console_tail"]`.
@@ -577,7 +578,7 @@ is gone is ignored.
 wrote its output files into `output_dir` in *its own* filesystem view, so a
 server on another node or inside a container reported success while the
 files never appeared; a freshness check on `fit_profile.txt` caught it and
-fell back in-process. Since re/19 (KI-12) the files travel back inside the
+fell back in-process. Since 0.2.0 (KI-12) the files travel back inside the
 signed response and the client writes them into its own `output_dir`, so the
 server never needs to see the client's filesystem. If files are missing now,
 the run itself failed (see "Refinement Failed") or the client could not write

@@ -543,10 +543,6 @@ recipes do not validate; see the
 
 ### Known limitations carried into 0.2.0
 
-- **Charged scattering types** (`"Fe3+"`) are still rejected, never reduced to
-  the neutral atom; v0.1.1 passed them to GSAS-II unchecked. Supporting them
-  correctly needs per-engine verification of the notation (P-03, provisional;
-  A63 re-dated).
 - **TOPAS 7** is out of scope: `topas.*` 1.0.0 supports TOPAS 6 only (P-07,
   A143).
 

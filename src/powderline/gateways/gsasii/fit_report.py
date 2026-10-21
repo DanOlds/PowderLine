@@ -31,6 +31,12 @@ simulation (``refinement_cycles == 1``) gets the same statistics as a
 refinement, and every result says which it was (``simulation_mode``, A129).
 A statistic that is undefined (no degrees of freedom) is ``None``.
 
+A Rietveld refinement GSAS-II *aborted* (``Rvals['Aborted']``: no damped step
+lowered chi-squared in a cycle; the last accepted values stay but the stored
+pattern and wR are the rejected step's, finite and worthless) is the other face
+of the same failure and is also raised as ``diverged`` (EB-99, re/29);
+simulations are exempt.
+
 For a peak fit (``gsasii.spf``) the result also carries ``peak_fit``: every
 parameter ``DoPeakFit`` varied, by its own name, with the refined value and ESD
 (re/21, KI-04). ``DoPeakFit`` fills no covariance block (the frozen extractor

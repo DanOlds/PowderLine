@@ -82,9 +82,9 @@ Each gateway is a package with the same two layers:
 
 | Gateway | Runtime modules |
 |---|---|
-| `gsasii/` (GSAS-II 5.7.9) | the **frozen** setup/execution code moved verbatim from `kicker.py` at the re/01 baseline `daace24`: `helpers.py`, `project.py`, `setters.py`, `executors.py`, `extractors.py`, `constraints.py` (code-hashed; see [policies](policies.md#frozen-gsas-ii-code-and-the-edits-ledger)); non-frozen additions `routing.py` (one entry for in-process, server and client), `fit_report.py` (uniform statistics, `engine_details`, convergence, divergence), `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`; `server.py` / `client.py` (the persistent FastAPI server and `GSASClient`: per-user, loopback, ephemeral port, signed requests and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2); `simulation_builder.py` (structure dict → simulation recipe; see [the builder](#the-simulation-recipe-builder)) |
+| `gsasii/` (GSAS-II 5.7.9) | the **frozen** setup/execution code moved verbatim from `kicker.py` at the re/01 baseline `daace24`: `helpers.py`, `project.py`, `setters.py`, `executors.py`, `extractors.py`, `constraints.py` (code-hashed; see [policies](policies.md#frozen-gsas-ii-code-and-the-edits-ledger)); non-frozen additions `routing.py` (one entry for in-process, server and client), `fit_report.py` (uniform statistics, `engine_details`, convergence, divergence), `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`, `paths.py` (GSAS-II parameter names → recipe paths for the output recipe), `console.py` (the engine's console tail into a failed envelope), `scattering.py` (GSAS-II's ion table and spelling); `server.py` / `client.py` (the persistent FastAPI server and `GSASClient`: per-user, loopback, ephemeral port, signed requests and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2); `simulation_builder.py` (structure dict → simulation recipe; see [the builder](#the-simulation-recipe-builder)) |
 | `topas/` (TOPAS 6) | `native_writer.py` (model → INP + `.xye`), `native_run.py` (run `tc.exe`, read TOPAS's files strictly, build the result; the background-only second run), `peak_list.py`, `runner.py` (find `tc.exe`, read `.powderline_config.yaml`) |
-| `easydiffraction/` (0.21.1) | `native_builder.py` (model → easydiffraction `Project`; the CrysPy template rule; anisotropic atoms first), `native_run.py` (calculate or lmfit fit, the result), `space_group_table.py` / `space_group_support.py` (the 531 settings and the per-calculator verified sets) |
+| `easydiffraction/` (0.21.1) | `native_builder.py` (model → easydiffraction `Project`; the CrysPy template rule; anisotropic atoms first), `native_run.py` (calculate or lmfit fit, the result), `space_group_table.py` / `space_group_support.py` (the 531 settings and the per-calculator verified sets), `scattering.py` (CrysPy's ion table) |
 
 The entry points are declared in `pyproject.toml`
 (`[project.entry-points."powderline.gateways"]`); the metadata is written at
@@ -313,6 +313,10 @@ internals). It moved verbatim out of `kicker.py` at the re/01 baseline
 `daace24` (not on `main`) and is
 frozen behind a code hash; input-side edits go through the maintainers'
 signed-off edits ledger ([policies](policies.md#frozen-gsas-ii-code-and-the-edits-ledger)).
+The module headers still read "moved verbatim"; the ledger, not the headers,
+is the record of the additive edits made since (ionic types in `project.py`,
+the preferred-orientation setter in `setters.py`, the simulation ESDs in
+`extractors.py`).
 Key access patterns, for reading the code:
 
 ```python
@@ -445,8 +449,8 @@ The default feature carries only PowderLine's runtime dependencies plus
 pytest; `gsasii`, `easydiffraction`, `all` and `dev` are features/environments
 in `pixi.toml`. `test` and `update-code-hash` live in the default feature and run anywhere;
 tasks only `dev` has (`test-all`, `docs`, `docs-clean`) resolve without `-e`; engine-bound tasks live in their engine's feature, so pixi
-reports them as ambiguous without `-e` and prints the form to use. All tasks
-set `PYTHONPATH` through the task-level `env` dict (cross-platform;
+reports them as ambiguous without `-e` and prints the form to use. Tasks that
+import PowderLine set `PYTHONPATH` through the task-level `env` dict (cross-platform;
 [cross-platform guide](cross-platform-guide.md)).
 
 ### Execution modes (gsasii)
@@ -686,8 +690,6 @@ maintainer.
   compatibility run on a TOPAS 7 machine; `unsafe_mode` for deliberately
   relaxed checks; a recipe builder / CIF importer upstream of the schemas;
   a structure-source plugin (Materials Project, CIF) upstream of the builder.
-- Output: a recipe-shaped result for round-trip / sequential refinement
-  (KI-04); the GSAS-II server returning its artifacts in-band (KI-12).
 
 ## Contributing
 

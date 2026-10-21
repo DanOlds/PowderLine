@@ -184,7 +184,7 @@ result = powderline.run(recipe, Path("output/"))
 # result['output_files']             list[str]
 ```
 
-A failed run **raises** (re/12). Catch the two classes separately when the
+A failed run **raises**. Catch the two classes separately when the
 distinction matters, or `PowderLineError` for both:
 
 ```python
@@ -216,7 +216,7 @@ install command.
 ### Sequential refinement: feed the output recipe back
 
 Every result carries `output_recipe`: the recipe the engine actually saw, with
-its refined values written back, that validates unchanged (re/20, KI-04). A
+its refined values written back, that validates unchanged (KI-04). A
 sequential series is therefore a loop over data, not over parameter names:
 
 ```python
@@ -239,7 +239,7 @@ at a limit. `powderline.recipes.block` / `with_block` move only core blocks
 recipes; an engine's own blocks stay in that engine's terms.
 
 A complete, runnable instance of this loop is
-`examples/example_LaB6_temperature_series/` (re/22): six simulated LaB6
+`examples/example_LaB6_temperature_series/`: six simulated LaB6
 patterns from 25 to 500 °C with a programmed thermal expansion (Akdoğan &
 Payzant, J. Appl. Cryst. 2025) and Poisson noise, refined in sequence through the
 output recipe by `run_series.py`; its committed `output/series_report.csv`

@@ -43,7 +43,7 @@ With `use_instrument_profile: false`, the peak widths are refined directly rathe
   - fwhm_gaussian, fwhm_lorentzian, fwhm_pseudovoigt
   - integral_breadth_gaussian, integral_breadth_lorentzian, integral_breadth_pseudovoigt
   - fwhm_gsas_verification, converged, convergence_detail
-- Standard outputs: GPX project file, LST log file, fit_profile.txt
+- Standard outputs: `fit_profile.txt` and `single_peaks_report.txt` (plus `dummy.gpx`, gitignored; no `.lst` — see the note below)
 
 ## Schema Features Demonstrated
 
@@ -71,7 +71,7 @@ recipe with `scripts/convert_recipe_026.py` (SH/L 0.0 → 0.002, A91).
 
 This single peak fitting analysis produces:
 
-- **dummy.gpx** - GSAS-II project file (reopenable in GUI)
+- **dummy.gpx** - GSAS-II project file (reopenable in the GUI; gitignored)
 - **single_peaks_report.txt** - Fitted peak parameters (position, intensity, FWHM, area) for each peak
 - **peak_convergence_diagnostics.txt** - Per-peak convergence diagnostics, written only when a peak has a convergence issue (all 36 peaks of the committed reference converged cleanly, so the reference set has no such file)
 - **fit_profile.txt** - Observed/calculated/background/difference intensities

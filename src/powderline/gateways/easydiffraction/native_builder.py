@@ -21,6 +21,10 @@ never moves one.
   the column of its place among the anisotropic atoms, not its own, so an
   anisotropic atom after an isotropic one would keep its starting tensor
   (EB-86). Order is not physics; everything is keyed by label.
+- **Preferred orientation** (P-48): a phase's ``preferred_orientation`` block becomes one
+  ``preferred_orientation`` row of the experiment, keyed by the lowercase linked structure
+  name (a row keyed otherwise is ignored silently, EB-97), with ``march_r`` and
+  ``march_random_fract`` freed when flagged.
 - **Checks after the build** (errors, never substitutions): easydiffraction's
   multiplicity of every atom equals core's and no coordinate moved (EB-47),
   except by a lattice translation: easydiffraction stores a template-pattern

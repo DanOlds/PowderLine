@@ -25,7 +25,7 @@ Core (engine-free; `import powderline` imports no engine):
 - `__init__.py` — the public API, `__all__`: `run`, `validate`, `ValidationResult`,
   `load_recipe_asset`, `support_matrix`, `PowderLineError`,
   `GatewayNotInstalledError`, `EngineNotAvailableError`, `EngineVersionError`,
-  `EngineExecutionError`.
+  `EngineExecutionError`, `ExecutionBackendError`.
 - `api.py` — `validate(recipe)` → `ValidationResult(recipe=<gateway model>,
   warnings=[...])` through the gateway's engine-free schema layer;
   `run(recipe, output_dir, *, verbose, validate_only, **engine_options)`
@@ -63,6 +63,10 @@ Core (engine-free; `import powderline` imports no engine):
   `WARNING_CODES`: every warning code with owner and level, asserted against
   `src/` and the engine-behaviour table),
   `config_loader.py` (simulation defaults), `_status.py`.
+- `results.py` — the run-result envelope (`ENVELOPE_VERSION`, `REASONS`, the
+  failed/generated envelopes, `raise_if_failed`); `roundtrip.py` — the output
+  recipe (`output_recipe`, `output_recipe_valid`, `parameter_dispositions`;
+  tie propagation, KI-04); `doctor.py` — the `--doctor` report (KI-13).
 
 Gateways (`src/powderline/gateways/<engine>/`), each a **schema layer**
 (`schema.py`: the engine schema 1.0.0 on core 1.0.0, `DECLARATIONS`,
@@ -77,7 +81,8 @@ imported lazily from `run()`):
   (uniform statistics, `engine_details`, convergence, divergence = failure),
   `sites.py` (GSAS-II's reading of each site vs core's), `report_rows.py`,
   `paths.py` (GSAS-II parameter names → recipe paths for the output recipe, re/20b),
-  `console.py` (the engine's console tail into a failed envelope, re/27, KI-05);
+  `console.py` (the engine's console tail into a failed envelope, re/27, KI-05),
+  `scattering.py` (GSAS-II's ion table, `La3+` → `La+3`, re/28);
   `server.py` / `client.py` (persistent FastAPI server + `GSASClient`, the
   `auto`/`server` execution modes; per-user state dir, token-signed requests
   and responses, `POWDERLINE_NO_SERVER=1` disables it — v0.1.2, KI-14; output files travel
@@ -92,7 +97,8 @@ imported lazily from `run()`):
   without `tc.exe`.
 - `easydiffraction/` (`==0.21.1`, env `easydiffraction`, Python ≥ 3.12):
   `native_builder.py`, `native_run.py`, `space_group_table.py`,
-  `space_group_support.py` (per-calculator verified settings).
+  `space_group_support.py` (per-calculator verified settings), `scattering.py`
+  (CrysPy's ion table, re/28).
 
 Docs: `docs/schemas.md`, `docs/fields.md` (generated tables), `docs/input-guidance.md`,
 `docs/engine-behavior.md`, `docs/policies.md`, `docs/migration-0.26-to-1.0.md`,
@@ -114,8 +120,9 @@ tooling). `pixi install -e <env>`.
   `pixi run kicker <recipe.json> --topas-version 6 [--topas-dir DIR]` for
   `topas.*` (Windows with `tc.exe`; elsewhere writes the INP and fails).
   After `pixi reinstall powderline` the installed command is `powderline …`.
-- `pixi run test` — full pytest suite (resolves to `dev`); per-engine suites
-  `pixi run -e gsasii pytest tests/... -q`.
+- `pixi run test` — the engine-free suites (`core or topas_gen`, any env);
+  `pixi run -e gsasii test-gsasii`, `pixi run -e easydiffraction
+  test-easydiffraction` per engine; `pixi run test-all` — everything (`dev`).
 - `pixi run -e gsasii gsas-server start|status|stop|restart|logs` — the
   persistent GSAS-II server (task in the `gsasii` feature; without `-e` pixi
   reports it ambiguous).

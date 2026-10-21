@@ -219,9 +219,9 @@ def run_gsasii(case: str, work: Path) -> dict:
     recipe, report = gsasii_recipe(case)
     out = work / "gsasii" / case
     out.mkdir(parents=True, exist_ok=True)
-    result = powderline.run(recipe, out, execution_mode="subprocess")
-    if not result.get("success"):
-        raise RuntimeError(f"GSAS-II run of {case} failed: {result.get('error')}")
+    result = powderline.run(recipe, out, execution_mode="subprocess")   # a failed run raises (re/12)
+    if result["status"] != "ok":
+        raise RuntimeError(f"GSAS-II run of {case} produced no fit: status {result['status']}")
     cells = {phase: _records_to_cell(df.to_dict("records")) for phase, df in result["unit_cell_data"].items()}
     shl = recipe["payload"]["instrument"]["corrections"]["axial_divergence"][0]
     notes = [f"FCJ axial asymmetry (SH/L {shl})", "no background peak (P-01)"]

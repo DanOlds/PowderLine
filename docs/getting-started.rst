@@ -49,9 +49,14 @@ otherwise.
 Running tests
 -------------
 
-Execute the test suite (the ``dev`` environment, every engine)::
+Execute the engine-free test suite (core and TOPAS input generation; any
+environment)::
 
     pixi run test
+
+The per-engine suites are ``pixi run -e gsasii test-gsasii`` and
+``pixi run -e easydiffraction test-easydiffraction``; ``pixi run test-all``
+runs everything in the ``dev`` environment.
 
 Or a selection, in one engine's environment::
 
@@ -197,7 +202,7 @@ tables as pandas DataFrames.
 - ``result['status']`` (``"ok"``, or ``"generated"`` for a TOPAS run without a declared ``tc.exe``) and
   ``result['converged']`` (``True`` / ``False`` / ``None``); a failed run **raises**
   ``EngineExecutionError`` (the engine ran and failed) or ``ExecutionBackendError`` (it did not run),
-  each with ``.reason`` and ``.result``; ``result['success']`` is a deprecated always-``True`` alias
+  each with ``.reason`` and ``.result``
 - ``result['rwp']``, ``result['r_exp']``, ``result['gof']``, ``result['chi2_red']`` — PowderLine's
   uniform statistics over the fit window (percent / dimensionless; ``None`` where undefined)
 - ``result['simulation_mode']`` (bool)
@@ -220,7 +225,7 @@ tables as pandas DataFrames.
    checked.recipe                               # the gateway's validated model (e.g. GsasiiRietveldRecipe)
    checked.warnings                             # structured warnings, e.g. a default applied
 
-   # or the run()-style summary dict (success, schema_name, core/engine schema
+   # or the run()-style summary dict (status, schema_name, core/engine schema
    # versions, phases, simulation_mode, warnings, the engine's controls):
    summary = powderline.run(recipe, output_dir, validate_only=True)
 

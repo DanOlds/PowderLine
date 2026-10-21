@@ -84,7 +84,7 @@ Expected runtime: **~1 second** (single cycle, all phases locked)
 
 This two-phase simulation produces:
 
-- **dummy.gpx** - GSAS-II project file
+- **dummy.gpx** - GSAS-II project file (gitignored)
 - **dummy.lst** - Log file (shows 1 cycle with no parameter changes)
 - **DRX_33_unit_cell_report.csv** - Phase 1 unit cell parameters (unchanged from input; every `esd` is `0.0` — nothing refined, no covariance; re/24, ledger row R34)
 - **DRX_33_peak_list_report.csv** - Phase 1 reflection list (hkl, d-spacing, 2θ, intensities)

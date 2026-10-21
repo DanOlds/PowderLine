@@ -19,9 +19,10 @@ and single-peak fits without hand-driving the underlying refinement software.
   `easydiffraction.rietveld`) and is written in that engine's own
   conventions and units; nothing is translated between engines.
 - **Refine what you need:** unit cell, atom coordinates, occupancies, isotropic and
-  anisotropic displacement parameters, background, and peak broadening — each
-  parameter individually flagged, and checked against the space-group symmetry
-  before any engine runs.
+  anisotropic displacement parameters, background, peak broadening and
+  March–Dollase preferred orientation, with ionic scattering types per atom —
+  each parameter individually flagged, and checked against the space-group
+  symmetry before any engine runs.
 - **Honest statistics:** every engine returns the same uniform Rwp / Rexp /
   GoF over the same data points, with the engine's own values kept alongside.
 - **Strict validation, engine-free:** a recipe validates in a core-only
@@ -115,9 +116,10 @@ print(result["engine_details"])           # GSAS-II's own statistics, parameters
 print(result["refined_parameters"])       # DataFrame of refined values + ESDs
 ```
 
-The returned dict holds the fit metadata (`success`, `rwp`, `r_exp`, `gof`,
-`chi2_red`, `simulation_mode`, `engine_details`, `warnings`, elapsed time,
-which execution path ran, and the error + traceback on failure) plus every
+The returned dict holds the fit metadata (`status`, `converged`, `rwp`, `r_exp`,
+`gof`, `chi2_red`, `simulation_mode`, `engine_details`, `warnings`, elapsed time,
+which execution path ran, the output recipe with its parameter dispositions; a
+failed run raises instead of returning) plus every
 tabular report in memory — the refined-parameter table with ESDs, the fit
 profile, per-phase unit-cell and peak-list tables (dicts keyed by phase
 name), and the SPF peak tables when single-peak fitting. Everything the

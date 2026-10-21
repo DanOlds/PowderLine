@@ -81,6 +81,7 @@ After running this example successfully with `powderline input.json` (or `pixi r
 - `*_unit_cell_report.csv`: Refined unit cell parameters
 - `*_peak_list_report.csv`: Reflection list with intensities
 - `fit_profile.txt`: Observed/calculated/difference profile data
+- `output_recipe.json` and `parameter_dispositions.csv`: the resolved recipe with the refined values written back, and each parameter's disposition (refinement runs)
 
 These files (except `.gpx`, which is gitignored) are committed to git and used for regression testing to ensure code changes don't affect results.
 

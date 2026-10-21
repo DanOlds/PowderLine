@@ -41,7 +41,7 @@ The refinement uses the same disordered rocksalt battery material (DRX_33 + Li4M
 - **Instrument parameters**: Wavelength, polarization, broadening locked
 
 ### Parameters Refined:
-- **Lattice parameters**: DRX_33 phase only (a-axis for cubic system)
+- **Lattice parameters**: both phases (DRX_33: `a`, `b`, `c`, one cubic tie group; Li4MgWO6_SG12: `a`, `b`, `c`, `beta`)
 - **Phase scale factors**: Both phases
 - **Peak broadening**: Size and strain for both phases
 - **Background**: Chebyshev with 6 terms
@@ -161,7 +161,7 @@ The Uij tensor must be **positive-definite** (all eigenvalues > 0) to represent 
 
 This two-phase Rietveld refinement produces:
 
-- **dummy.gpx** - GSAS-II project file (reopenable in GUI)
+- **dummy.gpx** - GSAS-II project file (reopenable in the GUI; gitignored)
 - **dummy.lst** - Human-readable refinement log with Rwp and parameter tables
 - **refined_parameters.csv** - All refined parameters with ESDs (9 columns: parameter_name, descriptive_name, phase_name, phase_idx, atom_name, atom_idx, value, esd, category)
 - **DRX_33_unit_cell_report.csv** - Phase 1 unit cell parameters with ESDs (3 columns: parameter, value, esd)

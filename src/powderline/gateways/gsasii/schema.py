@@ -22,7 +22,11 @@ GSAS-II rules checked here (engine-behavior register entries in brackets):
 - background and Peak List peak positions lie inside the fit window (A86, A126);
 - single peak fitting: the instrument profile and the peaks' own widths are
   never both requested, since GSAS-II silently ignores one of them (A127, EB-53);
-- simulation (``refinement_cycles == 1``) refines nothing (A88).
+- simulation (``refinement_cycles == 1``) refines nothing (A88);
+- ``scattering_types``: CIF spelling, each key an atom label, only ions GSAS-II
+  5.7.9 has a form factor for (P-47, EB-94; written as ``La+3``, ledger R35);
+- ``preferred_orientation`` (March-Dollase): ``hkl`` not all zero, ``ratio > 0``
+  (P-48; the HAP entry, ledger R36/R37).
 
 Documented defaults (A119): size/strain left out = 10 um / 0, isotropic, fixed,
 reported by a structured warning (A87, A107); background left out = none (one

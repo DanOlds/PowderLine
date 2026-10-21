@@ -65,7 +65,7 @@ pixi run kicker examples/example_LaB6_simulation/input.json --validate-only
 
 This simulation produces:
 
-- **dummy.gpx** - GSAS-II project file
+- **dummy.gpx** - GSAS-II project file (gitignored)
 - **dummy.lst** - Log file (shows 1 cycle with no parameter changes)
 - **LaB6_unit_cell_report.csv** - Unit cell parameters (unchanged from input; every `esd` is `0.0` — nothing refined, no covariance; re/24, ledger row R34)
 - **LaB6_peak_list_report.csv** - Reflection list (hkl, d-spacing, 2θ, intensities)
@@ -104,12 +104,12 @@ To convert any refinement recipe to simulation mode:
 - **Crystal Structure**: LaB6, cubic, space group Pm-3m, a ≈ 4.15682 Å
 - **Instrument**: High-energy X-rays (74.46 keV, λ ≈ 0.1665 Å)
 
-## Future Extensions
+## Extensions
 
-Simulation mode enables several enhancements:
+Simulation mode enables several uses, some already demonstrated:
 1. **Batch Simulation**: Generate patterns for parameter space surveys
-2. **Noise Addition**: Add synthetic noise to calculated patterns (for testing)
-3. **Preferred Orientation**: Simulate textured samples (March–Dollase, since re/29: `example_LaB6_textured`)
+2. **Noise Addition**: Add synthetic noise to calculated patterns — done: `example_LaB6_temperature_series` and `example_LaB6_textured` (Poisson counts, seeded)
+3. **Preferred Orientation**: Simulate textured samples — done: `example_LaB6_textured` (March–Dollase)
 4. **Strain/Size Broadening**: Demonstrate how microstructure affects peak shapes
 5. **Phase Mixtures**: Simulate multi-phase assemblages at various proportions
 
