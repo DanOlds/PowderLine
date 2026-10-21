@@ -109,7 +109,7 @@ To convert any refinement recipe to simulation mode:
 Simulation mode enables several enhancements:
 1. **Batch Simulation**: Generate patterns for parameter space surveys
 2. **Noise Addition**: Add synthetic noise to calculated patterns (for testing)
-3. **Preferred Orientation**: Simulate textured samples (currently not supported)
+3. **Preferred Orientation**: Simulate textured samples (March–Dollase, since re/29: `example_LaB6_textured`)
 4. **Strain/Size Broadening**: Demonstrate how microstructure affects peak shapes
 5. **Phase Mixtures**: Simulate multi-phase assemblages at various proportions
 
